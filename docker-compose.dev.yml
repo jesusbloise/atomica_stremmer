@@ -1,0 +1,43 @@
+# version: "3.8"
+
+# services:
+#   web:
+#     build:
+#       context: ./my-uploadthing-app
+#       dockerfile: Dockerfile
+#     command: sh -c "npm run build && node .next/standalone/server.js"
+
+       
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - db
+#     environment:
+#       - PGHOST=db
+#       - PGUSER=postgres
+#       - PGPASSWORD=atomica
+#       - PGDATABASE=Prueba-atomica-gratis
+#       - PGPORT=5432
+#     networks:
+#       - atomica_net
+
+#   db:
+#     image: postgres:15
+#     restart: always
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: atomica
+#       POSTGRES_DB: Prueba-atomica-gratis
+#     ports:
+#       - "5433:5432"
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#     networks:
+#       - atomica_net
+
+# volumes:
+#   pgdata:
+
+# networks:
+#   atomica_net:
+    # driver: bridge

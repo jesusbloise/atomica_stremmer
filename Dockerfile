@@ -1,0 +1,45 @@
+# =====================================================
+# Dockerfile optimizado para Railway (desde raíz)
+# Python processing se maneja via Modal (serverless)
+# =====================================================
+
+# Etapa 1: Dependencias
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY my-uploadthing-app/package*.json ./
+RUN npm ci --omit=dev
+
+# Etapa 2: Build
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY my-uploadthing-app ./
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# Etapa 3: Producción
+FROM node:20-slim AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# Crear usuario no-root
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copiar archivos necesarios
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.js ./
+
+# Copiar node_modules de production
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

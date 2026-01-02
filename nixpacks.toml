@@ -1,0 +1,15 @@
+[phases.setup]
+nixPkgs = ["nodejs-20_x"]
+
+[phases.build]
+cmds = [
+  "cd my-uploadthing-app",
+  "npm ci",
+  "npm run build"
+]
+
+[phases.deploy]
+startCommand = "cd my-uploadthing-app && npm start"
+
+[phases.deploy.healthcheck]
+path = "/"

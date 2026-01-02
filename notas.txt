@@ -1,0 +1,29 @@
+nombre de las tablas:
+
+videos= uploads (guarda todos los videos subidos)
+
+(Las escenas detectadas por PySceneDetect) = scene_segments
+
+(Las transcripciones generadas por Whisper) = transcriptions
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/generar-reel/31f2e5ad-7c46-4265-9a88-01d6551e8bcc" `
+   -Method POST `
+   -Body '{"duracion":30}' `
+  -ContentType "application/json"
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/generar-reel/31f2e5ad-7c46-4265-9a88-01d6551e8bcc" `
+  -Method POST `
+  -Body '{"duracion":40}' `
+  -ContentType "application/json"
+
+
+docker compose down
+docker compose up --build
+
+docker compose logs -f web
+
+psql -U postgres -d Prueba-atomica-gratis
+
+git add .
+
+npx next dev -p 3001

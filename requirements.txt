@@ -1,0 +1,7 @@
+psycopg2-binary
+scenedetect[opencv]
+openai-whisper @ git+https://github.com/openai/whisper.git
+ffmpeg-python
+mediapipe
+opencv-python
+requests
