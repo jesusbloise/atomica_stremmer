@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 
+
 const pool = new Pool({
   user: process.env.PGUSER || "postgres",
   host: process.env.PGHOST || "localhost",
@@ -8,4 +9,5 @@ const pool = new Pool({
   port: Number(process.env.PGPORT) || 5432,
 });
 
-export default pool;
+
+export { default } from "./server/db/pool";
