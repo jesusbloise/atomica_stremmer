@@ -55,5 +55,5 @@ __pycache__/
 temp_*.mp4
 
 
-/my-uploadthing-app/processor/mediapipe-env/
-/my-uploadthing-app/processor/mediapipe-safe-env/
+/processor/mediapipe-env/
+/processor/mediapipe-safe-env/
