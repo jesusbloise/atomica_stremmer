@@ -1,6 +1,8 @@
 // src/app/api/videos/route.ts
 import { NextResponse } from "next/server";
 import db from "@/db";
+import pool from "@/db";
+
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

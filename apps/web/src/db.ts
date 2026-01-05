@@ -1,3 +1,5 @@
+
+
 import { Pool } from "pg";
 
 
@@ -10,4 +12,6 @@ const pool = new Pool({
 });
 
 
-export { default } from "./server/db/pool";
+// export { default } from "./server/db/pool";
+
+export default pool;
