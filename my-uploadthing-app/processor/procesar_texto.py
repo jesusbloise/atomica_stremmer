@@ -18,7 +18,7 @@ except Exception:
 
 # ----------------- Config DB (nueva) -----------------
 DB_CONFIG = {
-    "dbname": os.getenv("PGDATABASE", "falabella_stremmer"),
+    "dbname": os.getenv("PGDATABASE", "atomica_stremmer"),
     "user": os.getenv("PGUSER", "postgres"),
     "password": os.getenv("PGPASSWORD", "atomica"),
     "host": os.getenv("PGHOST", "localhost"),

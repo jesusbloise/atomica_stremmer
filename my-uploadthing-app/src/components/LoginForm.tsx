@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import logoUDD from "@/../public/Falabella_logo_PNG1_sin_fondo.png";
+import logoUDD from "@/../public/ATOMICA-Logo-02.png";
 import { signIn } from "next-auth/react";
 
 const ATTEMPTS_KEY = "login_attempts";

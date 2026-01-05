@@ -186,7 +186,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/organizar" className="order-1 shrink-0">
           <Image
-            src="/Falabella_logo_PNG1_sin_fondo.png"
+            src="/ATOMICA-Logo-02.png"
             alt="Falabella"
             width={280}
             height={56}

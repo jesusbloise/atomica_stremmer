@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import logoUDD from "@/../public/Falabella_logo_PNG1_sin_fondo.png"; // si prefieres <img>, cambia esto
+import logoUDD from "@/../public/ATOMICA-Logo-02.png"; // si prefieres <img>, cambia esto
 
 export default function RegisterPage() {
   const router = useRouter();

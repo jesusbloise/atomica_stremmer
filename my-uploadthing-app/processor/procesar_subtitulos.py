@@ -10,7 +10,7 @@ import whisper
 # ===================== Config DB (nueva) =====================
 # Usa variables de entorno si existen, si no, usa los defaults
 DB_CONFIG = {
-    "dbname": os.getenv("PGDATABASE", "falabella_stremmer"),
+    "dbname": os.getenv("PGDATABASE", "atomica_stremmer"),
     "user": os.getenv("PGUSER", "postgres"),
     "password": os.getenv("PGPASSWORD", "atomica"),
     "host": os.getenv("PGHOST", "localhost"),

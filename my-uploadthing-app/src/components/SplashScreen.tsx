@@ -49,7 +49,7 @@ useEffect(() => {
             transition={{ duration: 0.8, ease: "easeInOut" }}
           >
             <Image
-              src="/Falabella_logo_PNG1_sin_fondo.png"
+              src="/ATOMICA-Logo-02.png"
               alt="Logo Falabella"
               width={220}
               height={220}
@@ -68,7 +68,7 @@ useEffect(() => {
           >
             Bienvenido a la{" "}
             <span className="text-orange-400 drop-shadow-[0_0_15px_rgba(255,140,0,0.7)]">
-              App de Falabella
+              App de Atomica
             </span>
           </motion.h1>
 

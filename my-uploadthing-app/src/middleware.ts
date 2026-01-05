@@ -44,7 +44,7 @@ export function middleware(req: NextRequest) {
 // ✅ Excluye assets estáticos y deja pasar todo lo de /api/auth
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!_next/static|_next/image|ATOMICA-Logo-05.png|public).*)",
   ],
 };
 
