@@ -286,7 +286,6 @@ apps\web\src\components\admin
 apps\web\src\components\DocumentViewer
 apps\web\src\components\layout
 apps\web\src\components\UploadVideo
-apps\web\src\components\viewers
 apps\web\src\components\BulkActionsBar.tsx
 apps\web\src\components\CategoryFiles.tsx
 apps\web\src\components\ChatLateral.tsx
@@ -310,6 +309,8 @@ apps\web\src\components\VimeoGallery.tsx
 apps\web\src\components\VimeoPlayer.tsx
 apps\web\src\components\admin\UsersTable.tsx
 apps\web\src\components\DocumentViewer\DocxViewer.tsx
+apps\web\src\components\DocumentViewer\exports.ts
+apps\web\src\components\DocumentViewer\FileViewer.tsx
 apps\web\src\components\DocumentViewer\index.tsx
 apps\web\src\components\DocumentViewer\PdfViewer.tsx
 apps\web\src\components\DocumentViewer\TextViewer.tsx
@@ -334,10 +335,6 @@ apps\web\src\components\UploadVideo\Pagination.tsx
 apps\web\src\components\UploadVideo\Toolbar.tsx
 apps\web\src\components\UploadVideo\types.ts
 apps\web\src\components\UploadVideo\Uploader.tsx
-apps\web\src\components\viewers\DocxViewer.tsx
-apps\web\src\components\viewers\FileViewer.tsx
-apps\web\src\components\viewers\PdfViewer.tsx
-apps\web\src\components\viewers\TextViewer.tsx
 apps\web\src\constants\categories.ts
 apps\web\src\hooks\usePdfSearch.ts
 apps\web\src\hooks\useSubtitlesPolling.ts
