@@ -5,6 +5,7 @@ node_modules
 .env.example
 .gitattributes
 .gitignore
+ARCHITECTURE.md
 build.log
 docker-compose.dev.yml
 docker-compose.yml
@@ -38,8 +39,6 @@ apps\web\Dockerfile.railway
 apps\web\eslint.config.mjs
 apps\web\next-env.d.ts
 apps\web\next.config.js
-apps\web\next.config.mjs
-apps\web\next.config.ts
 apps\web\package-lock.json
 apps\web\package.json
 apps\web\postcss.config.mjs
@@ -143,7 +142,6 @@ apps\web\src\components
 apps\web\src\constants
 apps\web\src\hooks
 apps\web\src\lib
-apps\web\src\server
 apps\web\src\types
 apps\web\src\db.ts
 apps\web\src\middleware.ts
@@ -286,10 +284,8 @@ apps\web\src\components\admin
 apps\web\src\components\DocumentViewer
 apps\web\src\components\layout
 apps\web\src\components\UploadVideo
-apps\web\src\components\BulkActionsBar.tsx
 apps\web\src\components\CategoryFiles.tsx
 apps\web\src\components\ChatLateral.tsx
-apps\web\src\components\DeleteVideoButton.tsx
 apps\web\src\components\FichaTecnica.tsx
 apps\web\src\components\LandingCategories.tsx
 apps\web\src\components\LastVideosCarousel.tsx
@@ -343,5 +339,4 @@ apps\web\src\lib\generarSignedUrl.js
 apps\web\src\lib\highlight.ts
 apps\web\src\lib\minioClient.js
 apps\web\src\lib\setupPdfWorker.ts
-apps\web\src\server\db
 apps\web\src\types\mammoth-browser.d.ts
