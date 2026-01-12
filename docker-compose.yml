@@ -1,6 +1,22 @@
 version: "3.8"
 
 services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: atomica
+      POSTGRES_DB: atomica_stremmer
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # opcional: solo si quieres inicializar schema vacío al primer arranque
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - atomica_net
+
   web:
     build:
       context: ./apps/web
@@ -8,34 +24,18 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - prueba-db-1
+      - db
     environment:
-      - PGHOST=prueba-db-1
+      - PGHOST=db
       - PGUSER=postgres
       - PGPASSWORD=atomica
-      - PGDATABASE=Prueba-atomica-gratis
+      - PGDATABASE=atomica_stremmer
       - PGPORT=5432
       - PORT=3000
       - NEXTAUTH_URL=http://localhost:3000
       - NEXTAUTH_SECRET=6b6770992918940f72c33b538764d33fe6d14c71b8c81622c908a42253344031
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-
-    networks:
-      - atomica_net
-
-  prueba-db-1:
-    image: postgres:15
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: atomica
-      POSTGRES_DB: Prueba-atomica-gratis
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - atomica_net
 
@@ -45,3 +45,54 @@ volumes:
 networks:
   atomica_net:
     driver: bridge
+
+
+
+
+# version: "3.8"
+
+# services:
+#   web:
+#     build:
+#       context: ./apps/web
+#       dockerfile: Dockerfile
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - prueba-db-1
+#     environment:
+#       - PGHOST=prueba-db-1
+#       - PGUSER=postgres
+#       - PGPASSWORD=atomica
+#       - PGDATABASE=Prueba-atomica-gratis
+#       - PGPORT=5432
+#       - PORT=3000
+#       - NEXTAUTH_URL=http://localhost:3000
+#       - NEXTAUTH_SECRET=6b6770992918940f72c33b538764d33fe6d14c71b8c81622c908a42253344031
+#       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+#       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
+#     networks:
+#       - atomica_net
+
+#   prueba-db-1:
+#     image: postgres:15
+#     restart: always
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: atomica
+#       POSTGRES_DB: Prueba-atomica-gratis
+#     ports:
+#       - "5433:5432"
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+#     networks:
+#       - atomica_net
+
+# volumes:
+#   pgdata:
+
+# networks:
+#   atomica_net:
+#     driver: bridge
