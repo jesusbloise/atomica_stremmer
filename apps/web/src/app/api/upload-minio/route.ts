@@ -22,15 +22,7 @@ function webStreamToNodeReadable(
   });
 }
 
-// MinIO client
-// const minioClient = new Client({
-//   endPoint: "192.168.229.25",
-//   port: 9100,
-//   useSSL: false,
-//   accessKey: "admin",
-//   secretKey: "admin123",
-// });
-
+// MinIO client (MV NUEVA)
 const minioClient = new Client({
   endPoint: "192.168.5.12",
   port: 9100,
@@ -38,8 +30,6 @@ const minioClient = new Client({
   accessKey: "minio",
   secretKey: "minio123",
 });
-
-
 
 /* ====================== Categorías/Subcategorías (ATOMICA) ====================== */
 type CatSlug = "publicidad" | "entretenimiento" | "vxf";
@@ -90,8 +80,7 @@ export async function POST(req: NextRequest) {
 
     // --- Validar subcategoría según la categoría ---
     // --- Subcategoría (por ahora no aplica) ---
-const subcategory: string | null = null;
-
+    const subcategory: string | null = null;
 
     // Ficha (JSON opcional, parcial)
     let ficha: any = null;
@@ -108,8 +97,7 @@ const subcategory: string | null = null;
     const filename = file.name;
     const ext = filename.split(".").pop()?.toLowerCase() || "";
     const fileKey = `${randomUUID()}_${filename}`;
-   const publicUrl = `http://192.168.5.12:9100/archivos/${fileKey}`;
-
+    const publicUrl = `http://192.168.5.12:9100/archivos/${fileKey}`;
 
     const rowId = randomUUID(); // id del upload (TEXT en tu tabla)
 
@@ -156,7 +144,16 @@ const subcategory: string | null = null;
             (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at, tipo, category)
            VALUES
             ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,
-          [rowId, filename, fileKey, publicUrl, file.size, "uploaded", tipo, category]
+          [
+            rowId,
+            filename,
+            fileKey,
+            publicUrl,
+            file.size,
+            "uploaded",
+            tipo,
+            category,
+          ]
         );
       } else {
         throw err;
@@ -300,11 +297,7 @@ const subcategory: string | null = null;
 
     let scriptPath = "";
     if (["mp4", "mov", "mkv", "webm", "m4v"].includes(ext)) {
-      scriptPath = path.join(
-        process.cwd(),
-        "processor",
-        "procesar_subtitulos.py"
-      );
+      scriptPath = path.join(process.cwd(), "processor", "procesar_subtitulos.py");
     } else if (["pdf", "docx", "txt", "doc"].includes(ext)) {
       scriptPath = path.join(process.cwd(), "processor", "procesar_texto.py");
     }
@@ -340,4 +333,3 @@ const subcategory: string | null = null;
     );
   }
 }
-

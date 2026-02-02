@@ -57,7 +57,7 @@ type RowFicha = {
 
 const BASE_URL =
   process.env.FILES_BASE_URL?.replace(/\/+$/, "") ||
-  "http://192.168.229.25:9100/archivos";
+  "http://192.168.5.12:9100/archivos";
 
 function inferExt(name?: string | null) {
   const n = (name || "").split("?")[0].split("#")[0];
@@ -95,12 +95,18 @@ function inferTipo(
   if (/^text\//.test(ct)) return "documento";
 
   if (["mp4", "mov", "mkv", "webm"].includes(ext)) return "video";
-  if (["pdf", "docx", "txt", "md", "csv", "log", "srt", "vtt"].includes(ext)) return "documento";
+  if (
+    ["pdf", "docx", "txt", "md", "csv", "log", "srt", "vtt"].includes(ext)
+  )
+    return "documento";
 
   return null;
 }
 
-function buildPublicUrl(file_path?: string | null, file_key?: string | null): string | null {
+function buildPublicUrl(
+  file_path?: string | null,
+  file_key?: string | null
+): string | null {
   if (file_path && /^https?:\/\//i.test(file_path)) return file_path;
   if (file_key) return `${BASE_URL}/${file_key}`;
   return null;
@@ -139,7 +145,10 @@ function mapFichaToCamel(row?: RowFicha | null) {
   };
 }
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   const { id } = await context.params;
 
   try {
@@ -167,12 +176,21 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       );
       const r = q2.rows[0] || null;
       if (r) {
-        row = { ...r, content_type: null, vimeo_id: null, duration_sec: null, thumbnail_url: null };
+        row = {
+          ...r,
+          content_type: null,
+          vimeo_id: null,
+          duration_sec: null,
+          thumbnail_url: null,
+        };
       }
     }
 
     if (!row) {
-      return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Archivo no encontrado" },
+        { status: 404 }
+      );
     }
 
     // 2) Traer ficha_tecnica (si existe la tabla)
@@ -205,7 +223,10 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     // Persistir tipo inferido si estaba NULL
     if (row.tipo == null && tipo) {
       try {
-        await pool.query(`UPDATE uploads SET tipo = $1 WHERE id = $2`, [tipo, id]);
+        await pool.query(`UPDATE uploads SET tipo = $1 WHERE id = $2`, [
+          tipo,
+          id,
+        ]);
       } catch (e) {
         console.warn("No se pudo actualizar tipo inferido:", e);
       }
@@ -238,144 +259,3 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
 }
-
-
-
-// // /app/api/uploads/[id]/route.ts
-// import { NextResponse } from "next/server";
-// import pool from "@/db";
-
-// export const dynamic = "force-dynamic";
-// export const revalidate = 0;
-
-// type RowBase = {
-//   id: string;
-//   tipo: string | null;
-//   file_path: string | null;
-//   file_name: string | null;
-//   file_key: string | null;
-//   uploaded_at: string | null;
-// };
-
-// type RowWithCT = RowBase & { content_type: string | null };
-
-// const BASE_URL =
-//   process.env.FILES_BASE_URL?.replace(/\/+$/, "") ||
-//   "http://192.168.229.25:9100/archivos";
-
-// function inferExt(name?: string | null) {
-//   const n = (name || "").split("?")[0].split("#")[0];
-//   const ext = n.includes(".") ? n.split(".").pop()!.toLowerCase() : "";
-//   return ext;
-// }
-
-// function extToMime(ext: string): string | null {
-//   const map: Record<string, string> = {
-//     pdf: "application/pdf",
-//     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-//     txt: "text/plain",
-//     md: "text/markdown",
-//     csv: "text/csv",
-//     log: "text/plain",
-//     srt: "text/plain",
-//     vtt: "text/vtt",
-//     mp4: "video/mp4",
-//     mov: "video/quicktime",
-//     mkv: "video/x-matroska",
-//     webm: "video/webm",
-//   };
-//   return map[ext] || null;
-// }
-
-// function inferTipo(ext: string, contentType?: string | null): "video" | "documento" | null {
-//   const ct = (contentType || "").toLowerCase();
-
-//   if (/^video\//.test(ct)) return "video";
-//   if (ct.startsWith("application/pdf")) return "documento";
-//   if (ct.includes("wordprocessingml.document")) return "documento";
-//   if (/^text\//.test(ct)) return "documento";
-
-//   if (["mp4", "mov", "mkv", "webm"].includes(ext)) return "video";
-//   if (["pdf", "docx", "txt", "md", "csv", "log", "srt", "vtt"].includes(ext)) return "documento";
-
-//   return null;
-// }
-
-// function buildPublicUrl(file_path?: string | null, file_key?: string | null): string | null {
-//   if (file_path && /^https?:\/\//i.test(file_path)) return file_path;
-//   if (file_key) return `${BASE_URL}/${file_key}`;
-//   return null;
-// }
-
-// export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
-//   const { id } = await context.params; // <- importante: await
-
-//   try {
-//     // 1) Intentar con content_type si existe la columna
-//     let row: RowWithCT | null = null;
-
-//     try {
-//       const q1 = await pool.query<RowWithCT>(
-//         `SELECT id, tipo, file_path, file_name, file_key, uploaded_at, content_type, views
-//            FROM uploads
-//           WHERE id = $1`,
-//         [id]
-//       );
-//       row = q1.rows[0] || null;
-//     } catch {
-//       // 2) Fallback: esquema sin content_type
-//       const q2 = await pool.query<RowBase>(
-//         `SELECT id, tipo, file_path, file_name, file_key, uploaded_at, views
-//            FROM uploads
-//           WHERE id = $1`,
-//         [id]
-//       );
-//       const r = q2.rows[0] || null;
-//       if (r) {
-//         row = { ...r, content_type: null };
-//       }
-//     }
-
-//     if (!row) {
-//       return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
-//     }
-
-//     const ext = inferExt(row.file_name);
-//     const url = buildPublicUrl(row.file_path, row.file_key);
-//     const content_type = row.content_type || extToMime(ext);
-//     const inferredTipo = inferTipo(ext, content_type);
-//     const tipo = row.tipo ?? inferredTipo;
-
-//     // Si tipo en DB está NULL y pudimos inferir, lo persistimos
-//     if (row.tipo == null && tipo) {
-//       try {
-//         await pool.query(`UPDATE uploads SET tipo = $1 WHERE id = $2`, [tipo, id]);
-//       } catch (e) {
-//         // no interrumpimos la respuesta por un fallo de update
-//         console.warn("No se pudo actualizar tipo inferido:", e);
-//       }
-//     }
-
-//     return NextResponse.json(
-//   {
-//     upload: {
-//       id: row.id,
-//       tipo,
-//       file_name: row.file_name,
-//       ext,
-//       content_type,
-//       url,
-//       uploaded_at: row.uploaded_at,
-//       views: (row as any).views ?? 0, // <- agrega esta línea
-//     },
-//   },
-//   { status: 200 }
-// );
-
-//   } catch (e: any) {
-//     console.error("❌ Error en /api/uploads/[id]:", e);
-//     return NextResponse.json({ error: "Error interno" }, { status: 500 });
-//   }
-// }
-
-
