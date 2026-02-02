@@ -12,7 +12,12 @@ async function getSessionUser(req: NextRequest) {
       cache: "no-store",
       headers: { cookie: req.headers.get("cookie") || "" },
     }).then((r) => (r.ok ? r.json() : null));
-    return me as { id: string; name: string; role: "ADMIN" | "PROFESOR" | "ESTUDIANTE"; email?: string | null } | null;
+    return me as {
+      id: string;
+      name: string;
+      role: "ADMIN" | "PROFESOR" | "ESTUDIANTE";
+      email?: string | null;
+    } | null;
   } catch {
     return null;
   }
@@ -31,7 +36,7 @@ export async function GET(
          ft.id, ft.upload_id,
 
          -- ✅ nombre real del archivo desde uploads
-         u.filename AS archivo_nombre,
+         u.file_name AS archivo_nombre,
 
          -- ficha antigua
          ft.titulo, ft.director, ft.productor, ft.jefe_produccion,
@@ -64,7 +69,6 @@ export async function GET(
   }
 }
 
-
 /** PUT/PATCH: upsert por upload_id (con validación ADMIN y nulls) */
 export async function PUT(
   req: NextRequest,
@@ -83,7 +87,9 @@ export async function PUT(
 
     // helper: undefined | "" => null
     const n = (v: any) =>
-      v === undefined || v === null || (typeof v === "string" && v.trim() === "")
+      v === undefined ||
+      v === null ||
+      (typeof v === "string" && v.trim() === "")
         ? null
         : v;
 
@@ -102,17 +108,24 @@ export async function PUT(
       director: n(body.director),
       productor: n(body.productor),
       jefe_produccion: n(body.jefeProduccion ?? body.jefe_produccion),
-      director_fotografia: n(body.directorFotografia ?? body.director_fotografia),
+      director_fotografia: n(
+        body.directorFotografia ?? body.director_fotografia
+      ),
       sonido: n(body.sonido),
       direccion_arte: n(body.direccionArte ?? body.direccion_arte),
-      asistente_direccion: n(body.asistenteDireccion ?? body.asistente_direccion),
+      asistente_direccion: n(
+        body.asistenteDireccion ?? body.asistente_direccion
+      ),
       montaje: n(body.montaje),
       otro_cargo: n(body.otroCargo ?? body.otro_cargo),
       contacto_principal: n(body.contactoPrincipal ?? body.contacto_principal),
       correo: n(body.correo),
       curso: n(body.curso),
       profesor: n(body.profesor),
-      anio: body.anio === "" || body.anio === undefined || body.anio === null ? null : Number(body.anio) || null,
+      anio:
+        body.anio === "" || body.anio === undefined || body.anio === null
+          ? null
+          : Number(body.anio) || null,
       duracion: n(body.duracion),
       sinopsis: n(body.sinopsis),
       proceso_anterior: n(body.procesoAnterior ?? body.proceso_anterior),
@@ -170,11 +183,33 @@ export async function PUT(
        RETURNING *`,
       [
         uploadId,
-        f.titulo, f.director, f.productor, f.jefe_produccion,
-        f.director_fotografia, f.sonido, f.direccion_arte, f.asistente_direccion,
-        f.montaje, f.otro_cargo, f.contacto_principal, f.correo, f.curso, f.profesor,
-        f.anio, f.duracion, f.sinopsis, f.proceso_anterior, f.pendientes, f.visto, f.reunion,
-        f.formato, f.estado, f.delivery_estimado, f.seleccion, f.link, f.foto
+        f.titulo,
+        f.director,
+        f.productor,
+        f.jefe_produccion,
+        f.director_fotografia,
+        f.sonido,
+        f.direccion_arte,
+        f.asistente_direccion,
+        f.montaje,
+        f.otro_cargo,
+        f.contacto_principal,
+        f.correo,
+        f.curso,
+        f.profesor,
+        f.anio,
+        f.duracion,
+        f.sinopsis,
+        f.proceso_anterior,
+        f.pendientes,
+        f.visto,
+        f.reunion,
+        f.formato,
+        f.estado,
+        f.delivery_estimado,
+        f.seleccion,
+        f.link,
+        f.foto,
       ]
     );
 
@@ -187,4 +222,3 @@ export async function PUT(
 
 // Alias PATCH -> PUT
 export const PATCH = PUT;
-
