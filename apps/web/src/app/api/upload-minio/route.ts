@@ -23,13 +23,23 @@ function webStreamToNodeReadable(
 }
 
 // MinIO client
+// const minioClient = new Client({
+//   endPoint: "192.168.229.25",
+//   port: 9100,
+//   useSSL: false,
+//   accessKey: "admin",
+//   secretKey: "admin123",
+// });
+
 const minioClient = new Client({
-  endPoint: "192.168.229.25",
+  endPoint: "192.168.5.12",
   port: 9100,
   useSSL: false,
-  accessKey: "admin",
-  secretKey: "admin123",
+  accessKey: "minio",
+  secretKey: "minio123",
 });
+
+
 
 /* ====================== Categorías/Subcategorías (ATOMICA) ====================== */
 type CatSlug = "publicidad" | "entretenimiento" | "vxf";
@@ -98,7 +108,9 @@ const subcategory: string | null = null;
     const filename = file.name;
     const ext = filename.split(".").pop()?.toLowerCase() || "";
     const fileKey = `${randomUUID()}_${filename}`;
-    const publicUrl = `http://192.168.229.25:9100/archivos/${fileKey}`;
+   const publicUrl = `http://192.168.5.12:9100/archivos/${fileKey}`;
+
+
     const rowId = randomUUID(); // id del upload (TEXT en tu tabla)
 
     const tipo =
