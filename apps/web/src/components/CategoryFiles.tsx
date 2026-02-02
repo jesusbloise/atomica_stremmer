@@ -9,57 +9,55 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const DEMO_MODE = false;
 const API_PATH = "/api/uploads";
 
-/* ============ CATEGORÍAS PRINCIPALES (4) ============ */
+/* ================== Categorías principales ================== */
 const CATS = [
   {
-    slug: "retail",
-    label: "Retail",
-    cover: "/retail1.png", // ajusta estas rutas según tus imágenes
-    desc: "Armados, evento, precio y calendario comercial",
+    slug: "publicidad",
+    label: "Publicidad",
+    cover: "/Publicidad.avif",
+    desc: "Piezas y campañas publicitarias.",
   },
   {
-    slug: "moda",
-    label: "Moda",
-    cover: "/moda1.png",
-    desc: "Campañas, catálogos, lookbooks y contenido audiovisual de moda.",
+    slug: "entretenimiento",
+    label: "Entretenimiento",
+    cover: "/babybandito2.jpg",
+    desc: "Contenido y piezas de entretenimiento.",
   },
   {
-    slug: "marca",
-    label: "Marca",
-    cover: "/marca1.png",
-    desc: "Branding, identidad visual, lanzamientos y posicionamiento de marca.",
-  },
-  {
-    slug: "comunicacion-interna",
-    label: "Comunicación Interna",
-    cover: "/comunicacion1.png",
-    desc: "Piezas para comunicación interna, cultura, onboarding y mensajes clave.",
+    slug: "otros",
+    label: "Otros",
+    cover: "/Garage.jpg",
+    desc: "Producción, corporativo y nuevos negocios.",
   },
 ] as const;
 
-/* ============ SUBCATEGORÍAS ============ */
-const SUBCATS: Record<string, string[]> = {
-  retail: [
-    "Calendario Comercial",
-    "Eventos Precio",
-    "Liquidación",
+/* ================== Estructura (según tu jefa) ================== */
+type Group = { label: string };
+
+const STRUCTURE: Record<string, Group[]> = {
+  publicidad: [
+    { label: "Marca" },
+    { label: "Agencia" },
+    { label: "Productora" },
+    { label: "Contacto" },
+    { label: "Oficina" },
+    { label: "Tipo" },
   ],
-  moda: [
-    "Americanino",
-    "Basement",
-    "Invierno",
-    "University Club",
-    "Verano",
+  entretenimiento: [
+    { label: "Estudio" },
+    { label: "Productora" },
+    { label: "Director" },
+    { label: "Productor" },
+    { label: "Oficina" },
+    { label: "Tipo" },
   ],
-  marca: [
-    "Campaña Marca",
-    "Día Madre",
-    "Escolares",
-    "Navidad",
-  ],
-  // Comunicación Interna NO tiene subcategorías
-  "comunicacion-interna": [],
+  otros: [{ label: "Producción" }, { label: "Corporativo" }, { label: "Nuevos Negocios" }],
 };
+
+const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
+
+const COLOR_PUBLICIDAD = ["3D", "IA", "Musica", "Sonido"] as const;
+const COLOR_ENTRETENIMIENTO = ["3D", "IA", "Musica", "Sonido", "VFX", "Edicion"] as const;
 
 /* ===== Tipos de tu API ===== */
 type UploadItem = {
@@ -81,16 +79,12 @@ const DOC_EXT = /\.doc$/i;
 
 function stripExt(s?: string | null) {
   if (!s) return "Archivo";
-
-  // Intentamos decodificar sin romper la app
   let safe = s;
   try {
     safe = decodeURIComponent(s);
   } catch {
-    // Si la URI está mal formada, usamos el string original
     safe = s;
   }
-
   const base = safe.split("/").pop() || safe;
   return base.replace(/\.[^.\/\\]+$/g, "");
 }
@@ -180,20 +174,121 @@ function DocumentPreview({
   );
 }
 
+/* ====================== Paginación (overlay) ====================== */
+function Pagination({
+  page,
+  totalPages,
+  onPage,
+}: {
+  page: number;
+  totalPages: number;
+  onPage: (next: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  const current = page + 1;
+  const maxButtons = 5;
+
+  let start = Math.max(1, current - Math.floor(maxButtons / 2));
+  let end = start + maxButtons - 1;
+  if (end > totalPages) {
+    end = totalPages;
+    start = Math.max(1, end - maxButtons + 1);
+  }
+
+  const nums: number[] = [];
+  for (let i = start; i <= end; i++) nums.push(i);
+
+  const go = (n1: number) => onPage(n1 - 1);
+
+  return (
+    <div className="mt-6 flex items-center justify-center gap-2 flex-wrap">
+      <button
+        onClick={() => onPage(Math.max(0, page - 1))}
+        disabled={page === 0}
+        className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
+        aria-label="Página anterior"
+        title="Anterior"
+      >
+        ‹
+      </button>
+
+      {start > 1 && (
+        <>
+          <button
+            onClick={() => go(1)}
+            className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
+          >
+            1
+          </button>
+          {start > 2 && <span className="px-1 text-zinc-500">…</span>}
+        </>
+      )}
+
+      {nums.map((n) => {
+        const active = n === current;
+        return (
+          <button
+            key={n}
+            onClick={() => go(n)}
+            className={[
+              "h-9 min-w-9 px-3 grid place-items-center rounded-full border text-sm transition",
+              active
+                ? "border-orange-500/60 bg-orange-500/15 text-orange-300"
+                : "border-zinc-700 hover:border-zinc-500 text-zinc-200",
+            ].join(" ")}
+            aria-current={active ? "page" : undefined}
+          >
+            {n}
+          </button>
+        );
+      })}
+
+      {end < totalPages && (
+        <>
+          {end < totalPages - 1 && <span className="px-1 text-zinc-500">…</span>}
+          <button
+            onClick={() => go(totalPages)}
+            className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
+          >
+            {totalPages}
+          </button>
+        </>
+      )}
+
+      <button
+        onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+        disabled={page >= totalPages - 1}
+        className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
+        aria-label="Página siguiente"
+        title="Siguiente"
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
 /* ====================== Componente principal ====================== */
 export default function CategoryFiles({ slug }: { slug: string }) {
   const [activeSlug, setActiveSlug] = useState(slug);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<UploadItem[]>([]);
 
-  const [activeSub, setActiveSub] = useState<string | undefined>(undefined);
-  const [fullViewSub, setFullViewSub] = useState<string | null>(null);
+  const [menuMain, setMenuMain] = useState<string>("");
+  const [menuOffice, setMenuOffice] = useState<string>("");
+  const [menuColor, setMenuColor] = useState<string>("");
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hoverMain, setHoverMain] = useState<string>("");
+
+  const menuWrapRef = useRef<HTMLDivElement | null>(null);
+
+  const [fullViewSub, setFullViewSub] = useState<string | null>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => setActiveSlug(slug), [slug]);
 
-  /* ======= fetch ÚNICO por cambio de categoría ======= */
   useEffect(() => {
     let alive = true;
 
@@ -239,99 +334,269 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     };
   }, [activeSlug]);
 
-  const subList = SUBCATS[activeSlug] || [];
+  useEffect(() => {
+    setMenuMain("");
+    setMenuOffice("");
+    setMenuColor("");
+    setMenuOpen(false);
+    setHoverMain("");
+    setFullViewSub(null);
+  }, [activeSlug]);
+
+  const groups = STRUCTURE[activeSlug] || [];
+  const hasGroups = groups.length > 0;
+
+  const colorsForSlug = useMemo(() => {
+    return activeSlug === "entretenimiento"
+      ? Array.from(COLOR_ENTRETENIMIENTO)
+      : Array.from(COLOR_PUBLICIDAD);
+  }, [activeSlug]);
+
+  const navTarget = useMemo(() => {
+    if (!menuMain) return null;
+    if (menuMain === "Oficina") return menuOffice || null;
+    if (menuMain === "Tipo") return menuColor || null;
+    return menuMain;
+  }, [menuMain, menuOffice, menuColor]);
+
+  const leafSections = useMemo(() => {
+    const out: string[] = [];
+    for (const g of groups) {
+      if (g.label === "Oficina") out.push(...OFFICE_OPTIONS);
+      else if (g.label === "Tipo") out.push(...colorsForSlug);
+      else out.push(g.label);
+    }
+    return Array.from(new Set(out));
+  }, [groups, colorsForSlug]);
+
   const grouped = useMemo(() => {
+    if (!hasGroups) return new Map<string, UploadItem[]>([["__all__", rows]]);
+
     const map = new Map<string, UploadItem[]>();
-    subList.forEach((s) => map.set(s, []));
+    leafSections.forEach((s) => map.set(s, []));
+
     const otrosKey = "Otros";
     if (!map.has(otrosKey)) map.set(otrosKey, []);
+
     for (const it of rows) {
-      const sub =
-        it.subcategory && subList.includes(it.subcategory)
-          ? it.subcategory
-          : otrosKey;
-      map.get(sub)!.push(it);
+      const sub = (it.subcategory || "").toString().trim();
+      const key = sub && map.has(sub) ? sub : otrosKey;
+      map.get(key)!.push(it);
     }
+
     if ((map.get("Otros") || []).length === 0) map.delete("Otros");
     return map;
-  }, [rows, subList]);
+  }, [rows, hasGroups, leafSections]);
 
   const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
 
   useEffect(() => {
-    if (!activeSub) return;
-    const id = slugify(activeSub);
+    if (!navTarget) return;
+    const id = slugify(navTarget);
     const el = sectionRefs.current[id];
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [activeSub]);
+  }, [navTarget]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = menuWrapRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setHoverMain("");
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   const openFullView = (sub: string) => setFullViewSub(sub);
   const closeFullView = () => setFullViewSub(null);
 
+  const [fullPage, setFullPage] = useState(0);
+  const FULL_PAGE_SIZE = 8;
+
+  useEffect(() => {
+    if (fullViewSub) setFullPage(0);
+  }, [fullViewSub]);
+
   const fullItems = useMemo(() => {
     if (!fullViewSub) return [];
-    const items = rows.filter((r) => r.subcategory === fullViewSub);
+    const allowed = new Set(leafSections);
+
+    const items = rows.filter(
+      (r) => (r.subcategory || "").toString().trim() === fullViewSub
+    );
+
     if (!items.length && fullViewSub === "Otros") {
-      return rows.filter(
-        (r) => !r.subcategory || !subList.includes(r.subcategory)
-      );
+      return rows.filter((r) => {
+        const s = (r.subcategory || "").toString().trim();
+        return !s || !allowed.has(s);
+      });
     }
+
     return items;
-  }, [fullViewSub, rows, subList]);
+  }, [fullViewSub, rows, leafSections]);
+
+  const fullTotalPages = Math.max(1, Math.ceil(fullItems.length / FULL_PAGE_SIZE));
+  const fullPageItems = useMemo(() => {
+    const start = fullPage * FULL_PAGE_SIZE;
+    return fullItems.slice(start, start + FULL_PAGE_SIZE);
+  }, [fullItems, fullPage]);
+
+  const currentLabel = useMemo(() => {
+    if (!menuMain) return "Estructura";
+    if (menuMain === "Oficina" && menuOffice) return `Oficina / ${menuOffice}`;
+    if (menuMain === "Tipo" && menuColor) return `Color / ${menuColor}`;
+    if (menuMain === "Oficina") return "Oficina";
+    if (menuMain === "Tipo") return "Tipo";
+    return menuMain;
+  }, [menuMain, menuOffice, menuColor]);
+
+  const onPickLeaf = (leaf: string) => {
+    setMenuMain(leaf);
+    setMenuOffice("");
+    setMenuColor("");
+    setMenuOpen(false);
+    setHoverMain("");
+  };
+
+  const onPickOffice = (v: string) => {
+    setMenuMain("Oficina");
+    setMenuOffice(v);
+    setMenuColor("");
+    setMenuOpen(false);
+    setHoverMain("");
+  };
+
+  const onPickColor = (v: string) => {
+    setMenuMain("Tipo");
+    setMenuColor(v);
+    setMenuOffice("");
+    setMenuOpen(false);
+    setHoverMain("");
+  };
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 text-white">
       <h1 className="text-2xl md:text-3xl font-bold mb-2">{title}</h1>
 
-      {/* Chips de subcategorías */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {subList.map((sub) => {
-          const isOpen = fullViewSub === sub;
-          return (
+      {/* Dropdown flyout */}
+      {hasGroups && (
+        <div className="mb-6" ref={menuWrapRef}>
+          <div className="inline-block relative">
             <button
-              key={sub}
-              onClick={() => {
-                if (isOpen) {
-                  setFullViewSub(null);
-                } else {
-                  setFullViewSub(sub);
-                }
-                setActiveSub((prev) => (prev === sub ? undefined : sub));
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs border transition ${
-                isOpen
-                  ? "bg-orange-500/20 text-orange-400 border-orange-500/40"
-                  : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white"
-              }`}
-              title={`Ver todos en ${sub}`}
+              onClick={() => setMenuOpen((v) => !v)}
+              className="px-4 py-2 rounded-xl bg-zinc-900 text-white border border-zinc-700 text-sm hover:border-zinc-500 transition flex items-center gap-2"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              type="button"
             >
-              {sub}
+              <span className="truncate max-w-[240px] sm:max-w-[360px]">{currentLabel}</span>
+              <span className="text-zinc-400">▾</span>
             </button>
+
+   {menuOpen && (
+  <div className="absolute mt-2 left-0 z-40 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
+    <div className="flex">
+      {/* Columna izquierda: items principales */}
+      <div className="w-[260px] py-2">
+        {groups.map((g) => {
+          const hasFlyout = g.label === "Oficina" || g.label === "Tipo";
+          const active = hoverMain === g.label;
+
+          return (
+            <div
+              key={g.label}
+              className="relative"
+              onMouseEnter={() => setHoverMain(g.label)}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hasFlyout) onPickLeaf(g.label);
+                  else setHoverMain(g.label); // fallback click
+                }}
+                className={[
+                  "w-full px-3 py-2 text-left text-sm flex items-center justify-between transition",
+                  active ? "bg-zinc-900" : "bg-transparent",
+                  "hover:bg-zinc-900",
+                ].join(" ")}
+              >
+                <span className="text-zinc-100">{g.label}</span>
+                {hasFlyout ? <span className="text-zinc-500">›</span> : null}
+              </button>
+            </div>
           );
         })}
       </div>
 
+      {/* ✅ SOLO aparece si estás en Oficina o Tipo */}
+      {(hoverMain === "Oficina" || hoverMain === "Tipo") && (
+        <div className="w-[220px] border-l border-zinc-800 py-2">
+          {hoverMain === "Oficina" && (
+            <>
+              <div className="px-3 pb-2 text-xs text-zinc-500">Oficina</div>
+              {OFFICE_OPTIONS.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => onPickOffice(o)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
+                >
+                  {o}
+                </button>
+              ))}
+            </>
+          )}
+
+          {hoverMain === "Tipo" && (
+            <>
+              <div className="px-3 pb-2 text-xs text-zinc-500">Color</div>
+              {colorsForSlug.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onPickColor(c)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
+                >
+                  {c}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-zinc-400 py-10">Cargando…</div>
       ) : grouped.size === 0 ? (
-        <div className="text-zinc-400 py-10">
-          No hay archivos en esta sección.
-        </div>
+        <div className="text-zinc-400 py-10">No hay archivos en esta sección.</div>
       ) : (
         <>
-          {/* Secciones por subcategoría */}
           {[...grouped.entries()].map(([sub, items]) => {
-            const id = slugify(sub);
             if (!items.length) return null;
+
+            const id = slugify(sub);
             return (
               <div
                 key={sub}
-                ref={(el) => (sectionRefs.current[id] = el)}
+                ref={(el) => {
+                  sectionRefs.current[id] = el;
+                }}
                 id={`sub-${id}`}
                 className="mb-10"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
                   <button
                     onClick={() => openFullView(sub)}
                     className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white transition"
@@ -339,20 +604,24 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                   >
                     Ver más
                   </button>
+
+                  <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
+
+                  <div className="w-[72px]" aria-hidden="true" />
                 </div>
+
                 <CategoryCarousel items={items} />
               </div>
             );
           })}
 
-          {/* ======== CATEGORÍAS PRINCIPALES (ajustadas) ======== */}
           <div className="w-full flex justify-center">
             <div className="w-full max-w-[1200px] px-4 py-8">
               <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">
                 Categorías principales
               </h1>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-stretch auto-rows-fr gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch auto-rows-fr gap-4 sm:gap-6">
                 {CATS.map((c, i) => (
                   <Link
                     key={c.slug}
@@ -360,7 +629,6 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                     className="group block h-full min-w-0"
                   >
                     <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
-                      {/* igual que en la landing: todas del mismo tamaño + cover → contain en hover */}
                       <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
                         <Image
                           src={c.cover}
@@ -372,9 +640,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                         />
                       </div>
                       <div className="p-4 mt-auto text-center">
-                        <h3 className="text-sm sm:text-base font-semibold truncate">
-                          {c.label}
-                        </h3>
+                        <h3 className="text-sm sm:text-base font-semibold truncate">{c.label}</h3>
                         <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">
                           {c.desc}
                         </p>
@@ -388,16 +654,13 @@ export default function CategoryFiles({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ===== Vista completa de subcategoría (overlay) ===== */}
       {fullViewSub && (
         <div className="fixed inset-0 z-40">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative z-50 h-full overflow-y-auto">
             <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl md:text-3xl font-bold">
-                  {fullViewSub} — Todos los archivos
-                </h2>
+                <h2 className="text-2xl md:text-3xl font-bold">{fullViewSub}</h2>
                 <button
                   onClick={closeFullView}
                   className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-zinc-500 text-sm text-zinc-300 hover:text-white"
@@ -407,16 +670,19 @@ export default function CategoryFiles({ slug }: { slug: string }) {
               </div>
 
               {fullItems.length === 0 ? (
-                <div className="text-zinc-400 py-12">
-                  Sin archivos en esta subcategoría.
-                </div>
+                <div className="text-zinc-400 py-12">Sin archivos.</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                  {fullItems.map((u) => (
-                    <CardItem key={u.id} item={u} />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {fullPageItems.map((u) => (
+                      <CardItemOverlay key={u.id} item={u} />
+                    ))}
+                  </div>
+
+                  <Pagination page={fullPage} totalPages={fullTotalPages} onPage={setFullPage} />
+                </>
               )}
+
               <div className="h-8" />
             </div>
           </div>
@@ -426,7 +692,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   );
 }
 
-/* ====================== Card individual ====================== */
+/* ====================== Card individual (base) ====================== */
 function CardItem({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
   const name = stripExt(item.file_name || item.file_path);
@@ -460,10 +726,7 @@ function CardItem({ item }: { item: UploadItem }) {
                 ? undefined
                 : {
                     rest: { scale: 1 },
-                    hover: {
-                      scale: 1.06,
-                      transition: { duration: 0.6 },
-                    },
+                    hover: { scale: 1.06, transition: { duration: 0.6 } },
                   }
             }
           />
@@ -481,10 +744,7 @@ function CardItem({ item }: { item: UploadItem }) {
                 ? undefined
                 : {
                     rest: { scale: 1 },
-                    hover: {
-                      scale: 1.04,
-                      transition: { duration: 0.6 },
-                    },
+                    hover: { scale: 1.04, transition: { duration: 0.6 } },
                   }
             }
           >
@@ -499,10 +759,7 @@ function CardItem({ item }: { item: UploadItem }) {
             className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50"
             variants={{
               rest: { opacity: 0.65 },
-              hover: {
-                opacity: 0.9,
-                transition: { duration: 0.25 },
-              },
+              hover: { opacity: 0.9, transition: { duration: 0.25 } },
             }}
           />
         )}
@@ -530,11 +787,68 @@ function CardItem({ item }: { item: UploadItem }) {
   );
 }
 
+/* ====================== Card individual (overlay) ====================== */
+function CardItemOverlay({ item }: { item: UploadItem }) {
+  const isMobile = useIsMobile();
+  const name = stripExt(item.file_name || item.file_path);
+  const url = item.file_path || "";
+  const isVideo = item.tipo === "video" || VIDEO_EXT.test(url);
+  const isPdf = PDF_EXT.test(url);
+  const isDocx = DOCX_EXT.test(url);
+  const isDoc = !isDocx && DOC_EXT.test(url);
+
+  return (
+    <motion.article className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm">
+      <div className="relative h-[52vh] sm:h-[54vh] md:h-[20rem] lg:h-[26rem] xl:h-[28rem] bg-zinc-800 overflow-hidden">
+        {isVideo ? (
+          <motion.video
+            src={url}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+            controls={false}
+            disablePictureInPicture
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : isPdf ? (
+          <DocumentPreview url={url} kind="pdf" isMobile={isMobile} />
+        ) : isDocx ? (
+          <DocumentPreview url={url} kind="docx" isMobile={isMobile} />
+        ) : isDoc ? (
+          <DocumentPreview url={url} kind="doc" isMobile={isMobile} />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center text-zinc-300 text-xs">
+            Sin vista previa
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50" />
+
+        <div className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none">
+          <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
+            <p className="text-white text-xl md:text-2xl font-bold drop-shadow break-words whitespace-normal max-h-40 overflow-auto">
+              {name}
+            </p>
+            <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
+              <Link href={`/videos/${item.id}`} aria-label={`Ver más sobre ${name}`}>
+                <motion.button className="text-sm px-4 py-2 rounded border text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500 transition">
+                  Ver más
+                </motion.button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
 /* ====================== Carrusel ====================== */
 function CategoryCarousel({ items }: { items: UploadItem[] }) {
   const [perPage, setPerPage] = useState(5);
   const [page, setPage] = useState(0);
-  const isMobile = useIsMobile();
 
   useEffect(() => {
     const update = () => setPerPage(getPerPage(window.innerWidth));
@@ -550,16 +864,15 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
     if (page > total - 1) setPage(0);
   }, [total, page]);
 
-  const prev = () => total && setPage((p) => (p - 1 + total) % total);
   const next = () => total && setPage((p) => (p + 1) % total);
+  const prev = () => total && setPage((p) => (p - 1 + total) % total);
 
   const touchStartX = useRef<number | null>(null);
-  const onTouchStart = (e: React.TouchEvent) =>
-    (touchStartX.current = e.touches[0].clientX);
+  const onTouchStart = (e: React.TouchEvent) => (touchStartX.current = e.touches[0].clientX);
   const onTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > 48) (dx < 0 ? next() : prev());
+    if (Math.abs(dx) > 48) dx < 0 ? next() : prev();
     touchStartX.current = null;
   };
 
@@ -599,14 +912,14 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
       {total > 1 && (
         <>
           <button
-            onClick={() => setPage((p) => (p - 1 + total) % total)}
+            onClick={prev}
             aria-label="Anterior"
             className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-white z-10"
           >
             ‹
           </button>
           <button
-            onClick={() => setPage((p) => (p + 1) % total)}
+            onClick={next}
             aria-label="Siguiente"
             className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-white z-10"
           >
@@ -631,6 +944,9 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 }
 
 
+
+
+
 // "use client";
 
 // import Link from "next/link";
@@ -642,45 +958,33 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 // const DEMO_MODE = false;
 // const API_PATH = "/api/uploads";
 
-// /* ============ CATEGORÍAS PRINCIPALES (3) ============ */
+// //* ============ CATEGORÍAS PRINCIPALES (3) ============ */
 // const CATS = [
-//   { slug: "periodismo-comunicacion", label: "Periodismo y Comunicación", cover: "/otros.png", desc: "Reportajes, multimedios, podcast y más." },
-//   { slug: "publicidad-marketing", label: "Publicidad y Marketing", cover: "/documentales.png", desc: "Proyectos de título y exámenes por nivel." },
-//   { slug: "cine-comunicacion-audiovisual", label: "Cine y Comunicación Audiovisual", cover: "/peliculas.png", desc: "Cortos, largos, tesinas y artículos." },
+//   {
+//     slug: "publicidad",
+//     label: "Publicidad",
+//     cover: "/Publicidad.avif", // ajusta la ruta
+//     desc: "Piezas y campañas publicitarias.",
+//   },
+//   {
+//     slug: "entretenimiento",
+//     label: "Entretenimiento",
+//     cover: "/babybandito2.jpg", // ajusta la ruta
+//     desc: "Contenido y piezas de entretenimiento.",
+//   },
+//   {
+//     slug: "vxf",
+//     label: "VXF",
+//     cover: "/Garage.jpg", // ajusta la ruta
+//     desc: "Contenido y entregables VXF.",
+//   },
 // ] as const;
 
-// /* ============ SUBCATEGORÍAS ============ */
+// //* ============ SUBCATEGORÍAS ============ */
 // const SUBCATS: Record<string, string[]> = {
-//   "periodismo-comunicacion": [
-//     "Reportajes de información periodística",
-//     "multimedios",
-//     "podcast",
-//     "audiovisuales",
-//     "Revista Kiltra",
-//     "Paper - artículos",
-//     "poster de investigación notas informativas 2° año",
-//     "noticiero radial 2° año",
-//     "noticiero radial 3° año",
-//   ],
-//   "publicidad-marketing": [
-//     "Proyectos de título: video casos",
-//     "Exámenes de 1° año",
-//     "Exámenes de 2° año",
-//     "Exámenes de 3° año",
-//     "Exámenes de 4° año",
-//   ],
-//   "cine-comunicacion-audiovisual": [
-//     "Cortometrajes Ficción: 1° año",
-//     "Cortometrajes Ficción: 2° año",
-//     "Cortometrajes Ficción: 3° año",
-//     "Cortometrajes Ficción: 4° año",
-//     "Cortometrajes documentales: 1° año",
-//     "Cortometrajes documentales: 2° año",
-//     "Cortometrajes documentales: 3° año",
-//     "Largometrajes",
-//     "Tesinas",
-//     "Artículos de investigación",
-//   ],
+//   publicidad: [],
+//   entretenimiento: [],
+//   vxf: [],
 // };
 
 // /* ===== Tipos de tu API ===== */
@@ -703,9 +1007,18 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 
 // function stripExt(s?: string | null) {
 //   if (!s) return "Archivo";
-//   const base = decodeURIComponent(s).split("/").pop() || s;
+
+//   let safe = s;
+//   try {
+//     safe = decodeURIComponent(s);
+//   } catch {
+//     safe = s;
+//   }
+
+//   const base = safe.split("/").pop() || safe;
 //   return base.replace(/\.[^.\/\\]+$/g, "");
 // }
+
 // function chunk<T>(arr: T[], size: number): T[][] {
 //   const out: T[][] = [];
 //   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -746,7 +1059,15 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 // }
 
 // /* ====== Preview para PDF / DOCX / DOC ====== */
-// function DocumentPreview({ url, kind, isMobile }: { url: string; kind: "pdf" | "docx" | "doc"; isMobile: boolean; }) {
+// function DocumentPreview({
+//   url,
+//   kind,
+//   isMobile,
+// }: {
+//   url: string;
+//   kind: "pdf" | "docx" | "doc";
+//   isMobile: boolean;
+// }) {
 //   if (kind === "pdf") {
 //     if (isMobile) {
 //       return (
@@ -767,7 +1088,12 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   if (kind === "docx") {
 //     return (
 //       <div className="absolute inset-0">
-//         <Image src="/docx1.png" alt="Documento DOCX" fill className="object-cover pointer-events-none select-none" />
+//         <Image
+//           src="/docx1.png"
+//           alt="Documento DOCX"
+//           fill
+//           className="object-cover pointer-events-none select-none"
+//         />
 //       </div>
 //     );
 //   }
@@ -778,19 +1104,110 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   );
 // }
 
+// /* ====================== Paginación (overlay) ====================== */
+// function Pagination({
+//   page,
+//   totalPages,
+//   onPage,
+// }: {
+//   page: number; // 0-based
+//   totalPages: number;
+//   onPage: (next: number) => void;
+// }) {
+//   if (totalPages <= 1) return null;
+
+//   const current = page + 1;
+//   const maxButtons = 5;
+
+//   let start = Math.max(1, current - Math.floor(maxButtons / 2));
+//   let end = start + maxButtons - 1;
+//   if (end > totalPages) {
+//     end = totalPages;
+//     start = Math.max(1, end - maxButtons + 1);
+//   }
+
+//   const nums: number[] = [];
+//   for (let i = start; i <= end; i++) nums.push(i);
+
+//   const go = (n1: number) => onPage(n1 - 1);
+
+//   return (
+//     <div className="mt-6 flex items-center justify-center gap-2 flex-wrap">
+//       <button
+//         onClick={() => onPage(Math.max(0, page - 1))}
+//         disabled={page === 0}
+//         className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
+//         aria-label="Página anterior"
+//         title="Anterior"
+//       >
+//         ‹
+//       </button>
+
+//       {start > 1 && (
+//         <>
+//           <button
+//             onClick={() => go(1)}
+//             className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
+//           >
+//             1
+//           </button>
+//           {start > 2 && <span className="px-1 text-zinc-500">…</span>}
+//         </>
+//       )}
+
+//       {nums.map((n) => {
+//         const active = n === current;
+//         return (
+//           <button
+//             key={n}
+//             onClick={() => go(n)}
+//             className={[
+//               "h-9 min-w-9 px-3 grid place-items-center rounded-full border text-sm transition",
+//               active
+//                 ? "border-orange-500/60 bg-orange-500/15 text-orange-300"
+//                 : "border-zinc-700 hover:border-zinc-500 text-zinc-200",
+//             ].join(" ")}
+//             aria-current={active ? "page" : undefined}
+//           >
+//             {n}
+//           </button>
+//         );
+//       })}
+
+//       {end < totalPages && (
+//         <>
+//           {end < totalPages - 1 && <span className="px-1 text-zinc-500">…</span>}
+//           <button
+//             onClick={() => go(totalPages)}
+//             className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
+//           >
+//             {totalPages}
+//           </button>
+//         </>
+//       )}
+
+//       <button
+//         onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+//         disabled={page >= totalPages - 1}
+//         className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
+//         aria-label="Página siguiente"
+//         title="Siguiente"
+//       >
+//         ›
+//       </button>
+//     </div>
+//   );
+// }
+
 // /* ====================== Componente principal ====================== */
 // export default function CategoryFiles({ slug }: { slug: string }) {
 //   const [activeSlug, setActiveSlug] = useState(slug);
 //   const [loading, setLoading] = useState(true);
 //   const [rows, setRows] = useState<UploadItem[]>([]);
 
-//   // subcategoría seleccionada (solo estado local, sin tocar URL)
 //   const [activeSub, setActiveSub] = useState<string | undefined>(undefined);
-
-//   // vista completa (mostrar TODO de una subcategoría)
 //   const [fullViewSub, setFullViewSub] = useState<string | null>(null);
 
-//   // refs a cada sección para scroll suave
 //   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
 //   useEffect(() => setActiveSlug(slug), [slug]);
@@ -841,24 +1258,30 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     };
 //   }, [activeSlug]);
 
-//   // agrupar por subcategoría (en el orden del catálogo)
 //   const subList = SUBCATS[activeSlug] || [];
+//   const ALL_KEY = "__all__";
+//   const hasSubcats = subList.length > 0;
+
 //   const grouped = useMemo(() => {
+//     if (!hasSubcats) {
+//       return new Map<string, UploadItem[]>([[ALL_KEY, rows]]);
+//     }
+
 //     const map = new Map<string, UploadItem[]>();
 //     subList.forEach((s) => map.set(s, []));
 //     const otrosKey = "Otros";
 //     if (!map.has(otrosKey)) map.set(otrosKey, []);
 //     for (const it of rows) {
-//       const sub = it.subcategory && subList.includes(it.subcategory) ? it.subcategory : otrosKey;
+//       const sub =
+//         it.subcategory && subList.includes(it.subcategory) ? it.subcategory : otrosKey;
 //       map.get(sub)!.push(it);
 //     }
 //     if ((map.get("Otros") || []).length === 0) map.delete("Otros");
 //     return map;
-//   }, [rows, subList]);
+//   }, [rows, subList, hasSubcats]);
 
 //   const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
 
-//   // chips: solo setean estado local y scrollean
 //   useEffect(() => {
 //     if (!activeSub) return;
 //     const id = slugify(activeSub);
@@ -869,51 +1292,62 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   const openFullView = (sub: string) => setFullViewSub(sub);
 //   const closeFullView = () => setFullViewSub(null);
 
-//   // items de la vista completa
+//   // Paginación overlay
+//   const [fullPage, setFullPage] = useState(0);
+//   const FULL_PAGE_SIZE = 8;
+
+//   useEffect(() => {
+//     if (fullViewSub) setFullPage(0);
+//   }, [fullViewSub]);
+
 //   const fullItems = useMemo(() => {
 //     if (!fullViewSub) return [];
+//     if (fullViewSub === ALL_KEY) return rows;
+
 //     const items = rows.filter((r) => r.subcategory === fullViewSub);
-//     // Si la sub no está catalogada, incluimos "Otros" como fallback
 //     if (!items.length && fullViewSub === "Otros") {
 //       return rows.filter((r) => !r.subcategory || !subList.includes(r.subcategory));
 //     }
 //     return items;
 //   }, [fullViewSub, rows, subList]);
 
+//   const fullTotalPages = Math.max(1, Math.ceil(fullItems.length / FULL_PAGE_SIZE));
+//   const fullPageItems = useMemo(() => {
+//     const start = fullPage * FULL_PAGE_SIZE;
+//     return fullItems.slice(start, start + FULL_PAGE_SIZE);
+//   }, [fullItems, fullPage]);
+
 //   return (
 //     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 text-white">
 //       <h1 className="text-2xl md:text-3xl font-bold mb-2">{title}</h1>
 
-//     {/* Chips de subcategorías (abren vista completa) */}
-// <div className="flex flex-wrap gap-2 mb-4">
-//   {subList.map((sub) => {
-//     const isOpen = fullViewSub === sub;
-//     return (
-//       <button
-//         key={sub}
-//         onClick={() => {
-//           // Si ya está abierta, la cerramos; si no, la abrimos
-//           if (isOpen) {
-//             setFullViewSub(null);
-//           } else {
-//             setFullViewSub(sub); // ⬅️ abre la vista completa de la subcategoría
-//           }
-//           // (Opcional) sincroniza el chip “activo” si quieres mantener el estilo
-//           setActiveSub((prev) => (prev === sub ? undefined : sub));
-//         }}
-//         className={`px-3 py-1.5 rounded-full text-xs border transition ${
-//           isOpen
-//             ? "bg-orange-500/20 text-orange-400 border-orange-500/40"
-//             : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white"
-//         }`}
-//         title={`Ver todos en ${sub}`}
-//       >
-//         {sub}
-//       </button>
-//     );
-//   })}
-// </div>
-
+//       {/* Chips de subcategorías */}
+//       <div className="flex flex-wrap gap-2 mb-4">
+//         {subList.map((sub) => {
+//           const isOpen = fullViewSub === sub;
+//           return (
+//             <button
+//               key={sub}
+//               onClick={() => {
+//                 if (isOpen) {
+//                   setFullViewSub(null);
+//                 } else {
+//                   setFullViewSub(sub);
+//                 }
+//                 setActiveSub((prev) => (prev === sub ? undefined : sub));
+//               }}
+//               className={`px-3 py-1.5 rounded-full text-xs border transition ${
+//                 isOpen
+//                   ? "bg-orange-500/20 text-orange-400 border-orange-500/40"
+//                   : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white"
+//               }`}
+//               title={`Ver todos en ${sub}`}
+//             >
+//               {sub}
+//             </button>
+//           );
+//         })}
+//       </div>
 
 //       {loading ? (
 //         <div className="text-zinc-400 py-10">Cargando…</div>
@@ -921,14 +1355,23 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //         <div className="text-zinc-400 py-10">No hay archivos en esta sección.</div>
 //       ) : (
 //         <>
-//           {/* ======= UNA SECCIÓN (carrusel) POR SUBCATEGORÍA ======= */}
+//           {/* Secciones por subcategoría */}
 //           {[...grouped.entries()].map(([sub, items]) => {
-//             const id = slugify(sub);
+//             const isAll = sub === ALL_KEY;
+//             const id = slugify(isAll ? "archivos" : sub);
 //             if (!items.length) return null;
+
 //             return (
-//               <div key={sub} ref={(el) => (sectionRefs.current[id] = el)} id={`sub-${id}`} className="mb-10">
+//               <div
+//                 key={sub}
+//                 ref={(el) => {
+//                   sectionRefs.current[id] = el;
+//                 }}
+//                 id={`sub-${id}`}
+//                 className="mb-10"
+//               >
+//                 {/* ✅ Botón Ver más a la IZQUIERDA */}
 //                 <div className="flex items-center justify-between mb-3">
-//                   <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
 //                   <button
 //                     onClick={() => openFullView(sub)}
 //                     className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white transition"
@@ -936,34 +1379,52 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //                   >
 //                     Ver más
 //                   </button>
+
+//                   {!isAll && (
+//                     <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
+//                   )}
+
+//                   {/* spacer para mantener el título centrado */}
+//                   <div className="w-[72px]" aria-hidden="true" />
 //                 </div>
+
 //                 <CategoryCarousel items={items} />
 //               </div>
 //             );
 //           })}
 
-//           {/* ======== CATEGORÍAS (las 3) ======== */}
+//           {/* ======== CATEGORÍAS PRINCIPALES (ajustadas) ======== */}
 //           <div className="w-full flex justify-center">
 //             <div className="w-full max-w-[1200px] px-4 py-8">
-//               <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">Nuestra Facultad</h1>
+//               <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">
+//                 Categorías principales
+//               </h1>
 
 //               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch auto-rows-fr gap-4 sm:gap-6">
 //                 {CATS.map((c, i) => (
-//                   <Link key={c.slug} href={`/organizar/${c.slug}`} className="group block h-full min-w-0">
+//                   <Link
+//                     key={c.slug}
+//                     href={`/organizar/${c.slug}`}
+//                     className="group block h-full min-w-0"
+//                   >
 //                     <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
-//                       <div className="relative aspect-square">
+//                       <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
 //                         <Image
 //                           src={c.cover}
 //                           alt={c.label}
 //                           fill
-//                           className="object-cover"
-//                           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+//                           className="object-cover group-hover:object-contain transition-all duration-300"
+//                           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
 //                           priority={i === 0}
 //                         />
 //                       </div>
 //                       <div className="p-4 mt-auto text-center">
-//                         <h3 className="text-sm sm:text-base font-semibold truncate">{c.label}</h3>
-//                         <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">{c.desc}</p>
+//                         <h3 className="text-sm sm:text-base font-semibold truncate">
+//                           {c.label}
+//                         </h3>
+//                         <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">
+//                           {c.desc}
+//                         </p>
 //                       </div>
 //                     </article>
 //                   </Link>
@@ -974,7 +1435,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //         </>
 //       )}
 
-//       {/* ===== Vista completa de subcategoría (overlay sin navegar) ===== */}
+//       {/* ===== Vista completa (overlay) ===== */}
 //       {fullViewSub && (
 //         <div className="fixed inset-0 z-40">
 //           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -982,7 +1443,9 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //             <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
 //               <div className="flex items-center justify-between mb-4">
 //                 <h2 className="text-2xl md:text-3xl font-bold">
-//                   {fullViewSub} — Todos los archivos
+//                   {fullViewSub === ALL_KEY
+//                     ? "Todos los archivos"
+//                     : `${fullViewSub} — Todos los archivos`}
 //                 </h2>
 //                 <button
 //                   onClick={closeFullView}
@@ -993,14 +1456,24 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //               </div>
 
 //               {fullItems.length === 0 ? (
-//                 <div className="text-zinc-400 py-12">Sin archivos en esta subcategoría.</div>
+//                 <div className="text-zinc-400 py-12">Sin archivos.</div>
 //               ) : (
-//                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-//                   {fullItems.map((u) => (
-//                     <CardItem key={u.id} item={u} />
-//                   ))}
-//                 </div>
+//                 <>
+//                   {/* ✅ Cards más "larguitas" (no tan cuadradas) como el carrusel */}
+//                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+//                     {fullPageItems.map((u) => (
+//                       <CardItemOverlay key={u.id} item={u} />
+//                     ))}
+//                   </div>
+
+//                   <Pagination
+//                     page={fullPage}
+//                     totalPages={fullTotalPages}
+//                     onPage={setFullPage}
+//                   />
+//                 </>
 //               )}
+
 //               <div className="h-8" />
 //             </div>
 //           </div>
@@ -1010,7 +1483,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   );
 // }
 
-// /* ====================== Card individual para la vista completa ====================== */
+// /* ====================== Card individual (base) ====================== */
 // function CardItem({ item }: { item: UploadItem }) {
 //   const isMobile = useIsMobile();
 //   const name = stripExt(item.file_name || item.file_path);
@@ -1039,7 +1512,14 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //             controls={false}
 //             disablePictureInPicture
 //             className="absolute inset-0 w-full h-full object-cover"
-//             variants={isMobile ? undefined : { rest: { scale: 1 }, hover: { scale: 1.06, transition: { duration: 0.6 } } }}
+//             variants={
+//               isMobile
+//                 ? undefined
+//                 : {
+//                     rest: { scale: 1 },
+//                     hover: { scale: 1.06, transition: { duration: 0.6 } },
+//                   }
+//             }
 //           />
 //         ) : isPdf ? (
 //           <DocumentPreview url={url} kind="pdf" isMobile={isMobile} />
@@ -1050,23 +1530,31 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //         ) : (
 //           <motion.div
 //             className="absolute inset-0 grid place-items-center text-zinc-300 text-xs"
-//             variants={isMobile ? undefined : { rest: { scale: 1 }, hover: { scale: 1.04, transition: { duration: 0.6 } } }}
+//             variants={
+//               isMobile
+//                 ? undefined
+//                 : {
+//                     rest: { scale: 1 },
+//                     hover: { scale: 1.04, transition: { duration: 0.6 } },
+//                   }
+//             }
 //           >
 //             Sin vista previa
 //           </motion.div>
 //         )}
 
-//         {/* Overlay de legibilidad */}
 //         {isMobile ? (
 //           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/55" />
 //         ) : (
 //           <motion.div
 //             className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50"
-//             variants={{ rest: { opacity: 0.65 }, hover: { opacity: 0.9, transition: { duration: 0.25 } } }}
+//             variants={{
+//               rest: { opacity: 0.65 },
+//               hover: { opacity: 0.9, transition: { duration: 0.25 } },
+//             }}
 //           />
 //         )}
 
-//         {/* CTA */}
 //         <div className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none">
 //           <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
 //             <p className="text-white text-xl md:text-2xl font-bold drop-shadow break-words whitespace-normal max-h-40 overflow-auto">
@@ -1090,11 +1578,107 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   );
 // }
 
-// /* ====================== Carrusel reutilizado ====================== */
+// /* ====================== Card individual (overlay) ====================== */
+// /* Igual a CardItem, pero con alto más largo para que se vea más “rectangular” */
+// function CardItemOverlay({ item }: { item: UploadItem }) {
+//   const isMobile = useIsMobile();
+//   const name = stripExt(item.file_name || item.file_path);
+//   const url = item.file_path || "";
+//   const isVideo = item.tipo === "video" || VIDEO_EXT.test(url);
+//   const isPdf = PDF_EXT.test(url);
+//   const isDocx = DOCX_EXT.test(url);
+//   const isDoc = !isDocx && DOC_EXT.test(url);
+
+//   return (
+//     <motion.article
+//       className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm"
+//       initial={isMobile ? undefined : "rest"}
+//       animate={isMobile ? undefined : "rest"}
+//       whileHover={isMobile ? undefined : "hover"}
+//     >
+//       {/* ✅ más largo: subimos la altura base */}
+//       <div className="relative h-[52vh] sm:h-[54vh] md:h-[20rem] lg:h-[26rem] xl:h-[28rem] bg-zinc-800 overflow-hidden">
+//         {isVideo ? (
+//           <motion.video
+//             src={url}
+//             muted
+//             loop
+//             playsInline
+//             autoPlay
+//             preload="metadata"
+//             controls={false}
+//             disablePictureInPicture
+//             className="absolute inset-0 w-full h-full object-cover"
+//             variants={
+//               isMobile
+//                 ? undefined
+//                 : {
+//                     rest: { scale: 1 },
+//                     hover: { scale: 1.06, transition: { duration: 0.6 } },
+//                   }
+//             }
+//           />
+//         ) : isPdf ? (
+//           <DocumentPreview url={url} kind="pdf" isMobile={isMobile} />
+//         ) : isDocx ? (
+//           <DocumentPreview url={url} kind="docx" isMobile={isMobile} />
+//         ) : isDoc ? (
+//           <DocumentPreview url={url} kind="doc" isMobile={isMobile} />
+//         ) : (
+//           <motion.div
+//             className="absolute inset-0 grid place-items-center text-zinc-300 text-xs"
+//             variants={
+//               isMobile
+//                 ? undefined
+//                 : {
+//                     rest: { scale: 1 },
+//                     hover: { scale: 1.04, transition: { duration: 0.6 } },
+//                   }
+//             }
+//           >
+//             Sin vista previa
+//           </motion.div>
+//         )}
+
+//         {isMobile ? (
+//           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/55" />
+//         ) : (
+//           <motion.div
+//             className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50"
+//             variants={{
+//               rest: { opacity: 0.65 },
+//               hover: { opacity: 0.9, transition: { duration: 0.25 } },
+//             }}
+//           />
+//         )}
+
+//         <div className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none">
+//           <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
+//             <p className="text-white text-xl md:text-2xl font-bold drop-shadow break-words whitespace-normal max-h-40 overflow-auto">
+//               {name}
+//             </p>
+//             <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
+//               <Link href={`/videos/${item.id}`} aria-label={`Ver más sobre ${name}`}>
+//                 <motion.button
+//                   whileHover={{ scale: 1.07 }}
+//                   whileTap={{ scale: 0.96 }}
+//                   className="text-sm px-4 py-2 rounded border text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500 transition"
+//                 >
+//                   Ver más
+//                 </motion.button>
+//               </Link>
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     </motion.article>
+//   );
+// }
+
+// /* ====================== Carrusel ====================== */
 // function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   const [perPage, setPerPage] = useState(5);
 //   const [page, setPage] = useState(0);
-//   const isMobile = useIsMobile();
 
 //   useEffect(() => {
 //     const update = () => setPerPage(getPerPage(window.innerWidth));
@@ -1114,11 +1698,12 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   const next = () => total && setPage((p) => (p + 1) % total);
 
 //   const touchStartX = useRef<number | null>(null);
-//   const onTouchStart = (e: React.TouchEvent) => (touchStartX.current = e.touches[0].clientX);
+//   const onTouchStart = (e: React.TouchEvent) =>
+//     (touchStartX.current = e.touches[0].clientX);
 //   const onTouchEnd = (e: React.TouchEvent) => {
 //     if (touchStartX.current === null) return;
 //     const dx = e.changedTouches[0].clientX - touchStartX.current;
-//     if (Math.abs(dx) > 48) (dx < 0 ? next() : prev());
+//     if (Math.abs(dx) > 48) dx < 0 ? next() : prev();
 //     touchStartX.current = null;
 //   };
 
@@ -1140,7 +1725,10 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //       onTouchStart={onTouchStart}
 //       onTouchEnd={onTouchEnd}
 //     >
-//       <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${page * 100}%)` }}>
+//       <div
+//         className="flex transition-transform duration-500 ease-out"
+//         style={{ transform: `translateX(-${page * 100}%)` }}
+//       >
 //         {pages.map((slice, idx) => (
 //           <div key={idx} className="w-full shrink-0">
 //             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
@@ -1152,7 +1740,6 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //         ))}
 //       </div>
 
-//       {/* Controles & Dots */}
 //       {total > 1 && (
 //         <>
 //           <button
@@ -1175,7 +1762,9 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //                 key={i}
 //                 onClick={() => setPage(i)}
 //                 aria-label={`Ir al grupo ${i + 1}`}
-//                 className={`h-2.5 rounded-full transition-all ${i === page ? "w-6 bg-white" : "w-2.5 bg-white/50 hover:bg-white/80"}`}
+//                 className={`h-2.5 rounded-full transition-all ${
+//                   i === page ? "w-6 bg-white" : "w-2.5 bg-white/50 hover:bg-white/80"
+//                 }`}
 //               />
 //             ))}
 //           </div>
@@ -1184,4 +1773,3 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     </section>
 //   );
 // }
-
