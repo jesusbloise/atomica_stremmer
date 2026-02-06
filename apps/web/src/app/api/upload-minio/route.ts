@@ -160,134 +160,170 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4.1) Ficha técnica (igual que ya tenías)
-    if (ficha) {
-      try {
-        const payload = {
-          titulo: ficha.titulo ?? null,
-          director: ficha.director ?? null,
-          productor: ficha.productor ?? null,
-          jefe_produccion:
-            ficha.jefeProduccion ?? ficha.jefe_produccion ?? null,
-          director_fotografia:
-            ficha.directorFotografia ?? ficha.director_fotografia ?? null,
-          sonido: ficha.sonido ?? null,
-          direccion_arte: ficha.direccionArte ?? ficha.direccion_arte ?? null,
-          asistente_direccion:
-            ficha.asistenteDireccion ?? ficha.asistente_direccion ?? null,
-          montaje: ficha.montaje ?? null,
-          otro_cargo: ficha.otroCargo ?? ficha.otro_cargo ?? null,
-          contacto_principal:
-            ficha.contactoPrincipal ?? ficha.contacto_principal ?? null,
-          correo: ficha.correo ?? null,
-          curso: ficha.curso ?? null,
-          profesor: ficha.profesor ?? null,
-          anio:
-            typeof ficha.anio === "number"
-              ? ficha.anio
-              : Number(ficha.anio) || null,
-          duracion: ficha.duracion ?? null,
-          sinopsis: ficha.sinopsis ?? null,
-          proceso_anterior:
-            ficha.procesoAnterior ?? ficha.proceso_anterior ?? null,
-          pendientes: ficha.pendientes ?? null,
-          visto:
-            typeof ficha.visto === "boolean"
-              ? ficha.visto
-              : ["si", "sí", "true", "1"].includes(
-                  String(ficha.visto || "").toLowerCase()
-                )
-              ? true
-              : ["no", "false", "0"].includes(
-                  String(ficha.visto || "").toLowerCase()
-                )
-              ? false
-              : null,
-          reunion: ficha.reunion ?? null,
-          formato: ficha.formato ?? null,
-          estado: ficha.estado ?? null,
-          delivery_estimado:
-            ficha.deliveryEstimado ?? ficha.delivery_estimado ?? null,
-          seleccion: ficha.seleccion ?? null,
-          link: ficha.link ?? null,
-          foto: ficha.foto ?? null,
-        };
+   // 4.1) Ficha técnica (GUARDAR CAMPOS NUEVOS)
+if (ficha) {
+  const normString = (v: any) => {
+    if (v === undefined || v === null) return null;
+    const s = String(v).trim();
+    return s === "" ? null : s;
+  };
 
+  const normTipo = (v: any): string[] => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v.map(String).map((x) => x.trim()).filter(Boolean);
+    if (typeof v === "string")
+      return v
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    return [];
+  };
+
+  try {
+    const payload = {
+      titulo: normString(ficha.titulo),
+
+      marca: normString(ficha.marca),
+      agencia: normString(ficha.agencia),
+      productora: normString(ficha.productora),
+      contacto: normString(ficha.contacto),
+
+      oficina: normString(ficha.oficina), // "Chile" | "Mexico" | null
+      tipo: normTipo(ficha.tipo),         // text[]
+
+      estudio: normString(ficha.estudio),
+      director: normString(ficha.director),
+      productor: normString(ficha.productor),
+
+      produccion: normString(ficha.produccion),
+      corporativo: normString(ficha.corporativo),
+      nuevos_negocios: normString(ficha.nuevosNegocios ?? ficha.nuevos_negocios),
+    };
+
+    // Intento 1: columnas NUEVAS (tipo es text[])
+    try {
+      await pool.query(
+        `
+        INSERT INTO ficha_tecnica (
+          upload_id,
+          titulo,
+          marca, agencia, productora, contacto,
+          oficina,
+          tipo,
+          estudio, director, productor,
+          produccion, corporativo,
+          nuevos_negocios
+        )
+        VALUES (
+          $1,
+          $2,
+          $3, $4, $5, $6,
+          $7,
+          $8::text[],
+          $9, $10, $11,
+          $12, $13,
+          $14
+        )
+        ON CONFLICT (upload_id) DO UPDATE SET
+          titulo = EXCLUDED.titulo,
+          marca = EXCLUDED.marca,
+          agencia = EXCLUDED.agencia,
+          productora = EXCLUDED.productora,
+          contacto = EXCLUDED.contacto,
+          oficina = EXCLUDED.oficina,
+          tipo = EXCLUDED.tipo,
+          estudio = EXCLUDED.estudio,
+          director = EXCLUDED.director,
+          productor = EXCLUDED.productor,
+          produccion = EXCLUDED.produccion,
+          corporativo = EXCLUDED.corporativo,
+          nuevos_negocios = EXCLUDED.nuevos_negocios
+        `,
+        [
+          rowId,
+          payload.titulo,
+          payload.marca,
+          payload.agencia,
+          payload.productora,
+          payload.contacto,
+          payload.oficina,
+          payload.tipo, // array directo
+          payload.estudio,
+          payload.director,
+          payload.productor,
+          payload.produccion,
+          payload.corporativo,
+          payload.nuevos_negocios,
+        ]
+      );
+    } catch (err: any) {
+      // Fallback si en tu DB la columna se llama distinto (ej: productora_ficha)
+      if (err?.code === "42703") {
         await pool.query(
-          `INSERT INTO ficha_tecnica (
-             upload_id, titulo, director, productor, jefe_produccion,
-             director_fotografia, sonido, direccion_arte, asistente_direccion,
-             montaje, otro_cargo, contacto_principal, correo, curso, profesor,
-             anio, duracion, sinopsis, proceso_anterior, pendientes, visto, reunion,
-             formato, estado, delivery_estimado, seleccion, link, foto
-           ) VALUES (
-             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-             $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28
-           )
-           ON CONFLICT (upload_id) DO UPDATE SET
-             titulo = EXCLUDED.titulo,
-             director = EXCLUDED.director,
-             productor = EXCLUDED.productor,
-             jefe_produccion = EXCLUDED.jefe_produccion,
-             director_fotografia = EXCLUDED.director_fotografia,
-             sonido = EXCLUDED.sonido,
-             direccion_arte = EXCLUDED.direccion_arte,
-             asistente_direccion = EXCLUDED.asistente_direccion,
-             montaje = EXCLUDED.montaje,
-             otro_cargo = EXCLUDED.otro_cargo,
-             contacto_principal = EXCLUDED.contacto_principal,
-             correo = EXCLUDED.correo,
-             curso = EXCLUDED.curso,
-             profesor = EXCLUDED.profesor,
-             anio = EXCLUDED.anio,
-             duracion = EXCLUDED.duracion,
-             sinopsis = EXCLUDED.sinopsis,
-             proceso_anterior = EXCLUDED.proceso_anterior,
-             pendientes = EXCLUDED.pendientes,
-             visto = EXCLUDED.visto,
-             reunion = EXCLUDED.reunion,
-             formato = EXCLUDED.formato,
-             estado = EXCLUDED.estado,
-             delivery_estimado = EXCLUDED.delivery_estimado,
-             seleccion = EXCLUDED.seleccion,
-             link = EXCLUDED.link,
-             foto = EXCLUDED.foto`,
+          `
+          INSERT INTO ficha_tecnica (
+            upload_id,
+            titulo,
+            marca, agencia, productora_ficha, contacto,
+            oficina,
+            tipo,
+            estudio, director, productor,
+            produccion, corporativo,
+            nuevos_negocios
+          )
+          VALUES (
+            $1,
+            $2,
+            $3, $4, $5, $6,
+            $7,
+            $8::text[],
+            $9, $10, $11,
+            $12, $13,
+            $14
+          )
+          ON CONFLICT (upload_id) DO UPDATE SET
+            titulo = EXCLUDED.titulo,
+            marca = EXCLUDED.marca,
+            agencia = EXCLUDED.agencia,
+            productora_ficha = EXCLUDED.productora_ficha,
+            contacto = EXCLUDED.contacto,
+            oficina = EXCLUDED.oficina,
+            tipo = EXCLUDED.tipo,
+            estudio = EXCLUDED.estudio,
+            director = EXCLUDED.director,
+            productor = EXCLUDED.productor,
+            produccion = EXCLUDED.produccion,
+            corporativo = EXCLUDED.corporativo,
+            nuevos_negocios = EXCLUDED.nuevos_negocios
+          `,
           [
             rowId,
             payload.titulo,
+            payload.marca,
+            payload.agencia,
+            payload.productora,
+            payload.contacto,
+            payload.oficina,
+            payload.tipo,
+            payload.estudio,
             payload.director,
             payload.productor,
-            payload.jefe_produccion,
-            payload.director_fotografia,
-            payload.sonido,
-            payload.direccion_arte,
-            payload.asistente_direccion,
-            payload.montaje,
-            payload.otro_cargo,
-            payload.contacto_principal,
-            payload.correo,
-            payload.curso,
-            payload.profesor,
-            payload.anio,
-            payload.duracion,
-            payload.sinopsis,
-            payload.proceso_anterior,
-            payload.pendientes,
-            payload.visto,
-            payload.reunion,
-            payload.formato,
-            payload.estado,
-            payload.delivery_estimado,
-            payload.seleccion,
-            payload.link,
-            payload.foto,
+            payload.produccion,
+            payload.corporativo,
+            payload.nuevos_negocios,
           ]
         );
-      } catch (e) {
-        console.warn("⚠️ No se pudo upsert ficha_tecnica:", e);
-        // No abortamos la subida por esto
+      } else {
+        throw err;
       }
     }
+  } catch (e) {
+    console.warn("⚠️ No se pudo upsert ficha_tecnica (campos nuevos):", e);
+    // No abortamos la subida por esto
+  }
+}
+
+
 
     // 5) Procesamiento posterior (igual que tenías)
     const python =
