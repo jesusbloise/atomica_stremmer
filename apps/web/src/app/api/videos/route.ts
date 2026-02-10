@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   else if (only === "audio") whereKind = `(tipo = 'audio' OR ${isExt("mp3|wav|ogg|m4a")})`;
   // only === "all" -> whereKind = TRUE
 
-  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.229.25:9100/archivos";
+  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.5.12:9100/archivos";
 
   try {
     const { rows } = await db.query(
