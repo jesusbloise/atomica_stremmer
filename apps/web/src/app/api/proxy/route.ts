@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Debe ser alcanzable desde donde corre Next (contenedor/host)
-const DEFAULT_INTERNAL_MINIO = "http:///192.168.5.12:9100";
+const DEFAULT_INTERNAL_MINIO = "http://192.168.5.12:9100";
 
 function isPrivateIp(hostname: string) {
   if (/^10\.\d+\.\d+\.\d+$/.test(hostname)) return true;
