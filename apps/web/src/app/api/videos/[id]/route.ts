@@ -16,7 +16,7 @@ export async function GET(_req: Request, context: Ctx<{ id: string }>) {
   );
   if (!rows.length) return NextResponse.json({ error: "Video no encontrado" }, { status: 404 });
 
-  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.229.25:9100/archivos";
+  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.5.12:9100/archivos";
   const row = rows[0];
   return NextResponse.json({ id: row.id, name: row.file_name, key: row.file_key, url: `${base}/${row.file_key}` });
 }
