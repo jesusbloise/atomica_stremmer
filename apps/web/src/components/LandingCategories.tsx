@@ -19,17 +19,34 @@ const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
 function stripExt(s?: string | null) {
   if (!s) return "Archivo";
 
-  // Intentamos decodificar sin romper la app
   let safe = s;
   try {
     safe = decodeURIComponent(s);
   } catch {
-    // Si la URI está mal formada, usamos el string original
     safe = s;
   }
 
   const base = safe.split("/").pop() || safe;
   return base.replace(/\.[^.\/\\]+$/g, "");
+}
+
+/**
+ * ✅ SIEMPRE proxifica URLs absolutas (MinIO) para evitar CORS en prod.
+ * - Si ya viene proxificada, la deja.
+ * - Si viene absoluta http/https, la manda a /api/proxy
+ * - Si viene relativa, la deja tal cual (por si en local ya sirves desde tu app)
+ */
+function proxiedUrl(u?: string | null) {
+  if (!u) return "";
+  const s = String(u);
+
+  if (s.startsWith("/api/proxy?url=")) return s;
+
+  if (s.startsWith("http://") || s.startsWith("https://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  return s;
 }
 
 /* ====================== Grid de categorías (según Excel) ====================== */
@@ -130,6 +147,10 @@ export default function LandingCategories() {
               const isVideo = item.tipo === "video" || VIDEO_EXT.test(item.url);
               const name = stripExt(item.file_name) || "Archivo";
               const href = `/videos/${item.id}`;
+
+              // ✅ CLAVE: en vez de item.url directo (MinIO), usamos proxy
+              const src = proxiedUrl(item.url);
+
               return (
                 <div key={item.id} className="relative w-full shrink-0 basis-full">
                   <div className="relative h-[40vh] sm:h-[50vh] md:h-[60vh] bg-zinc-900">
@@ -138,7 +159,7 @@ export default function LandingCategories() {
                         ref={(el) => {
                           videoRefs.current[i] = el;
                         }}
-                        src={item.url}
+                        src={src}
                         muted
                         loop
                         playsInline
@@ -146,7 +167,7 @@ export default function LandingCategories() {
                         preload="metadata"
                         controls={false}
                         disablePictureInPicture
-                        crossOrigin="anonymous"
+                        // ✅ IMPORTANTÍSIMO: quitamos crossOrigin porque ya es same-origin (proxy)
                         className="absolute inset-0 w-full h-full object-cover"
                       />
                     ) : (
@@ -256,7 +277,6 @@ export default function LandingCategories() {
 }
 
 
-
 // "use client";
 
 // import Link from "next/link";
@@ -291,8 +311,7 @@ export default function LandingCategories() {
 //   return base.replace(/\.[^.\/\\]+$/g, "");
 // }
 
-
-// /* ====================== Grid de categorías (3) ====================== */
+// /* ====================== Grid de categorías (según Excel) ====================== */
 // const CATS = [
 //   {
 //     slug: "publicidad",
@@ -307,13 +326,12 @@ export default function LandingCategories() {
 //     desc: "Contenido y piezas de entretenimiento.",
 //   },
 //   {
-//     slug: "vxf",
-//     label: "VXF",
+//     slug: "otros",
+//     label: "Otros",
 //     cover: "/Garage.jpg",
-//     desc: "Contenido y entregables VXF.",
+//     desc: "Producción, corporativo y nuevos negocios.",
 //   },
 // ];
-
 
 // /* ====================== Página con carrusel inline ====================== */
 // export default function LandingCategories() {
@@ -480,7 +498,7 @@ export default function LandingCategories() {
 //         </div>
 //       )}
 
-//       {/* Categorías: 1 → 2 → 4 columnas, TODAS igual, “intermedio” en recorte */}
+//       {/* Categorías principales */}
 //       <div className="w-full flex justify-center">
 //         <div className="w-full max-w-[1200px] px-4 py-8">
 //           <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">
@@ -488,15 +506,9 @@ export default function LandingCategories() {
 //           </h1>
 
 //           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch auto-rows-fr gap-4 sm:gap-6">
-
 //             {CATS.map((c, i) => (
-//               <Link
-//                 key={c.slug}
-//                 href={`/organizar/${c.slug}`}
-//                 className="group block h-full min-w-0"
-//               >
+//               <Link key={c.slug} href={`/organizar/${c.slug}`} className="group block h-full min-w-0">
 //                 <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
-//                   {/* 📌 Intermedio: misma altura para todas + cover por defecto + contain en hover */}
 //                   <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
 //                     <Image
 //                       src={c.cover}
@@ -509,12 +521,8 @@ export default function LandingCategories() {
 //                   </div>
 
 //                   <div className="p-4 mt-auto text-center">
-//                     <h3 className="text-sm sm:text-base font-semibold truncate">
-//                       {c.label}
-//                     </h3>
-//                     <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">
-//                       {c.desc}
-//                     </p>
+//                     <h3 className="text-sm sm:text-base font-semibold truncate">{c.label}</h3>
+//                     <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">{c.desc}</p>
 //                   </div>
 //                 </article>
 //               </Link>
@@ -525,3 +533,5 @@ export default function LandingCategories() {
 //     </div>
 //   );
 // }
+
+

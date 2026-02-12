@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function buildUrl(row: any) {
-  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.229.25:9100/archivos";
+  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.5.12:9100/archivos";
   const file_path = row.file_path || "";
   const file_key = row.file_key || "";
   return file_path.startsWith("http") ? file_path : `${base}/${file_key}`;
