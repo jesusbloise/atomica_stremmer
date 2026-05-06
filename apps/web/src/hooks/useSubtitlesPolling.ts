@@ -74,10 +74,7 @@ export function useSubtitlesPolling(id: string | null) {
 
   const intervalRef = useRef<number | null>(null);
   const idRef = useRef<string | null>(id);
-
-  useEffect(() => {
-    idRef.current = id;
-  }, [id]);
+  const inFlightRef = useRef(false);
 
   const setSubtitulos = useCallback((rows: AnyRow[]) => {
     const norm = Array.isArray(rows) ? rows.map(normalizeRow) : [];
@@ -90,8 +87,42 @@ export function useSubtitlesPolling(id: string | null) {
       intervalRef.current = null;
     }
 
+    inFlightRef.current = false;
     setPolling(false);
   }, []);
+
+  useEffect(() => {
+    idRef.current = id;
+    _setSubtitulos([]);
+    stop();
+  }, [id, stop]);
+
+  const checkSubtitles = useCallback(async () => {
+    const currentId = idRef.current;
+    if (!currentId) return;
+
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    try {
+      const res = await fetch(`/api/subtitulos/${currentId}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        setSubtitulos(data);
+        stop();
+      }
+    } catch {
+      // Silencioso mientras el backend procesa
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [setSubtitulos, stop]);
 
   const start = useCallback(() => {
     if (!idRef.current) return;
@@ -99,30 +130,12 @@ export function useSubtitlesPolling(id: string | null) {
 
     setPolling(true);
 
+    void checkSubtitles();
+
     intervalRef.current = window.setInterval(() => {
-      void (async () => {
-        const currentId = idRef.current;
-        if (!currentId) return;
-
-        try {
-          const res = await fetch(`/api/subtitulos/${currentId}`, {
-            cache: "no-store",
-          });
-
-          if (!res.ok) return;
-
-          const data = await res.json();
-
-          if (Array.isArray(data) && data.length > 0) {
-            setSubtitulos(data);
-            stop();
-          }
-        } catch {
-          // Silencioso para no romper UI mientras procesa
-        }
-      })();
+      void checkSubtitles();
     }, 8000);
-  }, [setSubtitulos, stop]);
+  }, [checkSubtitles]);
 
   const getStartSecFor = useCallback(
     (index: number): number | null => {
@@ -150,7 +163,6 @@ export function useSubtitlesPolling(id: string | null) {
     getStartSecFor,
   };
 }
-
 
 
 // // Hook personalizado para obtener subtítulos de un video por polling.
