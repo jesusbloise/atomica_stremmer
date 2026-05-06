@@ -53,10 +53,15 @@ export async function POST(req: Request) {
     } finally {
       client.release();
     }
-  } catch (err) {
-    console.error("REGISTER ERROR:", err);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
-  }
+  } catch (err: any) {
+  console.error("REGISTER ERROR FULL:", err);
+  console.error("REGISTER ERROR MESSAGE:", err?.message);
+  console.error("REGISTER ERROR STACK:", err?.stack);
+  return new Response(JSON.stringify({ ok: false, error: "Error interno" }), {
+    status: 500,
+    headers: { "content-type": "application/json" },
+  });
+}
 }
 
 

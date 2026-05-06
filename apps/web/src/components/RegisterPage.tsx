@@ -53,9 +53,15 @@ export default function RegisterPage() {
       redirectTimer.current = setTimeout(() => {
         router.push("/login");
       }, 3000);
-    } catch {
-      setError("Error de red");
-    } finally {
+    } catch (err: any) {
+  console.error("REGISTER ERROR FULL:", err);
+  console.error("REGISTER ERROR MESSAGE:", err?.message);
+  console.error("REGISTER ERROR STACK:", err?.stack);
+  return new Response(JSON.stringify({ ok: false, error: "Error interno" }), {
+    status: 500,
+    headers: { "content-type": "application/json" },
+  });
+} finally {
       setLoading(false);
     }
   };

@@ -92,9 +92,15 @@ export default function LoginPage() {
 
       // 👉 Navegación SPA para no perder el permiso de audio
       router.replace("/");
-    } catch {
-      setError("Error de red. Intenta de nuevo.");
-    } finally {
+    } catch (err: any) {
+  console.error("REGISTER ERROR FULL:", err);
+  console.error("REGISTER ERROR MESSAGE:", err?.message);
+  console.error("REGISTER ERROR STACK:", err?.stack);
+  return new Response(JSON.stringify({ ok: false, error: "Error interno" }), {
+    status: 500,
+    headers: { "content-type": "application/json" },
+  });
+} finally {
       setLoading(false);
     }
   };

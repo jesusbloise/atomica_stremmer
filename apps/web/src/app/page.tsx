@@ -75,6 +75,10 @@ function proxiedUrl(u?: string | null) {
 
   if (s.startsWith("/api/proxy?url=")) return s;
 
+  if (s.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
   if (s.startsWith("http://") || s.startsWith("https://")) {
     return `/api/proxy?url=${encodeURIComponent(s)}`;
   }
@@ -142,28 +146,31 @@ function MediaCard({ it, isMobile }: { it: VideoInfo; isMobile: boolean }) {
               src: {previewUrl}
             </div>
 
-            <motion.video
-              key={previewUrl}
-              src={previewUrl}
-              muted
-              loop
-              playsInline
-              autoPlay
-              preload="metadata"
-              controls={false}
-              disablePictureInPicture
-              className="absolute inset-0 w-full h-full object-cover"
-              onError={() => setErr("VIDEO_ERROR")}
-              onLoadedData={() => setErr(null)}
-              variants={
-                isMobile
-                  ? undefined
-                  : {
-                      rest: { scale: 1 },
-                      hover: { scale: 1.06, transition: { duration: 0.6 } },
-                    }
-              }
-            />
+          <motion.video
+  key={previewUrl}
+  src={previewUrl}
+  muted
+  loop
+  playsInline
+  autoPlay
+  preload="metadata"
+  controls={false}
+  disablePictureInPicture
+  className="absolute inset-0 w-full h-full object-cover"
+  onError={() => setErr("VIDEO_ERROR")}
+  onLoadedData={(e) => {
+    setErr(null);
+    e.currentTarget.play().catch(() => {});
+  }}
+  variants={
+    isMobile
+      ? undefined
+      : {
+          rest: { scale: 1 },
+          hover: { scale: 1.06, transition: { duration: 0.6 } },
+        }
+  }
+/>
 
             {err && (
               <div className="absolute inset-0 grid place-items-center bg-black/60 text-white text-xs p-4 text-center">

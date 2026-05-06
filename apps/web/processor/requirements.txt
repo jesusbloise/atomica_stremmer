@@ -7,3 +7,4 @@ opencv-python
 requests
 pdfplumber
 pypdf
+google-cloud-storage==2.16.0

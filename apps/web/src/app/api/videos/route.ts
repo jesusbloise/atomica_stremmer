@@ -1,57 +1,131 @@
-// src/app/api/videos/route.ts
 import { NextResponse } from "next/server";
 import db from "@/db";
-import pool from "@/db";
+import { Storage } from "@google-cloud/storage";
 
+const storage = new Storage();
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type RowVideo = {
+  id: string;
+  file_name: string | null;
+  file_key: string | null;
+  file_path: string | null;
+  size_in_bytes: number | null;
+  uploaded_at: string | null;
+  tipo: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+};
+
+function parseGsUrl(raw?: string | null) {
+  if (!raw || !raw.startsWith("gs://")) return null;
+  const withoutScheme = raw.slice(5);
+  const firstSlash = withoutScheme.indexOf("/");
+  if (firstSlash === -1) return null;
+
+  return {
+    bucket: withoutScheme.slice(0, firstSlash),
+    objectPath: withoutScheme.slice(firstSlash + 1),
+  };
+}
+
+async function buildReadableUrl(filePath?: string | null, fileKey?: string | null) {
+  if (filePath && /^https?:\/\//i.test(filePath)) {
+    return filePath;
+  }
+
+  const parsed = parseGsUrl(filePath);
+  if (parsed) {
+    const [signedUrl] = await storage
+      .bucket(parsed.bucket)
+      .file(parsed.objectPath)
+      .getSignedUrl({
+        version: "v4",
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 6,
+      });
+
+    return signedUrl;
+  }
+
+  if (fileKey && process.env.GCS_BUCKET) {
+    const [signedUrl] = await storage
+      .bucket(process.env.GCS_BUCKET)
+      .file(fileKey)
+      .getSignedUrl({
+        version: "v4",
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60 * 6,
+      });
+
+    return signedUrl;
+  }
+
+  return null;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const limitParam = Number(url.searchParams.get("limit") ?? 200);
-  const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 500) : 200;
+  const limit = Number.isFinite(limitParam)
+    ? Math.min(Math.max(limitParam, 1), 500)
+    : 200;
 
-  // video | documento | image | audio | all (default: video)
   const only = (url.searchParams.get("only") || "video").toLowerCase();
 
-  // para detectar por extensión si no tienes "tipo" en la tabla
   const isExt = (exts: string) =>
     `(file_key ~* '\\.(${exts})$' OR file_name ~* '\\.(${exts})$')`;
 
   let whereKind = "TRUE";
-  if (only === "video") whereKind = `(tipo = 'video' OR ${isExt("mp4|mov|mkv|webm|avi")})`;
-  else if (only === "documento") whereKind = `(tipo = 'documento' OR ${isExt("pdf|docx|txt|md|csv|log|srt|vtt")})`;
-  else if (only === "image") whereKind = `(tipo = 'image' OR ${isExt("jpg|jpeg|png|gif|webp|avif")})`;
-  else if (only === "audio") whereKind = `(tipo = 'audio' OR ${isExt("mp3|wav|ogg|m4a")})`;
-  // only === "all" -> whereKind = TRUE
-
-  const base = process.env.MINIO_PUBLIC_BASE ?? "http://192.168.5.12:9100/archivos";
+  if (only === "video") {
+    whereKind = `(tipo = 'video' OR ${isExt("mp4|mov|mkv|webm|avi|m4v")})`;
+  } else if (only === "documento") {
+    whereKind = `(tipo = 'documento' OR ${isExt("pdf|docx|doc|txt|md|csv|log|srt|vtt")})`;
+  } else if (only === "image") {
+    whereKind = `(tipo = 'image' OR ${isExt("jpg|jpeg|png|gif|webp|avif")})`;
+  } else if (only === "audio") {
+    whereKind = `(tipo = 'audio' OR ${isExt("mp3|wav|ogg|m4a")})`;
+  }
 
   try {
-    const { rows } = await db.query(
+    const { rows } = await db.query<RowVideo>(
       `
       SELECT
         id,
         file_name,
         file_key,
+        file_path,
         size_in_bytes,
         uploaded_at,
         tipo,
-        ($1 || '/' || file_key) AS url
+        category,
+        subcategory
       FROM uploads
       WHERE
         ${whereKind}
-        AND (is_deleted IS NOT TRUE)  -- 👈 oculta soft-deleted
+        AND (is_deleted IS NOT TRUE)
+        AND file_path IS NOT NULL
       ORDER BY uploaded_at DESC NULLS LAST
-      LIMIT $2
+      LIMIT $1
       `,
-      [base, limit]
+      [limit]
     );
 
-    return new NextResponse(JSON.stringify(rows), {
+    const enriched = await Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        url: await buildReadableUrl(row.file_path, row.file_key),
+      }))
+    );
+
+    return new NextResponse(JSON.stringify(enriched), {
       status: 200,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      },
     });
   } catch (e) {
     console.error("❌ list videos error:", e);
@@ -59,34 +133,69 @@ export async function GET(req: Request) {
   }
 }
 
-
-
-
-// // src/app/api/videos/route.ts
 // import { NextResponse } from "next/server";
-// import pool from "@/db";
+// import db from "@/db";
 
-// export async function GET() {
+// export const dynamic = "force-dynamic";
+// export const revalidate = 0;
+
+// export async function GET(req: Request) {
+//   const url = new URL(req.url);
+//   const limitParam = Number(url.searchParams.get("limit") ?? 200);
+//   const limit = Number.isFinite(limitParam)
+//     ? Math.min(Math.max(limitParam, 1), 500)
+//     : 200;
+
+//   const only = (url.searchParams.get("only") || "video").toLowerCase();
+
+//   const isExt = (exts: string) =>
+//     `(file_key ~* '\\.(${exts})$' OR file_name ~* '\\.(${exts})$')`;
+
+//   let whereKind = "TRUE";
+//   if (only === "video") {
+//     whereKind = `(tipo = 'video' OR ${isExt("mp4|mov|mkv|webm|avi|m4v")})`;
+//   } else if (only === "documento") {
+//     whereKind = `(tipo = 'documento' OR ${isExt("pdf|docx|doc|txt|md|csv|log|srt|vtt")})`;
+//   } else if (only === "image") {
+//     whereKind = `(tipo = 'image' OR ${isExt("jpg|jpeg|png|gif|webp|avif")})`;
+//   } else if (only === "audio") {
+//     whereKind = `(tipo = 'audio' OR ${isExt("mp3|wav|ogg|m4a")})`;
+//   }
+
 //   try {
-//     const result = await pool.query(
-//       "SELECT id, file_name, file_key FROM uploads ORDER BY uploaded_at DESC"
+//     const { rows } = await db.query(
+//       `
+//       SELECT
+//         id,
+//         file_name,
+//         file_key,
+//         file_path,
+//         size_in_bytes,
+//         uploaded_at,
+//         tipo,
+//         category,
+//         subcategory,
+//         file_path AS url
+//       FROM uploads
+//       WHERE
+//         ${whereKind}
+//         AND (is_deleted IS NOT TRUE)
+//         AND file_path IS NOT NULL
+//       ORDER BY uploaded_at DESC NULLS LAST
+//       LIMIT $1
+//       `,
+//       [limit]
 //     );
 
-//     // ✅ Solo incluir videos que tienen una file_key válida (evita nulos/vacíos)
-//     const videos = result.rows
-//       .filter((row) => row.file_key && row.file_key.trim() !== "")
-//       .map((row) => ({
-//         id: row.id,
-//         name: row.file_name,
-//         key: row.file_key,
-//         url: `http://192.168.229.25:9100/archivos/${row.file_key}`, // Ajusta IP si es necesario
-//       }));
-
-//     return NextResponse.json(videos);
-//   } catch (error) {
-//     console.error("❌ Error al obtener videos:", error);
-//     return NextResponse.json({ error: "Error al obtener videos" }, { status: 500 });
+//     return new NextResponse(JSON.stringify(rows), {
+//       status: 200,
+//       headers: {
+//         "content-type": "application/json",
+//         "cache-control": "no-store",
+//       },
+//     });
+//   } catch (e) {
+//     console.error("❌ list videos error:", e);
+//     return NextResponse.json({ error: "DB error" }, { status: 500 });
 //   }
 // }
-
-

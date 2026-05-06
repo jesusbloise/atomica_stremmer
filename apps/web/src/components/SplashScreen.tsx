@@ -50,7 +50,7 @@ useEffect(() => {
           >
             <Image
               src="/ATOMICA-Logo-02.png"
-              alt="Logo Falabella"
+              alt="ATOMICA"
               width={220}
               height={220}
               priority

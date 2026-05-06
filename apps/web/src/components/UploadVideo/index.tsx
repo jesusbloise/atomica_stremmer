@@ -51,16 +51,25 @@ function normalizePlayableUrl(u?: string | null) {
   const s = String(u).trim();
   if (!s) return "";
 
-  // ya proxificada
   if (s.startsWith("/api/proxy?url=")) return s;
 
-  // absoluta => decidir
+  if (s.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
   if (s.startsWith("http://") || s.startsWith("https://")) {
     if (shouldProxyAbsoluteUrl(s)) return `/api/proxy?url=${encodeURIComponent(s)}`;
     return s;
   }
 
-  // relativa => tal cual (ej: /api/files/... o /archivos/...)
+  if (s.startsWith("/archivos/")) {
+    const base =
+      process.env.NEXT_PUBLIC_MINIO_PUBLIC_BASE?.replace(/\/+$/, "") ||
+      "http://192.168.5.12:9100";
+    const abs = `${base}${s}`;
+    return `/api/proxy?url=${encodeURIComponent(abs)}`;
+  }
+
   return s;
 }
 

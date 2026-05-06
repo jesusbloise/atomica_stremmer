@@ -24,14 +24,13 @@ const CATS = [
     desc: "Contenido y piezas de entretenimiento.",
   },
   {
-    slug: "otros",
-    label: "Otros",
+    slug: "vxf",
+    label: "VXF",
     cover: "/Garage.jpg",
-    desc: "Producción, corporativo y nuevos negocios.",
+    desc: "Contenido y entregables VXF.",
   },
 ] as const;
 
-/* ================== Estructura (según tu jefa) ================== */
 type Group = { label: string };
 
 const STRUCTURE: Record<string, Group[]> = {
@@ -51,19 +50,22 @@ const STRUCTURE: Record<string, Group[]> = {
     { label: "Oficina" },
     { label: "Tipo" },
   ],
-  otros: [{ label: "Producción" }, { label: "Corporativo" }, { label: "Nuevos Negocios" }],
+  vxf: [
+    { label: "Producción" },
+    { label: "Corporativo" },
+    { label: "Nuevos Negocios" },
+  ],
 };
 
 const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
-
 const COLOR_PUBLICIDAD = ["3D", "IA", "Musica", "Sonido"] as const;
 const COLOR_ENTRETENIMIENTO = ["3D", "IA", "Musica", "Sonido", "VFX", "Edicion"] as const;
 
-/* ===== Tipos de tu API ===== */
 type UploadItem = {
   id: string;
   file_name: string;
   file_path: string;
+  url?: string;
   uploaded_at?: string;
   size_in_bytes?: number;
   tipo?: "video" | "documento" | null;
@@ -71,7 +73,6 @@ type UploadItem = {
   subcategory?: string | null;
 };
 
-/* ===== Utils ===== */
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
 const PDF_EXT = /\.pdf$/i;
 const DOCX_EXT = /\.docx$/i;
@@ -89,20 +90,19 @@ function stripExt(s?: string | null) {
   return base.replace(/\.[^.\/\\]+$/g, "");
 }
 
-/**
- * ✅ IMPORTANTÍSIMO: evita CORS en producción.
- * - Si ya viene proxificado, lo deja.
- * - Si viene absoluto http/https (MinIO), lo manda a /api/proxy
- * - Si viene relativo, lo deja igual.
- */
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
   const s = String(u);
 
   if (s.startsWith("/api/proxy?url=")) return s;
 
-  if (s.startsWith("http://") || s.startsWith("https://")) {
+  if (s.startsWith("gs://")) {
     return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  // signed/public URLs => directo
+  if (s.startsWith("http://") || s.startsWith("https://")) {
+    return s;
   }
 
   return s;
@@ -129,7 +129,6 @@ function slugify(input: string) {
     .replace(/(^-|-$)/g, "");
 }
 
-/* ===== Hook: detectar móvil (sin hover) ===== */
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -147,7 +146,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-/* ====== Preview para PDF / DOCX / DOC ====== */
 function DocumentPreview({
   url,
   kind,
@@ -157,7 +155,6 @@ function DocumentPreview({
   kind: "pdf" | "docx" | "doc";
   isMobile: boolean;
 }) {
-  // ✅ siempre usar URL segura
   const safeUrl = proxiedUrl(url);
 
   if (kind === "pdf") {
@@ -196,7 +193,6 @@ function DocumentPreview({
   );
 }
 
-/* ====================== Paginación (overlay) ====================== */
 function Pagination({
   page,
   totalPages,
@@ -229,23 +225,9 @@ function Pagination({
         onClick={() => onPage(Math.max(0, page - 1))}
         disabled={page === 0}
         className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
-        aria-label="Página anterior"
-        title="Anterior"
       >
         ‹
       </button>
-
-      {start > 1 && (
-        <>
-          <button
-            onClick={() => go(1)}
-            className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
-          >
-            1
-          </button>
-          {start > 2 && <span className="px-1 text-zinc-500">…</span>}
-        </>
-      )}
 
       {nums.map((n) => {
         const active = n === current;
@@ -259,31 +241,16 @@ function Pagination({
                 ? "border-orange-500/60 bg-orange-500/15 text-orange-300"
                 : "border-zinc-700 hover:border-zinc-500 text-zinc-200",
             ].join(" ")}
-            aria-current={active ? "page" : undefined}
           >
             {n}
           </button>
         );
       })}
 
-      {end < totalPages && (
-        <>
-          {end < totalPages - 1 && <span className="px-1 text-zinc-500">…</span>}
-          <button
-            onClick={() => go(totalPages)}
-            className="h-9 min-w-9 px-3 grid place-items-center rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-sm"
-          >
-            {totalPages}
-          </button>
-        </>
-      )}
-
       <button
         onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
         disabled={page >= totalPages - 1}
         className="h-9 w-9 grid place-items-center rounded-full border border-zinc-700 disabled:opacity-50 hover:border-zinc-500 text-zinc-200"
-        aria-label="Página siguiente"
-        title="Siguiente"
       >
         ›
       </button>
@@ -291,23 +258,20 @@ function Pagination({
   );
 }
 
-/* ====================== Componente principal ====================== */
 export default function CategoryFiles({ slug }: { slug: string }) {
   const [activeSlug, setActiveSlug] = useState(slug);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<UploadItem[]>([]);
-
   const [menuMain, setMenuMain] = useState<string>("");
   const [menuOffice, setMenuOffice] = useState<string>("");
   const [menuColor, setMenuColor] = useState<string>("");
-
   const [menuOpen, setMenuOpen] = useState(false);
   const [hoverMain, setHoverMain] = useState<string>("");
-
   const menuWrapRef = useRef<HTMLDivElement | null>(null);
-
   const [fullViewSub, setFullViewSub] = useState<string | null>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [fullPage, setFullPage] = useState(0);
+  const FULL_PAGE_SIZE = 8;
 
   useEffect(() => setActiveSlug(slug), [slug]);
 
@@ -365,6 +329,10 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     setFullViewSub(null);
   }, [activeSlug]);
 
+  useEffect(() => {
+    if (fullViewSub) setFullPage(0);
+  }, [fullViewSub]);
+
   const groups = STRUCTURE[activeSlug] || [];
   const hasGroups = groups.length > 0;
 
@@ -381,34 +349,33 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     return menuMain;
   }, [menuMain, menuOffice, menuColor]);
 
-  const leafSections = useMemo(() => {
-    const out: string[] = [];
-    for (const g of groups) {
-      if (g.label === "Oficina") out.push(...OFFICE_OPTIONS);
-      else if (g.label === "Tipo") out.push(...colorsForSlug);
-      else out.push(g.label);
-    }
-    return Array.from(new Set(out));
-  }, [groups, colorsForSlug]);
-
   const grouped = useMemo(() => {
     if (!hasGroups) return new Map<string, UploadItem[]>([["__all__", rows]]);
 
     const map = new Map<string, UploadItem[]>();
-    leafSections.forEach((s) => map.set(s, []));
-
-    const otrosKey = "Otros";
-    if (!map.has(otrosKey)) map.set(otrosKey, []);
 
     for (const it of rows) {
       const sub = (it.subcategory || "").toString().trim();
-      const key = sub && map.has(sub) ? sub : otrosKey;
-      map.get(key)!.push(it);
+
+      if (sub) {
+        if (!map.has(sub)) map.set(sub, []);
+        map.get(sub)!.push(it);
+        continue;
+      }
+
+      const defaultKey =
+        activeSlug === "publicidad"
+          ? "Marca"
+          : activeSlug === "entretenimiento"
+          ? "Estudio"
+          : "Producción";
+
+      if (!map.has(defaultKey)) map.set(defaultKey, []);
+      map.get(defaultKey)!.push(it);
     }
 
-    if ((map.get("Otros") || []).length === 0) map.delete("Otros");
     return map;
-  }, [rows, hasGroups, leafSections]);
+  }, [rows, hasGroups, activeSlug]);
 
   const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
 
@@ -433,33 +400,24 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     return () => window.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
-  const openFullView = (sub: string) => setFullViewSub(sub);
-  const closeFullView = () => setFullViewSub(null);
-
-  const [fullPage, setFullPage] = useState(0);
-  const FULL_PAGE_SIZE = 8;
-
-  useEffect(() => {
-    if (fullViewSub) setFullPage(0);
-  }, [fullViewSub]);
-
   const fullItems = useMemo(() => {
     if (!fullViewSub) return [];
-    const allowed = new Set(leafSections);
 
-    const items = rows.filter(
-      (r) => (r.subcategory || "").toString().trim() === fullViewSub
-    );
+    return rows.filter((r) => {
+      const sub = (r.subcategory || "").toString().trim();
 
-    if (!items.length && fullViewSub === "Otros") {
-      return rows.filter((r) => {
-        const s = (r.subcategory || "").toString().trim();
-        return !s || !allowed.has(s);
-      });
-    }
+      if (sub) return sub === fullViewSub;
 
-    return items;
-  }, [fullViewSub, rows, leafSections]);
+      const defaultKey =
+        activeSlug === "publicidad"
+          ? "Marca"
+          : activeSlug === "entretenimiento"
+          ? "Estudio"
+          : "Producción";
+
+      return defaultKey === fullViewSub;
+    });
+  }, [fullViewSub, rows, activeSlug]);
 
   const fullTotalPages = Math.max(1, Math.ceil(fullItems.length / FULL_PAGE_SIZE));
   const fullPageItems = useMemo(() => {
@@ -504,15 +462,12 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 text-white">
       <h1 className="text-2xl md:text-3xl font-bold mb-2">{title}</h1>
 
-      {/* Dropdown flyout */}
       {hasGroups && (
         <div className="mb-6" ref={menuWrapRef}>
           <div className="inline-block relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               className="px-4 py-2 rounded-xl bg-zinc-900 text-white border border-zinc-700 text-sm hover:border-zinc-500 transition flex items-center gap-2"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
               type="button"
             >
               <span className="truncate max-w-[240px] sm:max-w-[360px]">{currentLabel}</span>
@@ -522,7 +477,6 @@ export default function CategoryFiles({ slug }: { slug: string }) {
             {menuOpen && (
               <div className="absolute mt-2 left-0 z-40 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
                 <div className="flex">
-                  {/* Columna izquierda: items principales */}
                   <div className="w-[260px] py-2">
                     {groups.map((g) => {
                       const hasFlyout = g.label === "Oficina" || g.label === "Tipo";
@@ -617,7 +571,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
               >
                 <div className="flex items-center justify-between mb-3">
                   <button
-                    onClick={() => openFullView(sub)}
+                    onClick={() => setFullViewSub(sub)}
                     className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white transition"
                     title="Ver todos los archivos"
                   >
@@ -711,15 +665,10 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   );
 }
 
-/* ====================== Card individual (base) ====================== */
 function CardItem({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
-  const name = stripExt(item.file_name || item.file_path);
-
-  // ✅ url original (probablemente MinIO)
-  const rawUrl = item.file_path || "";
-
-  // ✅ url segura (proxy)
+  const rawUrl = item.url || item.file_path || "";
+  const name = stripExt(item.file_name || rawUrl);
   const url = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
@@ -745,6 +694,9 @@ function CardItem({ item }: { item: UploadItem }) {
             preload="metadata"
             controls={false}
             disablePictureInPicture
+            onLoadedData={(e) => {
+              e.currentTarget.play().catch(() => {});
+            }}
             className="absolute inset-0 w-full h-full object-cover"
             variants={
               isMobile
@@ -764,14 +716,6 @@ function CardItem({ item }: { item: UploadItem }) {
         ) : (
           <motion.div
             className="absolute inset-0 grid place-items-center text-zinc-300 text-xs"
-            variants={
-              isMobile
-                ? undefined
-                : {
-                    rest: { scale: 1 },
-                    hover: { scale: 1.04, transition: { duration: 0.6 } },
-                  }
-            }
           >
             Sin vista previa
           </motion.div>
@@ -812,12 +756,10 @@ function CardItem({ item }: { item: UploadItem }) {
   );
 }
 
-/* ====================== Card individual (overlay) ====================== */
 function CardItemOverlay({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
-  const name = stripExt(item.file_name || item.file_path);
-
-  const rawUrl = item.file_path || "";
+  const rawUrl = item.url || item.file_path || "";
+  const name = stripExt(item.file_name || rawUrl);
   const url = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
@@ -838,6 +780,9 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
             preload="metadata"
             controls={false}
             disablePictureInPicture
+            onLoadedData={(e) => {
+              e.currentTarget.play().catch(() => {});
+            }}
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : isPdf ? (
@@ -873,7 +818,6 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
   );
 }
 
-/* ====================== Carrusel ====================== */
 function CategoryCarousel({ items }: { items: UploadItem[] }) {
   const [perPage, setPerPage] = useState(5);
   const [page, setPage] = useState(0);
@@ -972,7 +916,6 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 }
 
 
-
 // "use client";
 
 // import Link from "next/link";
@@ -999,10 +942,10 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     desc: "Contenido y piezas de entretenimiento.",
 //   },
 //   {
-//     slug: "otros",
-//     label: "Otros",
+//     slug: "vxf",
+//     label: "VXF",
 //     cover: "/Garage.jpg",
-//     desc: "Producción, corporativo y nuevos negocios.",
+//     desc: "Contenido y entregables VXF.",
 //   },
 // ] as const;
 
@@ -1026,7 +969,11 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     { label: "Oficina" },
 //     { label: "Tipo" },
 //   ],
-//   otros: [{ label: "Producción" }, { label: "Corporativo" }, { label: "Nuevos Negocios" }],
+//   vxf: [
+//     { label: "Producción" },
+//     { label: "Corporativo" },
+//     { label: "Nuevos Negocios" },
+//   ],
 // };
 
 // const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
@@ -1062,6 +1009,29 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   }
 //   const base = safe.split("/").pop() || safe;
 //   return base.replace(/\.[^.\/\\]+$/g, "");
+// }
+
+// /**
+//  * ✅ IMPORTANTÍSIMO: evita CORS en producción.
+//  * - Si ya viene proxificado, lo deja.
+//  * - Si viene absoluto http/https (MinIO), lo manda a /api/proxy
+//  * - Si viene relativo, lo deja igual.
+//  */
+// function proxiedUrl(u?: string | null) {
+//   if (!u) return "";
+//   const s = String(u);
+
+//   if (s.startsWith("/api/proxy?url=")) return s;
+
+//   if (s.startsWith("gs://")) {
+//     return `/api/proxy?url=${encodeURIComponent(s)}`;
+//   }
+
+//   if (s.startsWith("http://") || s.startsWith("https://")) {
+//     return `/api/proxy?url=${encodeURIComponent(s)}`;
+//   }
+
+//   return s;
 // }
 
 // function chunk<T>(arr: T[], size: number): T[][] {
@@ -1113,6 +1083,9 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   kind: "pdf" | "docx" | "doc";
 //   isMobile: boolean;
 // }) {
+//   // ✅ siempre usar URL segura
+//   const safeUrl = proxiedUrl(url);
+
 //   if (kind === "pdf") {
 //     if (isMobile) {
 //       return (
@@ -1124,7 +1097,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     return (
 //       <iframe
 //         title="Vista previa PDF"
-//         src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+//         src={`${safeUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
 //         className="absolute inset-0 w-full h-full pointer-events-none"
 //         loading="lazy"
 //       />
@@ -1345,23 +1318,32 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //   }, [groups, colorsForSlug]);
 
 //   const grouped = useMemo(() => {
-//     if (!hasGroups) return new Map<string, UploadItem[]>([["__all__", rows]]);
+//   if (!hasGroups) return new Map<string, UploadItem[]>([["__all__", rows]]);
 
-//     const map = new Map<string, UploadItem[]>();
-//     leafSections.forEach((s) => map.set(s, []));
+//   const map = new Map<string, UploadItem[]>();
 
-//     const otrosKey = "Otros";
-//     if (!map.has(otrosKey)) map.set(otrosKey, []);
+//   for (const it of rows) {
+//     const sub = (it.subcategory || "").toString().trim();
 
-//     for (const it of rows) {
-//       const sub = (it.subcategory || "").toString().trim();
-//       const key = sub && map.has(sub) ? sub : otrosKey;
-//       map.get(key)!.push(it);
+//     if (sub) {
+//       if (!map.has(sub)) map.set(sub, []);
+//       map.get(sub)!.push(it);
+//       continue;
 //     }
 
-//     if ((map.get("Otros") || []).length === 0) map.delete("Otros");
-//     return map;
-//   }, [rows, hasGroups, leafSections]);
+//     const defaultKey =
+//       activeSlug === "publicidad"
+//         ? "Marca"
+//         : activeSlug === "entretenimiento"
+//         ? "Estudio"
+//         : "Producción";
+
+//     if (!map.has(defaultKey)) map.set(defaultKey, []);
+//     map.get(defaultKey)!.push(it);
+//   }
+
+//   return map;
+// }, [rows, hasGroups, activeSlug]);
 
 //   const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
 
@@ -1396,23 +1378,26 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     if (fullViewSub) setFullPage(0);
 //   }, [fullViewSub]);
 
-//   const fullItems = useMemo(() => {
-//     if (!fullViewSub) return [];
-//     const allowed = new Set(leafSections);
+//  const fullItems = useMemo(() => {
+//   if (!fullViewSub) return [];
 
-//     const items = rows.filter(
-//       (r) => (r.subcategory || "").toString().trim() === fullViewSub
-//     );
+//   return rows.filter((r) => {
+//     const sub = (r.subcategory || "").toString().trim();
 
-//     if (!items.length && fullViewSub === "Otros") {
-//       return rows.filter((r) => {
-//         const s = (r.subcategory || "").toString().trim();
-//         return !s || !allowed.has(s);
-//       });
+//     if (sub) {
+//       return sub === fullViewSub;
 //     }
 
-//     return items;
-//   }, [fullViewSub, rows, leafSections]);
+//     const defaultKey =
+//       activeSlug === "publicidad"
+//         ? "Marca"
+//         : activeSlug === "entretenimiento"
+//         ? "Estudio"
+//         : "Producción";
+
+//     return defaultKey === fullViewSub;
+//   });
+// }, [fullViewSub, rows, activeSlug]);
 
 //   const fullTotalPages = Math.max(1, Math.ceil(fullItems.length / FULL_PAGE_SIZE));
 //   const fullPageItems = useMemo(() => {
@@ -1472,82 +1457,79 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //               <span className="text-zinc-400">▾</span>
 //             </button>
 
-//    {menuOpen && (
-//   <div className="absolute mt-2 left-0 z-40 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
-//     <div className="flex">
-//       {/* Columna izquierda: items principales */}
-//       <div className="w-[260px] py-2">
-//         {groups.map((g) => {
-//           const hasFlyout = g.label === "Oficina" || g.label === "Tipo";
-//           const active = hoverMain === g.label;
+//             {menuOpen && (
+//               <div className="absolute mt-2 left-0 z-40 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
+//                 <div className="flex">
+//                   {/* Columna izquierda: items principales */}
+//                   <div className="w-[260px] py-2">
+//                     {groups.map((g) => {
+//                       const hasFlyout = g.label === "Oficina" || g.label === "Tipo";
+//                       const active = hoverMain === g.label;
 
-//           return (
-//             <div
-//               key={g.label}
-//               className="relative"
-//               onMouseEnter={() => setHoverMain(g.label)}
-//             >
-//               <button
-//                 type="button"
-//                 onClick={() => {
-//                   if (!hasFlyout) onPickLeaf(g.label);
-//                   else setHoverMain(g.label); // fallback click
-//                 }}
-//                 className={[
-//                   "w-full px-3 py-2 text-left text-sm flex items-center justify-between transition",
-//                   active ? "bg-zinc-900" : "bg-transparent",
-//                   "hover:bg-zinc-900",
-//                 ].join(" ")}
-//               >
-//                 <span className="text-zinc-100">{g.label}</span>
-//                 {hasFlyout ? <span className="text-zinc-500">›</span> : null}
-//               </button>
-//             </div>
-//           );
-//         })}
-//       </div>
+//                       return (
+//                         <div
+//                           key={g.label}
+//                           className="relative"
+//                           onMouseEnter={() => setHoverMain(g.label)}
+//                         >
+//                           <button
+//                             type="button"
+//                             onClick={() => {
+//                               if (!hasFlyout) onPickLeaf(g.label);
+//                               else setHoverMain(g.label);
+//                             }}
+//                             className={[
+//                               "w-full px-3 py-2 text-left text-sm flex items-center justify-between transition",
+//                               active ? "bg-zinc-900" : "bg-transparent",
+//                               "hover:bg-zinc-900",
+//                             ].join(" ")}
+//                           >
+//                             <span className="text-zinc-100">{g.label}</span>
+//                             {hasFlyout ? <span className="text-zinc-500">›</span> : null}
+//                           </button>
+//                         </div>
+//                       );
+//                     })}
+//                   </div>
 
-//       {/* ✅ SOLO aparece si estás en Oficina o Tipo */}
-//       {(hoverMain === "Oficina" || hoverMain === "Tipo") && (
-//         <div className="w-[220px] border-l border-zinc-800 py-2">
-//           {hoverMain === "Oficina" && (
-//             <>
-//               <div className="px-3 pb-2 text-xs text-zinc-500">Oficina</div>
-//               {OFFICE_OPTIONS.map((o) => (
-//                 <button
-//                   key={o}
-//                   type="button"
-//                   onClick={() => onPickOffice(o)}
-//                   className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
-//                 >
-//                   {o}
-//                 </button>
-//               ))}
-//             </>
-//           )}
+//                   {(hoverMain === "Oficina" || hoverMain === "Tipo") && (
+//                     <div className="w-[220px] border-l border-zinc-800 py-2">
+//                       {hoverMain === "Oficina" && (
+//                         <>
+//                           <div className="px-3 pb-2 text-xs text-zinc-500">Oficina</div>
+//                           {OFFICE_OPTIONS.map((o) => (
+//                             <button
+//                               key={o}
+//                               type="button"
+//                               onClick={() => onPickOffice(o)}
+//                               className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
+//                             >
+//                               {o}
+//                             </button>
+//                           ))}
+//                         </>
+//                       )}
 
-//           {hoverMain === "Tipo" && (
-//             <>
-//               <div className="px-3 pb-2 text-xs text-zinc-500">Color</div>
-//               {colorsForSlug.map((c) => (
-//                 <button
-//                   key={c}
-//                   type="button"
-//                   onClick={() => onPickColor(c)}
-//                   className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
-//                 >
-//                   {c}
-//                 </button>
-//               ))}
-//             </>
-//           )}
-//         </div>
-//       )}
-//     </div>
-//   </div>
-// )}
-
-
+//                       {hoverMain === "Tipo" && (
+//                         <>
+//                           <div className="px-3 pb-2 text-xs text-zinc-500">Color</div>
+//                           {colorsForSlug.map((c) => (
+//                             <button
+//                               key={c}
+//                               type="button"
+//                               onClick={() => onPickColor(c)}
+//                               className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
+//                             >
+//                               {c}
+//                             </button>
+//                           ))}
+//                         </>
+//                       )}
+//                     </div>
+//                   )}
+//                 </div>
+//               </div>
+//             )}
 //           </div>
 //         </div>
 //       )}
@@ -1637,7 +1619,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //               <div className="flex items-center justify-between mb-4">
 //                 <h2 className="text-2xl md:text-3xl font-bold">{fullViewSub}</h2>
 //                 <button
-//                   onClick={closeFullView}
+//                   onClick={() => setFullViewSub(null)}
 //                   className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-zinc-500 text-sm text-zinc-300 hover:text-white"
 //                 >
 //                   Volver
@@ -1671,11 +1653,17 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 // function CardItem({ item }: { item: UploadItem }) {
 //   const isMobile = useIsMobile();
 //   const name = stripExt(item.file_name || item.file_path);
-//   const url = item.file_path || "";
-//   const isVideo = item.tipo === "video" || VIDEO_EXT.test(url);
-//   const isPdf = PDF_EXT.test(url);
-//   const isDocx = DOCX_EXT.test(url);
-//   const isDoc = !isDocx && DOC_EXT.test(url);
+
+//   // ✅ url original (probablemente MinIO)
+//   const rawUrl = item.file_path || "";
+
+//   // ✅ url segura (proxy)
+//   const url = proxiedUrl(rawUrl);
+
+//   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
+//   const isPdf = PDF_EXT.test(rawUrl);
+//   const isDocx = DOCX_EXT.test(rawUrl);
+//   const isDoc = !isDocx && DOC_EXT.test(rawUrl);
 
 //   return (
 //     <motion.article
@@ -1687,30 +1675,33 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //       <div className="relative h-[48vh] sm:h-[50vh] md:h-[18rem] lg:h-[22rem] xl:h-[24rem] bg-zinc-800 overflow-hidden">
 //         {isVideo ? (
 //           <motion.video
-//             src={url}
-//             muted
-//             loop
-//             playsInline
-//             autoPlay
-//             preload="metadata"
-//             controls={false}
-//             disablePictureInPicture
-//             className="absolute inset-0 w-full h-full object-cover"
-//             variants={
-//               isMobile
-//                 ? undefined
-//                 : {
-//                     rest: { scale: 1 },
-//                     hover: { scale: 1.06, transition: { duration: 0.6 } },
-//                   }
-//             }
-//           />
+//   src={url}
+//   muted
+//   loop
+//   playsInline
+//   autoPlay
+//   preload="auto"
+//   controls={false}
+//   disablePictureInPicture
+//   onLoadedData={(e) => {
+//     e.currentTarget.play().catch(() => {});
+//   }}
+//   className="absolute inset-0 w-full h-full object-cover"
+//   variants={
+//     isMobile
+//       ? undefined
+//       : {
+//           rest: { scale: 1 },
+//           hover: { scale: 1.06, transition: { duration: 0.6 } },
+//         }
+//   }
+// />
 //         ) : isPdf ? (
-//           <DocumentPreview url={url} kind="pdf" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="pdf" isMobile={isMobile} />
 //         ) : isDocx ? (
-//           <DocumentPreview url={url} kind="docx" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="docx" isMobile={isMobile} />
 //         ) : isDoc ? (
-//           <DocumentPreview url={url} kind="doc" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="doc" isMobile={isMobile} />
 //         ) : (
 //           <motion.div
 //             className="absolute inset-0 grid place-items-center text-zinc-300 text-xs"
@@ -1766,33 +1757,39 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 // function CardItemOverlay({ item }: { item: UploadItem }) {
 //   const isMobile = useIsMobile();
 //   const name = stripExt(item.file_name || item.file_path);
-//   const url = item.file_path || "";
-//   const isVideo = item.tipo === "video" || VIDEO_EXT.test(url);
-//   const isPdf = PDF_EXT.test(url);
-//   const isDocx = DOCX_EXT.test(url);
-//   const isDoc = !isDocx && DOC_EXT.test(url);
+
+//   const rawUrl = item.file_path || "";
+//   const url = proxiedUrl(rawUrl);
+
+//   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
+//   const isPdf = PDF_EXT.test(rawUrl);
+//   const isDocx = DOCX_EXT.test(rawUrl);
+//   const isDoc = !isDocx && DOC_EXT.test(rawUrl);
 
 //   return (
 //     <motion.article className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm">
 //       <div className="relative h-[52vh] sm:h-[54vh] md:h-[20rem] lg:h-[26rem] xl:h-[28rem] bg-zinc-800 overflow-hidden">
 //         {isVideo ? (
 //           <motion.video
-//             src={url}
-//             muted
-//             loop
-//             playsInline
-//             autoPlay
-//             preload="metadata"
-//             controls={false}
-//             disablePictureInPicture
-//             className="absolute inset-0 w-full h-full object-cover"
-//           />
+//   src={url}
+//   muted
+//   loop
+//   playsInline
+//   autoPlay
+//   preload="auto"
+//   controls={false}
+//   disablePictureInPicture
+//   onLoadedData={(e) => {
+//     e.currentTarget.play().catch(() => {});
+//   }}
+//   className="absolute inset-0 w-full h-full object-cover"
+// />
 //         ) : isPdf ? (
-//           <DocumentPreview url={url} kind="pdf" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="pdf" isMobile={isMobile} />
 //         ) : isDocx ? (
-//           <DocumentPreview url={url} kind="docx" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="docx" isMobile={isMobile} />
 //         ) : isDoc ? (
-//           <DocumentPreview url={url} kind="doc" isMobile={isMobile} />
+//           <DocumentPreview url={rawUrl} kind="doc" isMobile={isMobile} />
 //         ) : (
 //           <div className="absolute inset-0 grid place-items-center text-zinc-300 text-xs">
 //             Sin vista previa
@@ -1917,5 +1914,4 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
 //     </section>
 //   );
 // }
-
 

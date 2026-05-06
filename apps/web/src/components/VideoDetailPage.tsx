@@ -1,6 +1,3 @@
-
-
-
 "use client";
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
@@ -10,9 +7,7 @@ import DocumentViewer from "@/components/DocumentViewer";
 import { useSubtitlesPolling } from "@/hooks/useSubtitlesPolling";
 import LastVideosCarousel from "@/components/LastVideosCarousel";
 import MostViewedCarousel from "@/components/MostViewedCarousel";
-import ChatLateral from "./ChatLateral";
-import FichaTecnica, { FichaTecnicaData } from "@/components/FichaTecnica";
-// import VimeoGallery from "@/components/VimeoGallery"; // ❌ No es un módulo válido
+import FichaTecnica from "@/components/FichaTecnica";
 
 const TablaSubtitulos = dynamic(() => import("@/components/TablaSubtitulos"), { ssr: false });
 const TablaDocumento = dynamic(() => import("@/components/TablaDocumento"), { ssr: false });
@@ -20,25 +15,18 @@ const TablaDocumento = dynamic(() => import("@/components/TablaDocumento"), { ss
 async function fetchJSON<T = any>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init });
   if (!res.ok) throw new Error(`HTTP ${res.status} en ${url}`);
+
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
     const txt = await res.text();
     throw new Error(`Respuesta no JSON en ${url}: ${txt.slice(0, 200)}...`);
   }
+
   return res.json();
 }
 
-type Me = { id: string; name: string; role: string };
-type CommentRow = {
-  id: string;
-  content: string;
-  created_at: string;
-  user_id: string | null;
-  author_name: string | null;
-};
-
 type Subtitulo = {
-  time_start: number; // ✅ Siempre number después del procesamiento
+  time_start: number;
   time_end: number;
   text: string;
   [k: string]: any;
@@ -46,6 +34,7 @@ type Subtitulo = {
 
 function parseHMS(str: string): number | null {
   const s = str.trim();
+
   let m = s.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?$/);
   if (m) {
     const hh = parseInt(m[1], 10);
@@ -54,6 +43,7 @@ function parseHMS(str: string): number | null {
     const ms = m[4] ? parseInt(m[4].padEnd(3, "0"), 10) : 0;
     return hh * 3600 + mm * 60 + ss + ms / 1000;
   }
+
   m = s.match(/^(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?$/);
   if (m) {
     const mm = parseInt(m[1], 10);
@@ -61,42 +51,81 @@ function parseHMS(str: string): number | null {
     const ms = m[3] ? parseInt(m[3].padEnd(3, "0"), 10) : 0;
     return mm * 60 + ss + ms / 1000;
   }
-  return null;
-}
-function toSecFromUnknown(v: unknown): number | null {
-  if (v == null) return null;
-  if (typeof v === "number") return v > 10_000 ? v / 1000 : v;
-  if (typeof v === "string") {
-    const h = parseHMS(v);
-    if (h != null) return h;
-    const n = Number(v);
-    if (!Number.isNaN(n)) return n > 10_000 ? n / 1000 : n;
-  }
+
   return null;
 }
 
+function toSecFromUnknown(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return v > 10_000 ? v / 1000 : v;
+
+  if (typeof v === "string") {
+    const h = parseHMS(v);
+    if (h != null) return h;
+
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n > 10_000 ? n / 1000 : n;
+  }
+
+  return null;
+}
+
+function resolvePlayableSrc(url?: string | null) {
+  if (!url) return null;
+
+  const s = String(url).trim();
+  if (!s) return null;
+
+  if (s.startsWith("/api/proxy?url=")) return s;
+
+  if (s.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  if (s.startsWith("https://storage.googleapis.com/")) {
+    return s;
+  }
+
+  if (s.startsWith("https://")) {
+    return s;
+  }
+
+  if (s.startsWith("http://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  return s;
+}
+
 export default function VideoDetailPage({ id }: { id: string }) {
+  const router = useRouter();
+
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [tipo, setTipo] = useState<"video" | "documento" | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
-  const [documentFileName, setDocumentFileName] = useState<string>("");
+  const [documentFileName, setDocumentFileName] = useState("");
   const [documentoTexto, setDocumentoTexto] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [matchIndices, setMatchIndices] = useState<number[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-  const [views, setViews] = useState<number>(0);
+  const [views, setViews] = useState(0);
+
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [videoBuffering, setVideoBuffering] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const seekingLockRef = useRef(false);
   const lastJumpRef = useRef<number | null>(null);
+  const retriedRef = useRef(false);
+  const loadedIdRef = useRef<string | null>(null);
 
   const viewerApiRef = useRef<{
     step?: (dir: 1 | -1) => number;
     findAll?: (q: string) => number;
     goToMatch?: (i: number) => void;
   }>({});
-
-  const router = useRouter();
 
   const {
     subtitulos,
@@ -106,6 +135,19 @@ export default function VideoDetailPage({ id }: { id: string }) {
     stop: stopPolling,
     getStartSecFor,
   } = useSubtitlesPolling(id);
+
+  const resolvedVideoUrl = useMemo(() => {
+    return resolvePlayableSrc(videoUrl);
+  }, [videoUrl]);
+
+  const videoSrcWithReload = useMemo(() => {
+    if (!resolvedVideoUrl) return null;
+
+    if (resolvedVideoUrl.startsWith("blob:")) return resolvedVideoUrl;
+
+    const sep = resolvedVideoUrl.includes("?") ? "&" : "?";
+    return reloadNonce > 0 ? `${resolvedVideoUrl}${sep}r=${reloadNonce}` : resolvedVideoUrl;
+  }, [resolvedVideoUrl, reloadNonce]);
 
   const tableData: Subtitulo[] = useMemo(() => {
     return (subtitulos || []).map((r: any) => {
@@ -121,7 +163,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
             r.end_s ??
             r.end_ms ??
             (typeof r.__startSec === "number" ? r.__startSec + 2 : undefined)
-        ) ?? (typeof start === "number" ? start + 2 : 2);
+        ) ?? start + 2;
 
       const text = r.text ?? r.content ?? r.line ?? "";
 
@@ -129,35 +171,12 @@ export default function VideoDetailPage({ id }: { id: string }) {
     });
   }, [subtitulos]);
 
-  const [me, setMe] = useState<Me | null>(null);
-  const [loadingMe, setLoadingMe] = useState(true);
-  const [comments, setComments] = useState<CommentRow[]>([]);
-  const [msg, setMsg] = useState("");
-  const [sending, setSending] = useState(false);
-  const meRole = (me?.role ?? "").toString().trim().toUpperCase();
-  const canPost = meRole === "ESTUDIANTE";
-
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/me", { cache: "no-store" });
-        const s = await r.json().catch(() => null);
-        if (!alive) return;
-        setMe(s && s.id ? (s as Me) : null);
-      } catch {
-        if (alive) setMe(null);
-      } finally {
-        if (alive) setLoadingMe(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  if (!id) return;
 
-  useEffect(() => {
-    if (!id) return;
+  if (loadedIdRef.current === id) return;
+  loadedIdRef.current = id;
+
     let cancel = false;
 
     (async () => {
@@ -166,11 +185,10 @@ export default function VideoDetailPage({ id }: { id: string }) {
         if (cancel) return;
 
         const t = (upload?.tipo as "video" | "documento") || null;
-        setTipo(t);
-
         const fname = upload?.file_name || upload?.name || "";
-        setDocumentFileName(fname);
 
+        setTipo(t);
+        setDocumentFileName(fname);
         if (upload?.views !== undefined) setViews(upload.views);
 
         if (t === "video") {
@@ -179,16 +197,29 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
           try {
             const subs = await fetchJSON<any[]>(`/api/subtitulos/${id}`);
+
             if (!cancel) {
               if (Array.isArray(subs) && subs.length > 0) {
                 setSubtitulos(subs);
                 stopPolling();
               } else {
+                fetch(`/api/procesar-subtitulos/${id}`, {
+                  method: "POST",
+                  cache: "no-store",
+                }).catch(() => {});
+
                 startPolling();
               }
             }
           } catch {
-            if (!cancel) startPolling();
+            if (!cancel) {
+              fetch(`/api/procesar-subtitulos/${id}`, {
+                method: "POST",
+                cache: "no-store",
+              }).catch(() => {});
+
+              startPolling();
+            }
           }
         }
 
@@ -214,20 +245,20 @@ export default function VideoDetailPage({ id }: { id: string }) {
     };
   }, [id]);
 
-  const resolvedVideoUrl = useMemo(() => {
-    if (!videoUrl) return null;
-    if (videoUrl.startsWith("http://")) {
-      return `/api/proxy?url=${encodeURIComponent(videoUrl)}`;
-    }
-    return videoUrl;
-  }, [videoUrl]);
+  useEffect(() => {
+    if (!videoSrcWithReload || tipo !== "video") return;
+
+    setVideoLoading(true);
+    setVideoBuffering(false);
+    setVideoError(null);
+    retriedRef.current = false;
+  }, [videoSrcWithReload, tipo]);
 
   const jumpTo = useCallback((tsSeconds: number) => {
     const v = videoRef.current;
     if (!v) return;
 
-    const MARGIN = 0.3;
-    const target = Math.max(0, tsSeconds - MARGIN);
+    const target = Math.max(0, tsSeconds - 0.3);
 
     if (lastJumpRef.current !== null && Math.abs(lastJumpRef.current - target) < 0.05) return;
     lastJumpRef.current = target;
@@ -253,6 +284,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
     };
 
     v.addEventListener("seeked", onSeeked, { once: true });
+
     try {
       v.currentTime = target;
     } catch {
@@ -281,12 +313,14 @@ export default function VideoDetailPage({ id }: { id: string }) {
           toSecFromUnknown((row as any).start_ms);
       }
     }
+
     if (sec == null || Number.isNaN(sec)) return;
     jumpTo(sec);
   }, [tipo, matchIndices, currentMatchIndex, getStartSecFor, tableData, jumpTo]);
 
   const handlePlay = useCallback(() => {
     if (!id) return;
+
     fetch(`/api/views/${id}`, { method: "POST" })
       .then((res) => res.json())
       .then((data) => {
@@ -295,52 +329,17 @@ export default function VideoDetailPage({ id }: { id: string }) {
       .catch(() => {});
   }, [id]);
 
-  const sendMessage = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      const text = msg.trim();
-      if (!text || !canPost || !me?.id) return;
-
-      const optimistic: CommentRow = {
-        id: "tmp-" + Date.now(),
-        content: text,
-        created_at: new Date().toISOString(),
-        user_id: me.id,
-        author_name: me.name || "Tú",
-      };
-      setComments((c) => [optimistic, ...c]);
-      setMsg("");
-
-      setSending(true);
-      try {
-        const res = await fetch("/api/comments", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uploadId: id, content: text, userId: me.id }),
-        });
-        if (!res.ok) throw new Error();
-        const saved: CommentRow = await res.json();
-        setComments((c) => [saved, ...c.filter((x) => x.id !== optimistic.id)]);
-      } catch {
-        setComments((c) => c.filter((x) => x.id !== optimistic.id));
-        setMsg(text);
-        alert("No se pudo enviar el comentario.");
-      } finally {
-        setSending(false);
-      }
-    },
-    [id, msg, canPost, me]
-  );
-
-  // Puedes pasar data real aquí cuando conectes la BD
-  const fichaData: FichaTecnicaData | undefined = undefined;
+  const retryVideo = useCallback(() => {
+    setVideoError(null);
+    setVideoLoading(true);
+    setVideoBuffering(false);
+    setReloadNonce((n) => n + 1);
+  }, []);
 
   return (
     <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
       <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna izquierda */}
         <div className="lg:col-span-2">
-          {/* VIDEO */}
           {tipo === "video" && videoUrl && (
             <div className="mb-4">
               <div
@@ -349,25 +348,90 @@ export default function VideoDetailPage({ id }: { id: string }) {
               >
                 {documentFileName || "Video sin nombre"}
               </div>
-              <div className="flex justify-center">
+
+              <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
+                {(videoLoading || videoBuffering) && !videoError && (
+                  <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
+                      <p className="text-xs text-zinc-300">
+                        {videoBuffering ? "Cargando reproducción..." : "Preparando video..."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {videoError && (
+                  <div className="absolute inset-0 z-20 grid place-items-center bg-black/80 px-4">
+                    <div className="max-w-md text-center">
+                      <p className="text-sm text-zinc-200 mb-3">{videoError}</p>
+                      <button
+                        type="button"
+                        onClick={retryVideo}
+                        className="px-4 py-2 rounded-lg border border-orange-400 text-orange-300 hover:bg-orange-500/10 text-sm"
+                      >
+                        Reintentar reproducción
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <video
                   ref={videoRef}
-                  src={resolvedVideoUrl ?? undefined}
+                  src={videoSrcWithReload ?? undefined}
                   controls
                   playsInline
                   controlsList="nodownload"
-                  className="rounded-md shadow border border-zinc-700 max-w-full max-h-[420px] w-full h-auto"
+                  className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
                   preload="metadata"
+                  onLoadStart={() => {
+                    setVideoLoading(true);
+                    setVideoError(null);
+                  }}
+                  onLoadedMetadata={() => {
+                    setVideoLoading(false);
+                  }}
+                  onCanPlay={() => {
+                    setVideoLoading(false);
+                    setVideoBuffering(false);
+                  }}
+                  onCanPlayThrough={() => {
+                    setVideoLoading(false);
+                    setVideoBuffering(false);
+                  }}
+                  onWaiting={() => {
+                    setVideoBuffering(true);
+                  }}
+                  onPlaying={() => {
+                    setVideoLoading(false);
+                    setVideoBuffering(false);
+                  }}
+                  onStalled={() => {
+                    setVideoBuffering(true);
+                  }}
+                  onError={() => {
+                    if (!retriedRef.current) {
+                      retriedRef.current = true;
+                      setReloadNonce((n) => n + 1);
+                      return;
+                    }
+
+                    setVideoLoading(false);
+                    setVideoBuffering(false);
+                    setVideoError(
+                      "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
+                    );
+                  }}
                   onPlay={handlePlay}
                 />
               </div>
+
               <div className="text-xs sm:text-sm text-zinc-400 mt-2 text-center">
                 {views} visualización{views === 1 ? "" : "es"}
               </div>
             </div>
           )}
 
-          {/* DOCUMENTO */}
           {tipo === "documento" && documentUrl && (
             <div className="mb-4">
               <div
@@ -376,6 +440,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
               >
                 {documentFileName || "Documento sin nombre"}
               </div>
+
               <DocumentViewer
                 url={documentUrl}
                 fileName={documentFileName || documentUrl}
@@ -387,15 +452,13 @@ export default function VideoDetailPage({ id }: { id: string }) {
             </div>
           )}
 
-          {/* Buscador + contador + rating */}
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <input
               type="text"
               placeholder=" Buscar palabra o frase..."
               value={searchTerm}
               onChange={(e) => {
-                const q = e.target.value;
-                setSearchTerm(q);
+                setSearchTerm(e.target.value);
                 setCurrentMatchIndex(0);
               }}
               onKeyDown={(e) => {
@@ -406,16 +469,19 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
                 if (tipo === "documento" && viewerApiRef.current?.step) {
                   const nextFromViewer = viewerApiRef.current.step(dir);
+
                   if (Number.isFinite(nextFromViewer) && matchIndices.length) {
                     const synced =
                       ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
                       matchIndices.length;
                     setCurrentMatchIndex(synced);
                   }
+
                   return;
                 }
 
                 if (!matchIndices.length) return;
+
                 const next =
                   (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
                 setCurrentMatchIndex(next);
@@ -433,7 +499,6 @@ export default function VideoDetailPage({ id }: { id: string }) {
             </div>
           </div>
 
-          {/* Tablas */}
           {polling && subtitulos.length === 0 && tipo === "video" && (
             <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
           )}
@@ -461,7 +526,6 @@ export default function VideoDetailPage({ id }: { id: string }) {
             />
           )}
 
-          {/* Volver */}
           <div className="mt-8 flex justify-center">
             <button
               onClick={() => router.push("/")}
@@ -471,18 +535,14 @@ export default function VideoDetailPage({ id }: { id: string }) {
             </button>
           </div>
 
-          {/* Carruseles */}
           <div className="mt-12">
             <LastVideosCarousel />
             <MostViewedCarousel />
-            {/* <VimeoGallery /> */}
           </div>
         </div>
 
-        {/* Derecha: Ficha técnica + Chat */}
         <div className="space-y-6">
-           <FichaTecnica uploadId={id} />
-          {/* <ChatLateral uploadId={id} /> */}
+          <FichaTecnica uploadId={id} />
         </div>
       </div>
     </div>

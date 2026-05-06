@@ -61,18 +61,28 @@ export default function TablaSubtitulos({
   const q = useMemo(() => searchTerm.trim().toLowerCase(), [searchTerm]);
 
   // Recalcula matches cuando cambia el searchTerm
-  useEffect(() => {
-    if (!q) {
-      setMatchIndices([]);
-      return;
-    }
-    const indices: number[] = [];
-    for (let i = 0; i < data.length; i++) {
-      const t = (data[i]?.text || "").toLowerCase();
-      if (t.includes(q)) indices.push(i);
-    }
+ useEffect(() => {
+  if (!q) {
+    if (matchIndices.length) setMatchIndices([]);
+    return;
+  }
+
+  const indices: number[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const t = (data[i]?.text || "").toLowerCase();
+    if (t.includes(q)) indices.push(i);
+  }
+
+  const same =
+    indices.length === matchIndices.length &&
+    indices.every((v, i) => v === matchIndices[i]);
+
+  if (!same) {
     setMatchIndices(indices);
-  }, [q, data, setMatchIndices]);
+    setCurrentMatchIndex(0);
+  }
+}, [q, data.length, matchIndices, setMatchIndices, setCurrentMatchIndex]);
 
   const activeRowIndex = useMemo(() => {
     if (!matchIndices.length) return null;

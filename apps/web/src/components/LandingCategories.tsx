@@ -5,7 +5,6 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
-/* ====================== Tipos ====================== */
 type Item = {
   id: string;
   url: string;
@@ -13,7 +12,6 @@ type Item = {
   tipo?: string;
 };
 
-/* ====================== Utils ====================== */
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
 
 function stripExt(s?: string | null) {
@@ -30,26 +28,25 @@ function stripExt(s?: string | null) {
   return base.replace(/\.[^.\/\\]+$/g, "");
 }
 
-/**
- * ✅ SIEMPRE proxifica URLs absolutas (MinIO) para evitar CORS en prod.
- * - Si ya viene proxificada, la deja.
- * - Si viene absoluta http/https, la manda a /api/proxy
- * - Si viene relativa, la deja tal cual (por si en local ya sirves desde tu app)
- */
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
   const s = String(u);
 
   if (s.startsWith("/api/proxy?url=")) return s;
 
-  if (s.startsWith("http://") || s.startsWith("https://")) {
+  // gs:// sí necesita proxy
+  if (s.startsWith("gs://")) {
     return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  // signed URLs / http(s) públicas => directo
+  if (s.startsWith("http://") || s.startsWith("https://")) {
+    return s;
   }
 
   return s;
 }
 
-/* ====================== Grid de categorías (según Excel) ====================== */
 const CATS = [
   {
     slug: "publicidad",
@@ -64,14 +61,13 @@ const CATS = [
     desc: "Contenido y piezas de entretenimiento.",
   },
   {
-    slug: "otros",
-    label: "Otros",
+    slug: "vxf",
+    label: "VXF",
     cover: "/Garage.jpg",
-    desc: "Producción, corporativo y nuevos negocios.",
+    desc: "Contenido y entregables VXF.",
   },
-];
+] as const;
 
-/* ====================== Página con carrusel inline ====================== */
 export default function LandingCategories() {
   const [items, setItems] = useState<Item[]>([]);
   const [index, setIndex] = useState(0);
@@ -80,7 +76,6 @@ export default function LandingCategories() {
   const INTERVAL = 6000;
   const selectionMode = false;
 
-  // Fetch a /api/videos y limita a 10
   useEffect(() => {
     let cancel = false;
     (async () => {
@@ -93,16 +88,13 @@ export default function LandingCategories() {
           setItems(list);
           setIndex(0);
         }
-      } catch {
-        // silencio intencional
-      }
+      } catch {}
     })();
     return () => {
       cancel = true;
     };
   }, []);
 
-  // Auto-advance
   useEffect(() => {
     if (!items.length) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -114,7 +106,6 @@ export default function LandingCategories() {
     };
   }, [index, items.length]);
 
-  // Reproduce solo el slide activo
   useEffect(() => {
     videoRefs.current.forEach((v, i) => {
       if (!v) return;
@@ -136,7 +127,6 @@ export default function LandingCategories() {
 
   return (
     <div className="w-full">
-      {/* Carrusel */}
       {items.length > 0 && (
         <div className="relative w-full overflow-hidden">
           <div
@@ -144,12 +134,10 @@ export default function LandingCategories() {
             style={{ transform: `translateX(-${index * 100}%)` }}
           >
             {items.map((item, i) => {
-              const isVideo = item.tipo === "video" || VIDEO_EXT.test(item.url);
+              const src = proxiedUrl(item.url);
+              const isVideo = item.tipo === "video" || VIDEO_EXT.test(item.url || "");
               const name = stripExt(item.file_name) || "Archivo";
               const href = `/videos/${item.id}`;
-
-              // ✅ CLAVE: en vez de item.url directo (MinIO), usamos proxy
-              const src = proxiedUrl(item.url);
 
               return (
                 <div key={item.id} className="relative w-full shrink-0 basis-full">
@@ -167,7 +155,11 @@ export default function LandingCategories() {
                         preload="metadata"
                         controls={false}
                         disablePictureInPicture
-                        // ✅ IMPORTANTÍSIMO: quitamos crossOrigin porque ya es same-origin (proxy)
+                        onLoadedData={(e) => {
+                          if (i === index) {
+                            e.currentTarget.play().catch(() => {});
+                          }
+                        }}
                         className="absolute inset-0 w-full h-full object-cover"
                       />
                     ) : (
@@ -208,7 +200,6 @@ export default function LandingCategories() {
             })}
           </div>
 
-          {/* Controles */}
           <button
             onClick={prev}
             aria-label="Anterior"
@@ -224,7 +215,6 @@ export default function LandingCategories() {
             ›
           </button>
 
-          {/* Dots */}
           <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-2">
             {items.map((_, i) => (
               <button
@@ -240,7 +230,6 @@ export default function LandingCategories() {
         </div>
       )}
 
-      {/* Categorías principales */}
       <div className="w-full flex justify-center">
         <div className="w-full max-w-[1200px] px-4 py-8">
           <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">
@@ -284,7 +273,6 @@ export default function LandingCategories() {
 // import { motion } from "framer-motion";
 // import { useEffect, useRef, useState } from "react";
 
-// /* ====================== Tipos ====================== */
 // type Item = {
 //   id: string;
 //   url: string;
@@ -292,18 +280,15 @@ export default function LandingCategories() {
 //   tipo?: string;
 // };
 
-// /* ====================== Utils ====================== */
 // const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
 
 // function stripExt(s?: string | null) {
 //   if (!s) return "Archivo";
 
-//   // Intentamos decodificar sin romper la app
 //   let safe = s;
 //   try {
 //     safe = decodeURIComponent(s);
 //   } catch {
-//     // Si la URI está mal formada, usamos el string original
 //     safe = s;
 //   }
 
@@ -311,7 +296,23 @@ export default function LandingCategories() {
 //   return base.replace(/\.[^.\/\\]+$/g, "");
 // }
 
-// /* ====================== Grid de categorías (según Excel) ====================== */
+// function proxiedUrl(u?: string | null) {
+//   if (!u) return "";
+//   const s = String(u);
+
+//   if (s.startsWith("/api/proxy?url=")) return s;
+
+//   if (s.startsWith("gs://")) {
+//     return `/api/proxy?url=${encodeURIComponent(s)}`;
+//   }
+
+//   if (s.startsWith("http://") || s.startsWith("https://")) {
+//     return `/api/proxy?url=${encodeURIComponent(s)}`;
+//   }
+
+//   return s;
+// }
+
 // const CATS = [
 //   {
 //     slug: "publicidad",
@@ -326,14 +327,13 @@ export default function LandingCategories() {
 //     desc: "Contenido y piezas de entretenimiento.",
 //   },
 //   {
-//     slug: "otros",
-//     label: "Otros",
+//     slug: "vxf",
+//     label: "VXF",
 //     cover: "/Garage.jpg",
-//     desc: "Producción, corporativo y nuevos negocios.",
+//     desc: "Contenido y entregables VXF.",
 //   },
-// ];
+// ] as const;
 
-// /* ====================== Página con carrusel inline ====================== */
 // export default function LandingCategories() {
 //   const [items, setItems] = useState<Item[]>([]);
 //   const [index, setIndex] = useState(0);
@@ -342,7 +342,6 @@ export default function LandingCategories() {
 //   const INTERVAL = 6000;
 //   const selectionMode = false;
 
-//   // Fetch a /api/videos y limita a 10
 //   useEffect(() => {
 //     let cancel = false;
 //     (async () => {
@@ -355,16 +354,13 @@ export default function LandingCategories() {
 //           setItems(list);
 //           setIndex(0);
 //         }
-//       } catch {
-//         // silencio intencional
-//       }
+//       } catch {}
 //     })();
 //     return () => {
 //       cancel = true;
 //     };
 //   }, []);
 
-//   // Auto-advance
 //   useEffect(() => {
 //     if (!items.length) return;
 //     if (timerRef.current) clearTimeout(timerRef.current);
@@ -376,7 +372,6 @@ export default function LandingCategories() {
 //     };
 //   }, [index, items.length]);
 
-//   // Reproduce solo el slide activo
 //   useEffect(() => {
 //     videoRefs.current.forEach((v, i) => {
 //       if (!v) return;
@@ -398,7 +393,6 @@ export default function LandingCategories() {
 
 //   return (
 //     <div className="w-full">
-//       {/* Carrusel */}
 //       {items.length > 0 && (
 //         <div className="relative w-full overflow-hidden">
 //           <div
@@ -409,6 +403,8 @@ export default function LandingCategories() {
 //               const isVideo = item.tipo === "video" || VIDEO_EXT.test(item.url);
 //               const name = stripExt(item.file_name) || "Archivo";
 //               const href = `/videos/${item.id}`;
+//               const src = proxiedUrl(item.url);
+
 //               return (
 //                 <div key={item.id} className="relative w-full shrink-0 basis-full">
 //                   <div className="relative h-[40vh] sm:h-[50vh] md:h-[60vh] bg-zinc-900">
@@ -417,15 +413,19 @@ export default function LandingCategories() {
 //                         ref={(el) => {
 //                           videoRefs.current[i] = el;
 //                         }}
-//                         src={item.url}
+//                         src={src}
 //                         muted
 //                         loop
 //                         playsInline
 //                         autoPlay
-//                         preload="metadata"
+//                         preload="auto"
 //                         controls={false}
 //                         disablePictureInPicture
-//                         crossOrigin="anonymous"
+//                         onLoadedData={(e) => {
+//                           if (i === index) {
+//                             e.currentTarget.play().catch(() => {});
+//                           }
+//                         }}
 //                         className="absolute inset-0 w-full h-full object-cover"
 //                       />
 //                     ) : (
@@ -466,7 +466,6 @@ export default function LandingCategories() {
 //             })}
 //           </div>
 
-//           {/* Controles */}
 //           <button
 //             onClick={prev}
 //             aria-label="Anterior"
@@ -482,7 +481,6 @@ export default function LandingCategories() {
 //             ›
 //           </button>
 
-//           {/* Dots */}
 //           <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-2">
 //             {items.map((_, i) => (
 //               <button
@@ -498,7 +496,6 @@ export default function LandingCategories() {
 //         </div>
 //       )}
 
-//       {/* Categorías principales */}
 //       <div className="w-full flex justify-center">
 //         <div className="w-full max-w-[1200px] px-4 py-8">
 //           <h1 className="text-center text-2xl md:text-3xl font-bold mb-6">
@@ -533,5 +530,4 @@ export default function LandingCategories() {
 //     </div>
 //   );
 // }
-
 
