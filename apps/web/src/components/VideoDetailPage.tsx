@@ -5,8 +5,8 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import DocumentViewer from "@/components/DocumentViewer";
 import { useSubtitlesPolling } from "@/hooks/useSubtitlesPolling";
-import LastVideosCarousel from "@/components/LastVideosCarousel";
-import MostViewedCarousel from "@/components/MostViewedCarousel";
+import Link from "next/link";
+import Image from "next/image";
 import FichaTecnica from "@/components/FichaTecnica";
 
 const TablaSubtitulos = dynamic(() => import("@/components/TablaSubtitulos"), {
@@ -40,6 +40,27 @@ type Subtitulo = {
   text: string;
   [k: string]: any;
 };
+
+const CATS = [
+  {
+    slug: "publicidad",
+    label: "Publicidad",
+    cover: "/Publicidad.avif",
+    desc: "Piezas y campañas publicitarias.",
+  },
+  {
+    slug: "entretenimiento",
+    label: "Entretenimiento",
+    cover: "/babybandito2.jpg",
+    desc: "Contenido y piezas de entretenimiento.",
+  },
+  {
+    slug: "vxf",
+    label: "VXF",
+    cover: "/Garage.jpg",
+    desc: "Contenido y entregables VXF.",
+  },
+] as const;
 
 function normalizeSubtitlesResponse(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -581,9 +602,40 @@ export default function VideoDetailPage({ id }: { id: string }) {
           </div>
 
           <div className="mt-12">
-            <LastVideosCarousel />
-            <MostViewedCarousel />
+  <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
+    Explorar categorías
+  </h2>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+    {CATS.map((cat, i) => (
+      <Link
+        key={cat.slug}
+        href={`/organizar/${cat.slug}`}
+        className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
+      >
+        <article className="h-full">
+          <div className="relative aspect-[4/3] bg-black overflow-hidden">
+            <Image
+              src={cat.cover}
+              alt={cat.label}
+              fill
+              className="object-cover group-hover:scale-105 transition duration-500"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              priority={i === 0}
+            />
+
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+
+            <div className="absolute bottom-0 left-0 right-0 p-4">
+              <h3 className="text-lg font-bold text-white">{cat.label}</h3>
+              <p className="text-sm text-zinc-300 mt-1">{cat.desc}</p>
+            </div>
           </div>
+        </article>
+      </Link>
+    ))}
+  </div>
+</div>
         </div>
 
         <div className="space-y-6">
