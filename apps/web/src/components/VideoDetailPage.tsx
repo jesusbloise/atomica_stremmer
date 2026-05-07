@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DocumentViewer from "@/components/DocumentViewer";
 import { useSubtitlesPolling } from "@/hooks/useSubtitlesPolling";
 import Link from "next/link";
@@ -137,6 +137,7 @@ function resolvePlayableSrc(url?: string | null) {
 
 export default function VideoDetailPage({ id }: { id: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [tipo, setTipo] = useState<"video" | "documento" | null>(null);
@@ -208,6 +209,14 @@ export default function VideoDetailPage({ id }: { id: string }) {
       return { time_start: start, time_end: end, text, ...r } as Subtitulo;
     });
   }, [subtitulos]);
+  useEffect(() => {
+  const q = searchParams.get("q");
+
+  if (q && q.trim()) {
+    setSearchTerm(q.trim());
+    setCurrentMatchIndex(0);
+  }
+}, [searchParams]);
 
   useEffect(() => {
     if (!id) return;

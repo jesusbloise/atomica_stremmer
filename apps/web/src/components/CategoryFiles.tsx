@@ -185,9 +185,6 @@ function VideoStaticPreview({
 
       <div className="absolute inset-0 bg-black/15" />
 
-      <div className="absolute bottom-3 left-3 h-9 w-9 rounded-full bg-black/60 border border-white/20 grid place-items-center text-orange-400 text-sm">
-        ▶
-      </div>
     </div>
   );
 }
@@ -867,108 +864,61 @@ const previewUrl = proxiedUrl(rawUrl);
 }
 
 function CategoryCarousel({ items }: { items: UploadItem[] }) {
-  const [perPage, setPerPage] = useState(5);
-  const [page, setPage] = useState(0);
+  const rowRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const update = () => setPerPage(getPerPage(window.innerWidth));
-    update();
+  const scrollByAmount = (dir: "left" | "right") => {
+    const el = rowRef.current;
+    if (!el) return;
 
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+    const amount = Math.floor(el.clientWidth * 0.85);
 
-  const pages = useMemo(() => chunk(items, perPage), [items, perPage]);
-  const total = pages.length;
-
-  useEffect(() => {
-    if (page > total - 1) setPage(0);
-  }, [total, page]);
-
-  const next = () => total && setPage((p) => (p + 1) % total);
-  const prev = () => total && setPage((p) => (p - 1 + total) % total);
-
-  const touchStartX = useRef<number | null>(null);
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
+    el.scrollBy({
+      left: dir === "right" ? amount : -amount,
+      behavior: "smooth",
+    });
   };
 
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > 48) dx < 0 ? next() : prev();
-
-    touchStartX.current = null;
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") prev();
-      if (e.key === "ArrowRight") next();
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [total]);
+  if (!items.length) return null;
 
   return (
-    <section
-      className="relative overflow-hidden rounded-2xl"
-      role="region"
-      aria-roledescription="carousel"
-      aria-label="Archivos"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-    >
-      <div
-        className="flex transition-transform duration-500 ease-out"
-        style={{ transform: `translateX(-${page * 100}%)` }}
+    <section className="relative group px-12 md:px-16">
+      <button
+        type="button"
+        onClick={() => scrollByAmount("left")}
+        aria-label="Anterior"
+        className="hidden md:grid absolute left-0 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full bg-orange-500 text-black text-2xl font-bold shadow-xl hover:bg-orange-400 transition"
       >
-        {pages.map((slice, idx) => (
-          <div key={idx} className="w-full shrink-0">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {slice.map((u) => (
-                <CardItem key={u.id} item={u} />
-              ))}
+        ‹
+      </button>
+
+      <div
+        ref={rowRef}
+        className="overflow-x-auto scroll-smooth"
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+      >
+        <div className="flex gap-5 pb-2">
+          {items.map((u) => (
+            <div
+              key={u.id}
+              className="shrink-0 w-[72vw] sm:w-[340px] md:w-[300px] lg:w-[280px] xl:w-[270px]"
+            >
+              <CardItem item={u} />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {total > 1 && (
-        <>
-          <button
-            onClick={prev}
-            aria-label="Anterior"
-            className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-white z-10"
-          >
-            ‹
-          </button>
-
-          <button
-            onClick={next}
-            aria-label="Siguiente"
-            className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 border border-white/15 text-white z-10"
-          >
-            ›
-          </button>
-
-          <div className="mt-4 flex items-center justify-center gap-2">
-            {Array.from({ length: total }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i)}
-                aria-label={`Ir al grupo ${i + 1}`}
-                className={`h-2.5 rounded-full transition-all ${
-                  i === page ? "w-6 bg-white" : "w-2.5 bg-white/50 hover:bg-white/80"
-                }`}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <button
+        type="button"
+        onClick={() => scrollByAmount("right")}
+        aria-label="Siguiente"
+        className="hidden md:grid absolute right-0 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full bg-orange-500 text-black text-2xl font-bold shadow-xl hover:bg-orange-400 transition"
+      >
+        ›
+      </button>
     </section>
   );
 }
