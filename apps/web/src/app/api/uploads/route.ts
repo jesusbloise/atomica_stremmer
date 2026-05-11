@@ -10,6 +10,8 @@ export const revalidate = 0;
 type RowUpload = {
   id: string;
   file_name: string | null;
+  display_name: string | null;
+  titulo: string | null;
   file_key: string | null;
   file_path: string | null;
   size_in_bytes: number | null;
@@ -74,34 +76,38 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit") || 500), 1), 1000);
 
   try {
-    const where: string[] = [`(is_deleted IS NOT TRUE)`];
+    const where: string[] = [`(u.is_deleted IS NOT TRUE)`];
     const params: Array<string | number> = [];
     let i = 1;
 
     if (category) {
-      where.push(`LOWER(category) = $${i++}`);
+      where.push(`LOWER(u.category) = $${i++}`);
       params.push(category);
     }
 
     if (subcategory) {
-      where.push(`subcategory = $${i++}`);
+      where.push(`u.subcategory = $${i++}`);
       params.push(subcategory);
     }
 
     const sql = `
       SELECT
-        id,
-        file_name,
-        file_key,
-        file_path,
-        size_in_bytes,
-        uploaded_at,
-        tipo,
-        category,
-        subcategory
-      FROM uploads
+        u.id,
+        u.file_name,
+        ft.titulo,
+        COALESCE(NULLIF(ft.titulo, ''), u.file_name) AS display_name,
+        u.file_key,
+        u.file_path,
+        u.size_in_bytes,
+        u.uploaded_at,
+        u.tipo,
+        u.category,
+        u.subcategory
+      FROM uploads u
+      LEFT JOIN ficha_tecnica ft
+        ON ft.upload_id::text = u.id::text
       WHERE ${where.join(" AND ")}
-      ORDER BY uploaded_at DESC
+      ORDER BY u.uploaded_at DESC
       LIMIT $${i}
     `;
 
@@ -125,74 +131,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
-// import { NextRequest, NextResponse } from "next/server";
-// import pool from "@/db";
-
-// export const dynamic = "force-dynamic";
-// export const revalidate = 0;
-
-// type RowUpload = {
-//   id: string;
-//   file_name: string | null;
-//   file_key: string | null;
-//   file_path: string | null;
-//   size_in_bytes: number | null;
-//   uploaded_at: string | null;
-//   tipo: string | null;
-//   category?: string | null;
-//   subcategory?: string | null;
-// };
-
-// export async function GET(req: NextRequest) {
-//   const { searchParams } = new URL(req.url);
-
-//   const category = searchParams.get("category")?.trim().toLowerCase() || null;
-//   const subcategory = searchParams.get("subcategory")?.trim() || null;
-//   const limit = Math.min(Math.max(Number(searchParams.get("limit") || 500), 1), 1000);
-
-//   try {
-//     const where: string[] = [];
-//     const params: Array<string | number> = [];
-//     let i = 1;
-
-//     if (category) {
-//       where.push(`LOWER(category) = $${i++}`);
-//       params.push(category);
-//     }
-
-//     if (subcategory) {
-//       where.push(`subcategory = $${i++}`);
-//       params.push(subcategory);
-//     }
-
-//     const sql = `
-//       SELECT
-//         id,
-//         file_name,
-//         file_key,
-//         file_path,
-//         size_in_bytes,
-//         uploaded_at,
-//         tipo,
-//         category,
-//         subcategory
-//       FROM uploads
-//       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-//       ORDER BY uploaded_at DESC
-//       LIMIT $${i}
-//     `;
-
-//     params.push(limit);
-
-//     const { rows } = await pool.query<RowUpload>(sql, params);
-
-//     return NextResponse.json(rows);
-//   } catch (e) {
-//     console.error("GET /api/uploads error:", e);
-//     return NextResponse.json(
-//       { error: "No se pudieron cargar los archivos" },
-//       { status: 500 }
-//     );
-//   }
-// }

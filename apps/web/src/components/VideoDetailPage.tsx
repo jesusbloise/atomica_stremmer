@@ -603,11 +603,11 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
           <div className="mt-8 flex justify-center">
             <button
-              onClick={() => router.push("/")}
-              className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
-            >
-              ← Volver a la lista de archivos
-            </button>
+  onClick={() => router.back()}
+  className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
+>
+  ← Volver atrás
+</button>
           </div>
 
           <div className="mt-12">

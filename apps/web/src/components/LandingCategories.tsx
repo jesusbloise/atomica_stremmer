@@ -9,6 +9,8 @@ type Item = {
   id: string;
   url: string;
   file_name?: string;
+  display_name?: string | null;
+  titulo?: string | null;
   tipo?: string;
 };
 
@@ -141,7 +143,11 @@ export default function LandingCategories() {
 
   const src = current ? proxiedUrl(current.url) : "";
   const isVideo = current?.tipo === "video" || VIDEO_EXT.test(current?.url || "");
-  const name = stripExt(current?.file_name) || "Archivo";
+  const name = stripExt(
+  current?.display_name ||
+  current?.titulo ||
+  current?.file_name
+) || "Archivo";
   const href = current ? `/videos/${current.id}` : "#";
 
   return (

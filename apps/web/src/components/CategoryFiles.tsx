@@ -72,6 +72,8 @@ type UploadItem = {
   category?: string | null;
   subcategory?: string | null;
   thumbnail_url?: string | null;
+  display_name?: string;
+titulo?: string;
 };
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
@@ -738,7 +740,12 @@ function CardItem({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
 
   const rawUrl = item.url || item.file_path || "";
-const name = stripExt(item.file_name || rawUrl);
+const name = stripExt(
+  item.display_name ||
+  item.titulo ||
+  item.file_name ||
+  rawUrl
+);
 const previewUrl = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
@@ -812,7 +819,12 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
 
   const rawUrl = item.url || item.file_path || "";
-const name = stripExt(item.file_name || rawUrl);
+const name = stripExt(
+  item.display_name ||
+  item.titulo ||
+  item.file_name ||
+  rawUrl
+);
 const previewUrl = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
