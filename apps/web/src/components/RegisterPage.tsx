@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import logoUDD from "@/../public/ATOMICA-Logo-02.png"; // si prefieres <img>, cambia esto
 
 export default function RegisterPage() {
@@ -65,7 +66,10 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
-
+const handleGoogleRegister = () => {
+  localStorage.setItem("showSplash", "true");
+  signIn("google", { callbackUrl: "/" });
+};
   return (
     <div className="min-h-screen grid grid-cols-1 md:grid-cols-2">
       {/* Izquierda */}
@@ -142,7 +146,27 @@ export default function RegisterPage() {
               {loading ? "Creando…" : "Crear cuenta"}
             </button>
           </form>
+<div className="flex items-center justify-center gap-4 text-zinc-400 text-sm">
+  <hr className="border-zinc-600 w-1/5" />
+  o registrarte con
+  <hr className="border-zinc-600 w-1/5" />
+</div>
 
+<button
+  type="button"
+  onClick={handleGoogleRegister}
+  disabled={loading || !!ok}
+  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded flex items-center justify-center gap-2 disabled:opacity-60"
+  aria-label="Registrarse con Google"
+>
+  <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.826 32.33 29.274 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 12.954 4 4 12.954 4 24s8.954 20 20 20 20-8.954 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+    <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.674 16.108 18.994 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.869 6.053 29.7 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+    <path fill="#4CAF50" d="M24 44c5.19 0 9.93-1.98 13.5-5.2l-6.2-5.2C29.14 35.771 26.715 36 24 36c-5.252 0-9.792-3.354-11.387-8.034l-6.492 5.006C9.444 39.567 16.18 44 24 44z"/>
+    <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.109 3.233-3.571 5.84-6.803 7.6l6.2 5.2C36.429 41.246 44 36 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+  </svg>
+  Registrarme con Google
+</button>
           <p className="text-sm text-center">
             ¿Ya tienes cuenta?{" "}
             <a href="/login" className="underline text-blue-400">
