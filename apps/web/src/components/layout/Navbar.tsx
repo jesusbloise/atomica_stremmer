@@ -92,16 +92,31 @@ export default function Navbar() {
 
   // (Opcional) Escucha evento disparado desde la página de perfil al guardar
   // window.dispatchEvent(new CustomEvent('profile:avatar-changed', { detail: urlFinal }))
-  useEffect(() => {
-    const onChanged = (e: any) => {
-      const raw = String(e?.detail || "");
-      if (!raw) return;
+useEffect(() => {
+  const onChanged = (e: any) => {
+    const detail = e?.detail || {};
+
+    if (detail.name) {
+      setSession((prev) =>
+        prev ? { ...prev, name: String(detail.name) } : prev
+      );
+    }
+
+    if (detail.avatarUrl) {
+      const raw = String(detail.avatarUrl);
       const withBust = `${raw}${raw.includes("?") ? "&" : "?"}v=${Date.now()}`;
       setAvatarUrl(withBust);
-    };
-    window.addEventListener("profile:avatar-changed" as any, onChanged);
-    return () => window.removeEventListener("profile:avatar-changed" as any, onChanged);
-  }, []);
+    }
+  };
+
+  window.addEventListener("profile:updated" as any, onChanged);
+  window.addEventListener("profile:avatar-changed" as any, onChanged);
+
+  return () => {
+    window.removeEventListener("profile:updated" as any, onChanged);
+    window.removeEventListener("profile:avatar-changed" as any, onChanged);
+  };
+}, []);
 
   // si estamos en /explorar, toma q de la URL (ya normalizada) y aplica filtro también
   useEffect(() => {

@@ -1,17 +1,58 @@
-// src/app/api/perfil/route.ts
 import { NextResponse } from "next/server";
 import pool from "@/db";
-import { promises as fs } from "fs";
-import path from "path";
 import crypto from "crypto";
+import { Storage } from "@google-cloud/storage";
+import { cookies } from "next/headers";
 
-// Ajusta según tu auth. Debe devolver { id, name, email } del usuario logueado.
-async function getSessionUser(req: Request) {
-  const me = await fetch(new URL("/api/me", req.url), {
-    cache: "no-store",
-    headers: { cookie: (req as any).headers.get("cookie") || "" },
-  }).then((r) => (r.ok ? r.json() : null));
-  return me; // { id, name, email }
+const storage = new Storage();
+const GCS_BUCKET = process.env.GCS_BUCKET;
+
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+function getSubFromJwt(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+
+    const json = Buffer.from(payload, "base64url").toString("utf8");
+    const data = JSON.parse(json);
+
+    return typeof data?.sub === "string" ? data.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getSessionUser() {
+  try {
+    const cookieStore = await cookies();
+
+    const rawAuth =
+      cookieStore.get("auth")?.value ||
+      cookieStore.get("next-auth.session-token")?.value ||
+      cookieStore.get("__Secure-next-auth.session-token")?.value;
+
+    if (!rawAuth) return null;
+
+    const userId = isUuid(rawAuth) ? rawAuth : getSubFromJwt(rawAuth);
+
+    if (!userId || !isUuid(userId)) return null;
+
+    const { rows } = await pool.query(
+      `SELECT id, name, email
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [userId]
+    );
+
+    return rows[0] || null;
+  } catch (e) {
+    console.error("SESSION ERROR:", e);
+    return null;
+  }
 }
 
 /** Convierte una dataURL en Buffer + mime */
@@ -33,12 +74,13 @@ function extFromMime(mime: string) {
 }
 
 /** Guarda el avatar y retorna la URL pública (/uploads/avatars/...) */
-async function saveAvatarLocally(userId: string, file: File | null, dataUrl: string | null, req: Request) {
+async function saveAvatarToGCS(
+  userId: string,
+  file: File | null,
+  dataUrl: string | null
+) {
   if (!file && !dataUrl) return null;
-
-  // Directorio destino dentro de /public
-  const publicDir = path.join(process.cwd(), "public", "uploads", "avatars");
-  await fs.mkdir(publicDir, { recursive: true });
+  if (!GCS_BUCKET) throw new Error("GCS_BUCKET no configurado");
 
   let buffer: Buffer;
   let mime: string;
@@ -53,22 +95,25 @@ async function saveAvatarLocally(userId: string, file: File | null, dataUrl: str
     mime = parsed.mime;
   }
 
-  // Nombre estable: userId + hash corto + extensión (evita colisiones y cache)
   const hash = crypto.createHash("md5").update(buffer).digest("hex").slice(0, 8);
   const ext = extFromMime(mime);
-  const filename = `${userId}-${hash}.${ext}`;
-  const destPath = path.join(publicDir, filename);
-  await fs.writeFile(destPath, buffer);
+  const objectPath = `avatars/${userId}-${hash}.${ext}`;
 
-  // URL pública servida por Next desde /public
-  const urlPath = `/uploads/avatars/${filename}`;
-  // agrega timestamp para romper cache cuando se actualiza
-  const bust = `?ts=${Date.now()}`;
-  return urlPath + bust;
+  await storage.bucket(GCS_BUCKET).file(objectPath).save(buffer, {
+    metadata: {
+      contentType: mime,
+      cacheControl: "public, max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  const gsPath = `gs://${GCS_BUCKET}/${objectPath}`;
+
+  return `/api/proxy?url=${encodeURIComponent(gsPath)}&ts=${Date.now()}`;
 }
 
 export async function PUT(req: Request) {
-  const user = await getSessionUser(req);
+  const user = await getSessionUser();
   if (!user?.id)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -105,7 +150,7 @@ export async function PUT(req: Request) {
   const avatarDataUrl = String(form.get("avatarDataUrl") || "") || null;
 
   // Guarda localmente (en /public/uploads/avatars)
-  const savedUrl = await saveAvatarLocally(user.id, avatarFile, avatarDataUrl, req);
+  const savedUrl = await saveAvatarToGCS(user.id, avatarFile, avatarDataUrl);
   // Si no se envió nada, mantenemos null para no pisar lo existente
   let avatar_url: string | null = savedUrl;
 
@@ -163,97 +208,3 @@ export async function PUT(req: Request) {
     avatar_url: finalAvatar,
   });
 }
-// // src/app/api/perfil/route.ts
-// import { NextResponse } from "next/server";
-// import pool from "@/db";
-
-// // Ajusta según tu auth. Debe devolver { id, name, email } del usuario logueado.
-// async function getSessionUser(req: Request) {
-//   const me = await fetch(new URL("/api/me", req.url), {
-//     cache: "no-store",
-//     headers: { cookie: (req as any).headers.get("cookie") || "" },
-//   }).then((r) => (r.ok ? r.json() : null));
-//   return me; // { id, name, email }
-// }
-
-// export async function PUT(req: Request) {
-//   const user = await getSessionUser(req);
-//   if (!user?.id)
-//     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-//   const form = await req.formData();
-
-//   const nombre = String(form.get("nombre") || "");
-//   const email = String(form.get("email") || "");
-//   const generacion = String(form.get("generacion") || "");
-//   const facultad = String(form.get("facultad") || "");
-//   const descripcion = String(form.get("descripcion") || "");
-//   const instagram = String(form.get("instagram") || "");
-//   const facebook = String(form.get("facebook") || "");
-//   const whatsapp = String(form.get("whatsapp") || "");
-
-//   // ---- Parseo robusto de participaciones ----
-//   const participRaw = String(form.get("participaciones") || "[]");
-//   let participaciones: any = [];
-//   try {
-//     let parsed: any = JSON.parse(participRaw);
-//     // a veces viene doble-stringificado: '"[ ... ]"'
-//     if (typeof parsed === "string") parsed = JSON.parse(parsed);
-//     if (!Array.isArray(parsed)) parsed = [];
-//     participaciones = parsed.map((p: any) => ({
-//       fecha: String(p?.fecha ?? ""),
-//       nombre: String(p?.nombre ?? ""),
-//       miniatura: String(p?.miniatura ?? ""),
-//       ruta: String(p?.ruta ?? ""),
-//     }));
-//   } catch {
-//     participaciones = [];
-//   }
-
-//   // ---- Avatar (opcional; deja en null si no subieron nada) ----
-//   let avatar_url: string | null = null;
-//   // const avatarFile = form.get("avatar") as File | null;
-//   // const avatarDataUrl = String(form.get("avatarDataUrl") || "");
-//   // ... sube y setea avatar_url si corresponde ...
-
-//   // 1) (opcional) sincroniza name/email en users si llegaron vacíos usa los existentes
-//   await pool.query(`UPDATE users SET name=$1, email=$2 WHERE id=$3`, [
-//     nombre || user.name,
-//     email || user.email,
-//     user.id,
-//   ]);
-
-//   // 2) Upsert en profiles por user_id
-//   //    Nota: casteamos el parámetro 8 a ::jsonb y enviamos JSON.stringify(...)
-//   const { rows } = await pool.query(
-//     `INSERT INTO profiles (
-//         user_id, generacion, facultad, descripcion,
-//         instagram, facebook, whatsapp, participaciones, avatar_url
-//      )
-//      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
-//      ON CONFLICT (user_id) DO UPDATE SET
-//         generacion      = EXCLUDED.generacion,
-//         facultad        = EXCLUDED.facultad,
-//         descripcion     = EXCLUDED.descripcion,
-//         instagram       = EXCLUDED.instagram,
-//         facebook        = EXCLUDED.facebook,
-//         whatsapp        = EXCLUDED.whatsapp,
-//         participaciones = EXCLUDED.participaciones,
-//         avatar_url      = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url),
-//         updated_at      = NOW()
-//      RETURNING *`,
-//     [
-//       user.id,
-//       generacion,
-//       facultad,
-//       descripcion,
-//       instagram,
-//       facebook,
-//       whatsapp,
-//       JSON.stringify(participaciones), // 👈 importante
-//       avatar_url,
-//     ],
-//   );
-
-//   return NextResponse.json(rows[0]);
-// }

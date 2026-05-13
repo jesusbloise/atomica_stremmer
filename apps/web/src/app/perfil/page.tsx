@@ -231,6 +231,14 @@ const updated: PerfilData = {
 setPerfil(updated);
 setInitialPerfil(deepClone(updated));
 
+window.dispatchEvent(
+  new CustomEvent("profile:updated", {
+    detail: {
+      name: updated.nombre,
+      avatarUrl: updated.avatarUrl,
+    },
+  })
+);
 alert("Datos guardados ✅");
 
       // const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.ok ? r.json() : null);
@@ -287,12 +295,15 @@ alert("Datos guardados ✅");
               <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-orange-500">
                 {perfil.avatarUrl ? (
                   <Image
-                    src={perfil.avatarUrl}
-                    alt="Avatar"
-                    fill
-                    className="object-cover"
-                    unoptimized={perfil.avatarUrl.startsWith("data:") || undefined}
-                  />
+  src={perfil.avatarUrl}
+  alt="Avatar"
+  fill
+  className="object-cover"
+  unoptimized={
+    perfil.avatarUrl.startsWith("data:") ||
+    perfil.avatarUrl.startsWith("/api/proxy")
+  }
+/>
                 ) : (
                   <div className="w-full h-full bg-zinc-800 grid place-items-center text-xs text-zinc-400">
                     Sin foto
@@ -346,7 +357,7 @@ alert("Datos guardados ✅");
             {/* Columna derecha (formulario) */}
             <div className="flex-1 bg-zinc-900 p-6 rounded-lg shadow-md border border-zinc-700">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold mb-4">Datos del Estudiante</h3>
+                <h3 className="text-xl font-bold mb-4">Datos del Usuario</h3>
                 {/* Indicador de cambios */}
                 {dirty ? (
                   <span className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
@@ -381,7 +392,7 @@ alert("Datos guardados ✅");
                   name="generacion"
                   value={perfil.generacion}
                   onChange={handleChange}
-                  placeholder="Generación (ej: 2025)"
+                  placeholder="Cargo o área"
                   className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-600"
                 />
                 <input
@@ -389,7 +400,7 @@ alert("Datos guardados ✅");
                   name="facultad"
                   value={perfil.facultad}
                   onChange={handleChange}
-                  placeholder="Facultad"
+                  placeholder="Empresa o departamento"
                   className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-600"
                 />
 
