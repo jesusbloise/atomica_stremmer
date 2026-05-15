@@ -18,12 +18,12 @@ export const CATS: CategoryDef[] = [
     cover: "/entretenimiento.png",
     desc: "Contenido y piezas de entretenimiento.",
   },
-  {
-    slug: "vxf",
-    label: "VXF",
-    cover: "/vxf.png",
-    desc: "Contenido y entregables VXF.",
-  },
+ {
+  slug: "vxf",
+  label: "Corporativo",
+  cover: "/Garage.jpg",
+  desc: "Contenido corporativo, institucional y nuevos negocios.",
+},
 ];
 
 

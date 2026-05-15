@@ -60,12 +60,18 @@ const CATS = [
     cover: "/babybandito2.jpg",
     desc: "Contenido y piezas de entretenimiento.",
   },
-  {
-    slug: "vxf",
-    label: "VXF",
-    cover: "/Garage.jpg",
-    desc: "Contenido y entregables VXF.",
-  },
+{
+  slug: "vxf",
+  label: "Corporativo",
+  cover: "/Garage.jpg",
+  desc: "Contenido corporativo, institucional y nuevos negocios.",
+},
+{
+  slug: "ia",
+  label: "IA",
+  cover: "/service-7.jpg",
+  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+},
 ] as const;
 
 export default function LandingCategories() {
@@ -245,7 +251,7 @@ export default function LandingCategories() {
             Categorías principales
           </h1>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch auto-rows-fr gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-stretch auto-rows-fr gap-4 sm:gap-6">
             {CATS.map((c, i) => (
               <Link key={c.slug} href={`/organizar/${c.slug}`} className="group block h-full min-w-0">
                 <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">

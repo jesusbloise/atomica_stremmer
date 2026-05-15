@@ -23,12 +23,18 @@ const CATS = [
     cover: "/babybandito2.jpg",
     desc: "Contenido y piezas de entretenimiento.",
   },
-  {
-    slug: "vxf",
-    label: "VXF",
-    cover: "/Garage.jpg",
-    desc: "Contenido y entregables VXF.",
-  },
+{
+  slug: "vxf",
+  label: "Corporativo",
+  cover: "/Garage.jpg",
+  desc: "Contenido corporativo, institucional y nuevos negocios.",
+},
+{
+  slug: "ia",
+  label: "IA",
+  cover: "/service-7.jpg",
+  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+},
 ] as const;
 
 type Group = { label: string };
@@ -55,6 +61,13 @@ const STRUCTURE: Record<string, Group[]> = {
     { label: "Corporativo" },
     { label: "Nuevos Negocios" },
   ],
+  ia: [
+  { label: "Generativo" },
+  { label: "Edición IA" },
+  { label: "Video IA" },
+  { label: "Imagen IA" },
+  { label: "Audio IA" },
+],
 };
 
 const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
@@ -73,7 +86,7 @@ type UploadItem = {
   subcategory?: string | null;
   thumbnail_url?: string | null;
   display_name?: string;
-titulo?: string;
+  titulo?: string;
 };
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
@@ -321,6 +334,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [fullPage, setFullPage] = useState(0);
   const FULL_PAGE_SIZE = 8;
+  const [activeShelf, setActiveShelf] = useState<string>("Todo");
 
   useEffect(() => setActiveSlug(slug), [slug]);
 
@@ -379,6 +393,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     setMenuOpen(false);
     setHoverMain("");
     setFullViewSub(null);
+    setActiveShelf("Todo");
   }, [activeSlug]);
 
   useEffect(() => {
@@ -416,11 +431,13 @@ export default function CategoryFiles({ slug }: { slug: string }) {
       }
 
       const defaultKey =
-        activeSlug === "publicidad"
-          ? "Marca"
-          : activeSlug === "entretenimiento"
-          ? "Estudio"
-          : "Producción";
+       activeSlug === "publicidad"
+  ? "Marca"
+  : activeSlug === "entretenimiento"
+  ? "Estudio"
+  : activeSlug === "ia"
+  ? "Generativo"
+  : "Producción";
 
       if (!map.has(defaultKey)) map.set(defaultKey, []);
       map.get(defaultKey)!.push(it);
@@ -428,6 +445,18 @@ export default function CategoryFiles({ slug }: { slug: string }) {
 
     return map;
   }, [rows, hasGroups, activeSlug]);
+
+  const groupEntries = useMemo(() => {
+    return [...grouped.entries()].filter(([, items]) => items.length > 0);
+  }, [grouped]);
+
+  const totalAssets = rows.length;
+  const totalGroups = groupEntries.length;
+
+  const visibleEntries = useMemo(() => {
+    if (activeShelf === "Todo") return groupEntries;
+    return groupEntries.filter(([sub]) => sub === activeShelf);
+  }, [activeShelf, groupEntries]);
 
   const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
 
@@ -465,10 +494,12 @@ export default function CategoryFiles({ slug }: { slug: string }) {
 
       const defaultKey =
         activeSlug === "publicidad"
-          ? "Marca"
-          : activeSlug === "entretenimiento"
-          ? "Estudio"
-          : "Producción";
+  ? "Marca"
+  : activeSlug === "entretenimiento"
+  ? "Estudio"
+  : activeSlug === "ia"
+  ? "Generativo"
+  : "Producción";
 
       return defaultKey === fullViewSub;
     });
@@ -516,101 +547,45 @@ export default function CategoryFiles({ slug }: { slug: string }) {
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 text-white">
-      <h1 className="text-2xl md:text-3xl font-bold mb-2">{title}</h1>
 
-      {hasGroups && (
-        <div className="mb-6" ref={menuWrapRef}>
-          <div className="inline-block relative">
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              className="px-4 py-2 rounded-xl bg-zinc-900 text-white border border-zinc-700 text-sm hover:border-zinc-500 transition flex items-center gap-2"
-              type="button"
-            >
-              <span className="truncate max-w-[240px] sm:max-w-[360px]">
-                {currentLabel}
-              </span>
-              <span className="text-zinc-400">▾</span>
-            </button>
 
-            {menuOpen && (
-              <div className="absolute mt-2 left-0 z-40 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden">
-                <div className="flex">
-                  <div className="w-[260px] py-2">
-                    {groups.map((g) => {
-                      const hasFlyout = g.label === "Oficina" || g.label === "Tipo";
-                      const active = hoverMain === g.label;
+      <section className="mb-8 border-b border-zinc-900 pb-5">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">
+              {title}
+            </h1>
 
-                      return (
-                        <div
-                          key={g.label}
-                          className="relative"
-                          onMouseEnter={() => setHoverMain(g.label)}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!hasFlyout) onPickLeaf(g.label);
-                              else setHoverMain(g.label);
-                            }}
-                            className={[
-                              "w-full px-3 py-2 text-left text-sm flex items-center justify-between transition",
-                              active ? "bg-zinc-900" : "bg-transparent",
-                              "hover:bg-zinc-900",
-                            ].join(" ")}
-                          >
-                            <span className="text-zinc-100">{g.label}</span>
-                            {hasFlyout ? <span className="text-zinc-500">›</span> : null}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {(hoverMain === "Oficina" || hoverMain === "Tipo") && (
-                    <div className="w-[220px] border-l border-zinc-800 py-2">
-                      {hoverMain === "Oficina" && (
-                        <>
-                          <div className="px-3 pb-2 text-xs text-zinc-500">
-                            Oficina
-                          </div>
-                          {OFFICE_OPTIONS.map((o) => (
-                            <button
-                              key={o}
-                              type="button"
-                              onClick={() => onPickOffice(o)}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
-                            >
-                              {o}
-                            </button>
-                          ))}
-                        </>
-                      )}
-
-                      {hoverMain === "Tipo" && (
-                        <>
-                          <div className="px-3 pb-2 text-xs text-zinc-500">
-                            Color
-                          </div>
-                          {colorsForSlug.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => onPickColor(c)}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-900 transition text-zinc-100"
-                            >
-                              {c}
-                            </button>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            <p className="mt-2 text-sm text-zinc-500">
+              {totalAssets} archivo{totalAssets === 1 ? "" : "s"} disponibles
+            </p>
           </div>
+
+          {hasGroups && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {["Todo", ...groupEntries.map(([sub]) => sub)].map((sub) => {
+                const active = activeShelf === sub;
+
+                return (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setActiveShelf(sub)}
+                    className={[
+                      "shrink-0 rounded-full px-4 py-2 text-sm border transition",
+                      active
+                        ? "border-orange-500 bg-orange-500 text-black font-semibold"
+                        : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white hover:border-zinc-600",
+                    ].join(" ")}
+                  >
+                    {sub}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </section>
 
       {loading ? (
         <div className="text-zinc-400 py-10">Cargando…</div>
@@ -618,7 +593,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
         <div className="text-zinc-400 py-10">No hay archivos en esta sección.</div>
       ) : (
         <>
-          {[...grouped.entries()].map(([sub, items]) => {
+          {visibleEntries.map(([sub, items]) => {
             if (!items.length) return null;
 
             const id = slugify(sub);
@@ -632,20 +607,22 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                 id={`sub-${id}`}
                 className="mb-10"
               >
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {items.length} archivo{items.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
                   <button
                     onClick={() => setFullViewSub(sub)}
-                    className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white transition"
+                    className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-orange-500 text-zinc-300 hover:text-orange-300 transition"
                     title="Ver todos los archivos"
                   >
-                    Ver más
+                    Ver todos
                   </button>
-
-                  <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
-
-                  <div className="w-[72px]" aria-hidden="true" />
                 </div>
-
                 <CategoryCarousel items={items} />
               </div>
             );
@@ -657,7 +634,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                 Categorías principales
               </h1>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch auto-rows-fr gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-stretch auto-rows-fr gap-4 sm:gap-6">
                 {CATS.map((c, i) => (
                   <Link
                     key={c.slug}
@@ -740,13 +717,13 @@ function CardItem({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
 
   const rawUrl = item.url || item.file_path || "";
-const name = stripExt(
-  item.display_name ||
-  item.titulo ||
-  item.file_name ||
-  rawUrl
-);
-const previewUrl = proxiedUrl(rawUrl);
+  const name = stripExt(
+    item.display_name ||
+    item.titulo ||
+    item.file_name ||
+    rawUrl
+  );
+  const previewUrl = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
   const isPdf = PDF_EXT.test(rawUrl);
@@ -762,8 +739,8 @@ const previewUrl = proxiedUrl(rawUrl);
     >
       <div className="relative h-[48vh] sm:h-[50vh] md:h-[18rem] lg:h-[22rem] xl:h-[24rem] bg-zinc-800 overflow-hidden">
         {isVideo ? (
-  <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
-) : isPdf ? (
+          <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
+        ) : isPdf ? (
           <DocumentPreview url={rawUrl} kind="pdf" isMobile={isMobile} />
         ) : isDocx ? (
           <DocumentPreview url={rawUrl} kind="docx" isMobile={isMobile} />
@@ -819,13 +796,13 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
 
   const rawUrl = item.url || item.file_path || "";
-const name = stripExt(
-  item.display_name ||
-  item.titulo ||
-  item.file_name ||
-  rawUrl
-);
-const previewUrl = proxiedUrl(rawUrl);
+  const name = stripExt(
+    item.display_name ||
+    item.titulo ||
+    item.file_name ||
+    rawUrl
+  );
+  const previewUrl = proxiedUrl(rawUrl);
 
   const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
   const isPdf = PDF_EXT.test(rawUrl);
@@ -836,8 +813,8 @@ const previewUrl = proxiedUrl(rawUrl);
     <motion.article className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm">
       <div className="relative h-[52vh] sm:h-[54vh] md:h-[20rem] lg:h-[26rem] xl:h-[28rem] bg-zinc-800 overflow-hidden">
         {isVideo ? (
-  <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
-) : isPdf ? (
+          <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
+        ) : isPdf ? (
           <DocumentPreview url={rawUrl} kind="pdf" isMobile={isMobile} />
         ) : isDocx ? (
           <DocumentPreview url={rawUrl} kind="docx" isMobile={isMobile} />

@@ -8,6 +8,7 @@ import { useSubtitlesPolling } from "@/hooks/useSubtitlesPolling";
 import Link from "next/link";
 import Image from "next/image";
 import FichaTecnica from "@/components/FichaTecnica";
+import RelatedDiscoveryRail from "@/components/RelatedDiscoveryRail";
 
 const TablaSubtitulos = dynamic(() => import("@/components/TablaSubtitulos"), {
   ssr: false,
@@ -55,11 +56,17 @@ const CATS = [
     desc: "Contenido y piezas de entretenimiento.",
   },
   {
-    slug: "vxf",
-    label: "VXF",
-    cover: "/Garage.jpg",
-    desc: "Contenido y entregables VXF.",
-  },
+  slug: "vxf",
+  label: "Corporativo",
+  cover: "/Garage.jpg",
+  desc: "Contenido corporativo, institucional y nuevos negocios.",
+},
+{
+  slug: "ia",
+  label: "IA",
+  cover: "/service-7.jpg",
+  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+},
 ] as const;
 
 function normalizeSubtitlesResponse(data: any): any[] {
@@ -134,7 +141,95 @@ function resolvePlayableSrc(url?: string | null) {
 
   return s;
 }
+function ArchivosRelacionadosMock() {
+  const relacionados = [
+    {
+      tipo: "Trailer",
+      nombre: "Trailer oficial",
+      detalle: "Video promocional · 00:45",
+      badge: "VIDEO",
+    },
+    {
+      tipo: "Publicidad",
+      nombre: "Spot TV 15 segundos",
+      detalle: "Pieza comercial asociada",
+      badge: "ADS",
+    },
+    {
+      tipo: "Documento",
+      nombre: "Guion técnico",
+      detalle: "PDF / Documento de producción",
+      badge: "DOC",
+    },
+    {
+      tipo: "Material",
+      nombre: "Versión cliente",
+      detalle: "Archivo alternativo relacionado",
+      badge: "EXTRA",
+    },
+  ];
 
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-white">Archivos relacionados</h2>
+          <p className="text-xs text-zinc-400 mt-1">
+            Material asociado a este archivo principal.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/70 text-orange-300 hover:bg-orange-500/10 transition"
+        >
+          + Añadir
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {relacionados.map((item) => (
+          <button
+            key={item.nombre}
+            type="button"
+            className="w-full text-left rounded-xl border border-zinc-800 bg-black/35 hover:border-orange-500/60 hover:bg-zinc-900 transition p-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-16 rounded-lg bg-gradient-to-br from-zinc-800 to-zinc-950 border border-zinc-700 grid place-items-center text-[10px] font-bold text-orange-300">
+                {item.badge}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-orange-300">
+                    {item.tipo}
+                  </span>
+                </div>
+
+                <p className="text-sm font-semibold text-white truncate">
+                  {item.nombre}
+                </p>
+
+                <p className="text-xs text-zinc-500 truncate">
+                  {item.detalle}
+                </p>
+              </div>
+
+              <span className="text-zinc-500 text-lg">›</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-dashed border-zinc-700 p-3 text-center">
+        <p className="text-xs text-zinc-500">
+          Próximo paso: conectar este módulo a base de datos y permitir subir trailers,
+          documentos, versiones alternativas y piezas comerciales.
+        </p>
+      </div>
+    </section>
+  );
+}
 export default function VideoDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -153,6 +248,9 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [videoBuffering, setVideoBuffering] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+
+const [isAdmin, setIsAdmin] = useState(false);
+const [copiedId, setCopiedId] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const seekingLockRef = useRef(false);
@@ -390,6 +488,29 @@ export default function VideoDetailPage({ id }: { id: string }) {
     jumpTo(sec);
   }, [tipo, matchIndices, currentMatchIndex, getStartSecFor, tableData, jumpTo]);
 
+  useEffect(() => {
+  let alive = true;
+
+  async function loadMe() {
+    try {
+      const res = await fetch("/api/me", { cache: "no-store" });
+      const me = await res.json();
+
+      if (alive) {
+        setIsAdmin(me?.role === "ADMIN");
+      }
+    } catch {
+      if (alive) setIsAdmin(false);
+    }
+  }
+
+  loadMe();
+
+  return () => {
+    alive = false;
+  };
+}, []);
+
   const handlePlay = useCallback(() => {
     if (!id) return;
 
@@ -412,6 +533,37 @@ export default function VideoDetailPage({ id }: { id: string }) {
     <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
       <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
+  <div className="mb-4 flex justify-start">
+    <button
+      onClick={() => router.back()}
+      className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
+    >
+      ← Volver atrás
+    </button>
+  </div>
+  {isAdmin && (
+  <div className="mb-3 flex justify-end">
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(id);
+          setCopiedId(true);
+
+          setTimeout(() => {
+            setCopiedId(false);
+          }, 1800);
+        } catch {
+          setCopiedId(false);
+        }
+      }}
+      className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+      title={id}
+    >
+      {copiedId ? "ID copiado" : "Copiar ID del archivo"}
+    </button>
+  </div>
+)}
           {tipo === "video" && videoUrl && (
             <div className="mb-4">
               <div
@@ -601,21 +753,13 @@ export default function VideoDetailPage({ id }: { id: string }) {
             />
           )}
 
-          <div className="mt-8 flex justify-center">
-            <button
-  onClick={() => router.back()}
-  className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
->
-  ← Volver atrás
-</button>
-          </div>
-
+<RelatedDiscoveryRail uploadId={id} />
           <div className="mt-12">
   <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
     Explorar categorías
   </h2>
 
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
     {CATS.map((cat, i) => (
       <Link
         key={cat.slug}
@@ -649,6 +793,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
         <div className="space-y-6">
           <FichaTecnica uploadId={id} />
+          <ArchivosRelacionadosMock />
         </div>
       </div>
     </div>

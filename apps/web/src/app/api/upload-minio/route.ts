@@ -32,8 +32,8 @@ function sanitizeFileName(name: string) {
 const storage = new Storage();
 const BUCKET = process.env.GCS_BUCKET;
 
-type CatSlug = "publicidad" | "entretenimiento" | "vxf";
-const ALLOWED_CATEGORIES: CatSlug[] = ["publicidad", "entretenimiento", "vxf"];
+type CatSlug = "publicidad" | "entretenimiento" | "vxf" | "ia";
+const ALLOWED_CATEGORIES: CatSlug[] = ["publicidad", "entretenimiento", "vxf", "ia"];
 const isValidCat = (c: string): c is CatSlug =>
   (ALLOWED_CATEGORIES as string[]).includes(c);
 
@@ -77,8 +77,8 @@ function getTipoFromExt(ext: string) {
   return ["mp4", "mov", "mkv", "webm", "m4v"].includes(ext)
     ? "video"
     : ["pdf", "doc", "docx", "txt"].includes(ext)
-    ? "documento"
-    : "desconocido";
+      ? "documento"
+      : "desconocido";
 }
 
 function isVideoExt(ext: string) {
@@ -181,8 +181,8 @@ async function createOptimizedStreamingVersion(rowId: string, fileKey: string, e
     console.error("Video optimization failed:", err);
     return null;
   } finally {
-    await fs.unlink(inputPath).catch(() => {});
-    await fs.unlink(outputPath).catch(() => {});
+    await fs.unlink(inputPath).catch(() => { });
+    await fs.unlink(outputPath).catch(() => { });
   }
 }
 
@@ -413,12 +413,21 @@ async function handleDirectGcsInit(req: NextRequest) {
 
   const contentType = String(body.contentType || "application/octet-stream");
   const category: CatSlug = rawCat;
+
   const subcategory =
     body.subcategory && String(body.subcategory).trim()
       ? String(body.subcategory).trim()
       : null;
 
   const ficha = (body.ficha as FichaInput | null) || null;
+
+  console.log("UPLOAD_DIRECT_METADATA", {
+    category,
+    subcategory,
+    rawSubcategory: body.subcategory,
+    ficha,
+  });
+
 
   const safeFileName = sanitizeFileName(fileName);
   const fileKey = `${randomUUID()}_${safeFileName}`;
@@ -590,7 +599,11 @@ export async function POST(req: NextRequest) {
     }
 
     const category: CatSlug = rawCat;
-    const subcategory: string | null = null;
+
+    const subcategory =
+      formData.get("subcategory") && String(formData.get("subcategory")).trim()
+        ? String(formData.get("subcategory")).trim()
+        : null;
 
     let ficha: FichaInput | null = null;
     const fichaStr = (formData.get("ficha") as string | null) || "";
@@ -601,6 +614,12 @@ export async function POST(req: NextRequest) {
         ficha = null;
       }
     }
+    console.log("UPLOAD_FORMDATA_METADATA", {
+      category,
+      subcategory,
+      rawSubcategory: formData.get("subcategory"),
+      ficha,
+    });
 
     const filename = file.name;
     const ext = filename.split(".").pop()?.toLowerCase() || "";
