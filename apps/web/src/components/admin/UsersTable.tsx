@@ -66,9 +66,9 @@ async function patchUser(
 
 /* ---------- Labels visuales ---------- */
 const ROLE_LABELS: Record<User["role"], string> = {
-  ADMIN: "Admin",
-  PROFESOR: "Profesor",
-  ESTUDIANTE: "Estudiante",
+  ADMIN: "Administrador",
+  PROFESOR: "Gestor",
+  ESTUDIANTE: "Usuario",
 };
 
 /* ---------- Componente ---------- */
@@ -144,7 +144,7 @@ export default function UsersTable() {
               <th className="py-2 pr-4">Rol</th>
               <th className="py-2 pr-4">Estado</th>
               <th className="py-2 pr-4">Fecha</th>
-              <th className="py-2 pr-4">Propietario</th>
+              <th className="py-2 pr-4">Usuario</th>
             </tr>
           </thead>
           <tbody>
@@ -180,9 +180,9 @@ export default function UsersTable() {
                     }
                     className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   >
-                    <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
-                    <option value="PROFESOR">{ROLE_LABELS.PROFESOR}</option>
-                    <option value="ESTUDIANTE">{ROLE_LABELS.ESTUDIANTE}</option>
+                   <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
+<option value="PROFESOR">{ROLE_LABELS.PROFESOR}</option>
+<option value="ESTUDIANTE">{ROLE_LABELS.ESTUDIANTE}</option>
                   </select>
                 </td>
 
