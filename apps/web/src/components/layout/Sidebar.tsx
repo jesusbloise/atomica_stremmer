@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Menu as MenuIcon, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Role = "ADMIN" | "PROFESOR" | "ESTUDIANTE" | null;
+type Role = "SUPER_ADMIN" | "ADMIN" | "USUARIO" | null;
 
 function Item({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -42,23 +42,30 @@ export function SidebarContent() {
     };
   }, []);
 
-  const isStudent = role === "ESTUDIANTE";
-  const isAdmin = role === "ADMIN";
-  const canSeeExtra = !isStudent;
+const isSuperAdmin = role === "SUPER_ADMIN";
+const isAdmin = role === "ADMIN";
+const isUsuario = role === "USUARIO";
+
+const canUpload = isSuperAdmin || isAdmin;
+const canManageSystem = isSuperAdmin;
 
   return (
     <nav className="space-y-3">
       <Item href="/organizar">Home</Item>
       <Item href="/explorar">Todos los archivos</Item>
 
-      {!loadingRole && isAdmin && (
-        <>
-          <Item href="/subir">Subir archivos</Item>
-          <Item href="/admin/usuarios">Gestionar usuarios</Item>
-        </>
-      )}
+      {!loadingRole && canUpload && (
+  <Item href="/subir">Subir archivos</Item>
+)}
 
-      {!loadingRole && canSeeExtra && (
+{!loadingRole && canManageSystem && (
+  <>
+    <Item href="/admin/usuarios">Gestionar usuarios</Item>
+    <Item href="/admin/categorias">Gestionar categorías</Item>
+  </>
+)}
+
+{!loadingRole && !isUsuario && (
         <>
           <div className="pt-4">
             <div className="text-xs uppercase text-zinc-400 px-1 mb-2">

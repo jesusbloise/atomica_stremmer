@@ -47,39 +47,49 @@ function proxiedUrl(u?: string | null) {
   return s;
 }
 
-const CATS = [
-  {
-    slug: "publicidad",
-    label: "Publicidad",
-    cover: "/Publicidad.avif",
-    desc: "Piezas y campañas publicitarias.",
-  },
-  {
-    slug: "entretenimiento",
-    label: "Entretenimiento",
-    cover: "/babybandito2.jpg",
-    desc: "Contenido y piezas de entretenimiento.",
-  },
-{
-  slug: "vxf",
-  label: "Corporativo",
-  cover: "/Garage.jpg",
-  desc: "Contenido corporativo, institucional y nuevos negocios.",
-},
-{
-  slug: "ia",
-  label: "IA",
-  cover: "/service-7.jpg",
-  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-},
-] as const;
+// const CATS = [
+//   {
+//     slug: "publicidad",
+//     label: "Publicidad",
+//     cover: "/Publicidad.avif",
+//     desc: "Piezas y campañas publicitarias.",
+//   },
+//   {
+//     slug: "entretenimiento",
+//     label: "Entretenimiento",
+//     cover: "/babybandito2.jpg",
+//     desc: "Contenido y piezas de entretenimiento.",
+//   },
+// {
+//   slug: "vxf",
+//   label: "Corporativo",
+//   cover: "/Garage.jpg",
+//   desc: "Contenido corporativo, institucional y nuevos negocios.",
+// },
+// {
+//   slug: "ia",
+//   label: "IA",
+//   cover: "/service-7.jpg",
+//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+// },
+// ] as const;
+
+type CategoryFromApi = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string;
+  cover?: string;
+  is_active: boolean;
+  sort_order: number;
+};
 
 export default function LandingCategories() {
   const [items, setItems] = useState<Item[]>([]);
   const [index, setIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
+const [categories, setCategories] = useState<CategoryFromApi[]>([]);
   const INTERVAL = 6000;
   const selectionMode = false;
 
@@ -107,6 +117,33 @@ export default function LandingCategories() {
       cancel = true;
     };
   }, []);
+  useEffect(() => {
+  let cancel = false;
+
+  async function loadCategories() {
+    try {
+      const res = await fetch("/api/categories", {
+        cache: "no-store",
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (!cancel && Array.isArray(data?.categories)) {
+        setCategories(data.categories);
+      }
+    } catch (err) {
+      console.error("Error cargando categorías:", err);
+    }
+  }
+
+  loadCategories();
+
+  return () => {
+    cancel = true;
+  };
+}, []);
 
   useEffect(() => {
     if (!items.length) return;
@@ -252,12 +289,12 @@ export default function LandingCategories() {
           </h1>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-stretch auto-rows-fr gap-4 sm:gap-6">
-            {CATS.map((c, i) => (
+            {categories.map((c, i) => (
               <Link key={c.slug} href={`/organizar/${c.slug}`} className="group block h-full min-w-0">
                 <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
                   <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
                     <Image
-                      src={c.cover}
+                      src={c.cover || "/Publicidad.avif"}
                       alt={c.label}
                       fill
                       className="object-cover group-hover:object-contain transition-all duration-300"
@@ -268,7 +305,7 @@ export default function LandingCategories() {
 
                   <div className="p-4 mt-auto text-center">
                     <h3 className="text-sm sm:text-base font-semibold truncate">{c.label}</h3>
-                    <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">{c.desc}</p>
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">{c.description}</p>
                   </div>
                 </article>
               </Link>

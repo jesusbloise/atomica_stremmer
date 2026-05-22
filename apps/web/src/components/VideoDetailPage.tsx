@@ -42,32 +42,42 @@ type Subtitulo = {
   [k: string]: any;
 };
 
-const CATS = [
-  {
-    slug: "publicidad",
-    label: "Publicidad",
-    cover: "/Publicidad.avif",
-    desc: "Piezas y campañas publicitarias.",
-  },
-  {
-    slug: "entretenimiento",
-    label: "Entretenimiento",
-    cover: "/babybandito2.jpg",
-    desc: "Contenido y piezas de entretenimiento.",
-  },
-  {
-  slug: "vxf",
-  label: "Corporativo",
-  cover: "/Garage.jpg",
-  desc: "Contenido corporativo, institucional y nuevos negocios.",
-},
-{
-  slug: "ia",
-  label: "IA",
-  cover: "/service-7.jpg",
-  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-},
-] as const;
+// const CATS = [
+//   {
+//     slug: "publicidad",
+//     label: "Publicidad",
+//     cover: "/Publicidad.avif",
+//     desc: "Piezas y campañas publicitarias.",
+//   },
+//   {
+//     slug: "entretenimiento",
+//     label: "Entretenimiento",
+//     cover: "/babybandito2.jpg",
+//     desc: "Contenido y piezas de entretenimiento.",
+//   },
+//   {
+//   slug: "vxf",
+//   label: "Corporativo",
+//   cover: "/Garage.jpg",
+//   desc: "Contenido corporativo, institucional y nuevos negocios.",
+// },
+// {
+//   slug: "ia",
+//   label: "IA",
+//   cover: "/service-7.jpg",
+//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+// },
+// ] as const;
+
+type CategoryFromApi = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string;
+  cover?: string;
+  is_active: boolean;
+  sort_order: number;
+};
 
 function normalizeSubtitlesResponse(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -243,6 +253,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [matchIndices, setMatchIndices] = useState<number[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [views, setViews] = useState(0);
+  const [categories, setCategories] = useState<CategoryFromApi[]>([]);
 
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoBuffering, setVideoBuffering] = useState(false);
@@ -307,6 +318,7 @@ const [copiedId, setCopiedId] = useState(false);
       return { time_start: start, time_end: end, text, ...r } as Subtitulo;
     });
   }, [subtitulos]);
+
   useEffect(() => {
   const q = searchParams.get("q");
 
@@ -315,6 +327,32 @@ const [copiedId, setCopiedId] = useState(false);
     setCurrentMatchIndex(0);
   }
 }, [searchParams]);
+useEffect(() => {
+  let alive = true;
+
+  async function loadCategories() {
+    try {
+      const res = await fetch("/api/categories", {
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+
+      if (!alive) return;
+
+      setCategories(Array.isArray(data?.categories) ? data.categories : []);
+    } catch (err) {
+      console.error("Error cargando categorías:", err);
+      if (alive) setCategories([]);
+    }
+  }
+
+  loadCategories();
+
+  return () => {
+    alive = false;
+  };
+}, []);
 
   useEffect(() => {
     if (!id) return;
@@ -760,7 +798,7 @@ const [copiedId, setCopiedId] = useState(false);
   </h2>
 
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-    {CATS.map((cat, i) => (
+    {categories.map((cat, i) => (
       <Link
         key={cat.slug}
         href={`/organizar/${cat.slug}`}
@@ -769,7 +807,7 @@ const [copiedId, setCopiedId] = useState(false);
         <article className="h-full">
           <div className="relative aspect-[4/3] bg-black overflow-hidden">
             <Image
-              src={cat.cover}
+              src={cat.cover || "/Publicidad.avif"}
               alt={cat.label}
               fill
               className="object-cover group-hover:scale-105 transition duration-500"
@@ -781,7 +819,7 @@ const [copiedId, setCopiedId] = useState(false);
 
             <div className="absolute bottom-0 left-0 right-0 p-4">
               <h3 className="text-lg font-bold text-white">{cat.label}</h3>
-              <p className="text-sm text-zinc-300 mt-1">{cat.desc}</p>
+              <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
             </div>
           </div>
         </article>

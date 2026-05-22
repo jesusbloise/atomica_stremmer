@@ -2,134 +2,190 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/* ====================== Categorías (se mantiene) ====================== */
-type CatSlug = "publicidad" | "entretenimiento" | "vxf" | "ia";
-
-const VALID_CATS: CatSlug[] = ["publicidad", "entretenimiento", "vxf", "ia"];
-const DEFAULT_CAT: CatSlug = "publicidad";
-
-const CATEGORIES: { value: CatSlug; label: string; hint?: string }[] = [
-  { value: "publicidad", label: "Publicidad", hint: "Piezas y campañas publicitarias." },
-  { value: "entretenimiento", label: "Entretenimiento", hint: "Contenido y piezas de entretenimiento." },
-  {
-  value: "vxf",
-  label: "Corporativo",
-  hint: "Contenido corporativo, institucional y nuevos negocios.",
-},
-  {
-  value: "ia",
-  label: "IA",
-  hint: "Contenido generado, asistido o procesado con inteligencia artificial.",
-},
-];
-
-// Por ahora SIN subcategorías
-const SUBCATS: Record<CatSlug, string[]> = {
-  publicidad: ["Marca", "Agencia", "Productora", "Contacto", "Oficina", "Tipo"],
-  entretenimiento: ["Estudio", "Productora", "Director", "Productor", "Oficina", "Tipo"],
-  vxf: ["Producción", "Corporativo", "Nuevos Negocios"],
-  ia: ["Generativo", "Edición IA", "Video IA", "Imagen IA", "Audio IA"],
+type Category = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string;
+  cover?: string;
+  is_active: boolean;
+  sort_order: number;
+  subcategories: {
+    id: string;
+    label: string;
+    is_active: boolean;
+    sort_order: number;
+  }[];
 };
 
-const isValidSubcat = (cat: CatSlug, sub: string) => SUBCATS[cat]?.includes(sub) ?? false;
-const categoryHasSubcats = (cat: CatSlug) => SUBCATS[cat].length > 0;
-
-/* ====================== Metadata ====================== */
 type UploadMeta = {
   titulo?: string;
-
   marca?: string;
   agencia?: string;
   productora?: string;
   contacto?: string;
-
   oficina?: "Chile" | "Mexico" | "";
   tipo?: string[];
-
   estudio?: string;
   director?: string;
   productor?: string;
-
   produccion?: string;
   corporativo?: string;
   nuevosNegocios?: string;
 };
+
+const FALLBACK_CATEGORIES: Category[] = [
+  {
+    id: "fallback-publicidad",
+    slug: "publicidad",
+    label: "Publicidad",
+    description: "Piezas y campañas publicitarias.",
+    cover: "/Publicidad.avif",
+    is_active: true,
+    sort_order: 1,
+    subcategories: [
+      { id: "marca", label: "Marca", is_active: true, sort_order: 1 },
+      { id: "agencia", label: "Agencia", is_active: true, sort_order: 2 },
+      { id: "productora", label: "Productora", is_active: true, sort_order: 3 },
+      { id: "contacto", label: "Contacto", is_active: true, sort_order: 4 },
+      { id: "oficina", label: "Oficina", is_active: true, sort_order: 5 },
+      { id: "tipo", label: "Tipo", is_active: true, sort_order: 6 },
+    ],
+  },
+];
 
 const TIPO_OPTIONS = ["Color", "3D", "IA", "Musica", "Sonido", "VFX", "Edicion"] as const;
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
 
 const TEXT_FIELDS: Array<{ key: keyof UploadMeta; label: string; placeholder?: string }> = [
   { key: "titulo", label: "Título", placeholder: "Ej: Campaña Verano 2026 - Master" },
-
   { key: "marca", label: "Marca" },
   { key: "agencia", label: "Agencia" },
   { key: "productora", label: "Productora" },
   { key: "contacto", label: "Contacto" },
-
   { key: "estudio", label: "Estudio" },
   { key: "director", label: "Director" },
   { key: "productor", label: "Productor" },
-
   { key: "produccion", label: "Producción" },
   { key: "corporativo", label: "Corporativo" },
   { key: "nuevosNegocios", label: "Nuevos Negocios" },
 ];
 
-/* ====================== Config ====================== */
-// Cloud Run corta requests HTTP grandes antes de llegar al handler.
-// Dejamos este umbral bajo para mandar archivos grandes por subida directa a GCS.
 const LARGE_FILE_THRESHOLD_MB = 30;
+const DEFAULT_CAT = "publicidad";
 
-/* ====================== Componente ====================== */
 export default function DropUploader({
   onUploaded,
   accept = ".mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.jpg,.jpeg,.png,.gif,.webp,.avif,.pdf,.doc,.docx,.txt",
   maxSizeMB = 4096,
 }: {
-  onUploaded?: (payload: { id?: string; category: CatSlug }) => void;
+  onUploaded?: (payload: { id?: string; category: string }) => void;
   accept?: string;
   maxSizeMB?: number;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const [category, setCategory] = useState<CatSlug>(() => {
+  const [category, setCategory] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_CAT;
-    const stored = localStorage.getItem("uploadCategoryV3") as CatSlug | null;
-    return stored && VALID_CATS.includes(stored) ? stored : DEFAULT_CAT;
+    return localStorage.getItem("uploadCategoryV3") || DEFAULT_CAT;
   });
-
-  const subcats = useMemo(() => SUBCATS[category] || [], [category]);
 
   const [subcategory, setSubcategory] = useState<string>(() => {
     if (typeof window === "undefined") return "";
-    const storedCat =
-      (localStorage.getItem("uploadCategoryV3") as CatSlug | null) || DEFAULT_CAT;
-    const key = `uploadSub_${storedCat}`;
-    return localStorage.getItem(key) || "";
+    const storedCat = localStorage.getItem("uploadCategoryV3") || DEFAULT_CAT;
+    return localStorage.getItem(`uploadSub_${storedCat}`) || "";
   });
-
-  useEffect(() => {
-    localStorage.setItem("uploadCategoryV3", category);
-    const key = `uploadSub_${category}`;
-    const saved = localStorage.getItem(key) || "";
-    setSubcategory(categoryHasSubcats(category) && isValidSubcat(category, saved) ? saved : "");
-  }, [category]);
-
-  useEffect(() => {
-    if (subcategory && categoryHasSubcats(category)) {
-      localStorage.setItem(`uploadSub_${category}`, subcategory);
-    }
-  }, [subcategory, category]);
 
   const [meta, setMeta] = useState<UploadMeta>({
     titulo: "",
     oficina: "",
     tipo: [],
   });
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadCategories() {
+      try {
+        setLoadingCategories(true);
+
+        const res = await fetch("/api/categories", {
+          cache: "no-store",
+        });
+
+        const data = await res.json();
+
+        const list: Category[] = Array.isArray(data?.categories)
+          ? data.categories
+          : [];
+
+        if (!alive) return;
+
+        const finalList = list.length ? list : FALLBACK_CATEGORIES;
+        setCategories(finalList);
+
+        const stored = localStorage.getItem("uploadCategoryV3") || "";
+        const exists = finalList.some((c) => c.slug === stored);
+
+        if (!exists) {
+          const first = finalList[0]?.slug || DEFAULT_CAT;
+          setCategory(first);
+          localStorage.setItem("uploadCategoryV3", first);
+        }
+      } catch (err) {
+        console.error("Error cargando categorías:", err);
+
+        if (alive) {
+          setCategories(FALLBACK_CATEGORIES);
+        }
+      } finally {
+        if (alive) setLoadingCategories(false);
+      }
+    }
+
+    loadCategories();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const activeCategory = useMemo(() => {
+    return categories.find((c) => c.slug === category) || categories[0] || null;
+  }, [categories, category]);
+
+  const subcats = useMemo(() => {
+    return (activeCategory?.subcategories || []).filter((s) => s.is_active);
+  }, [activeCategory]);
+
+  const requiresSub = subcats.length > 0;
+  const titleRequired = true;
+
+  useEffect(() => {
+    if (!category) return;
+
+    localStorage.setItem("uploadCategoryV3", category);
+
+    const key = `uploadSub_${category}`;
+    const saved = localStorage.getItem(key) || "";
+    const exists = subcats.some((s) => s.label === saved);
+
+    setSubcategory(exists ? saved : "");
+  }, [category, subcats]);
+
+  useEffect(() => {
+    if (subcategory && requiresSub) {
+      localStorage.setItem(`uploadSub_${category}`, subcategory);
+    }
+  }, [subcategory, category, requiresSub]);
 
   const setMetaField = (k: keyof UploadMeta, v: any) =>
     setMeta((p) => ({ ...(p ?? {}), [k]: v }));
@@ -164,24 +220,11 @@ export default function DropUploader({
     });
   };
 
-  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) handleSelect(f);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleSelect(f);
-  };
-
-  const requiresSub = categoryHasSubcats(category);
-  const titleRequired = true;
-
   const uploadDisabled =
     !file ||
     uploading ||
+    loadingCategories ||
+    !category ||
     (requiresSub && !subcategory) ||
     (titleRequired && !(meta.titulo && meta.titulo.trim().length > 0));
 
@@ -199,9 +242,6 @@ export default function DropUploader({
 
       const isLarge = file.size > LARGE_FILE_THRESHOLD_MB * 1024 * 1024;
 
-      // =========================
-      // 1) Flujo actual: archivos chicos
-      // =========================
       if (!isLarge) {
         const fd = new FormData();
         fd.append("file", file);
@@ -220,15 +260,12 @@ export default function DropUploader({
         const id: string | undefined =
           data?.id || data?.upload?.id || data?.file?.id || data?.record?.id;
 
-        setMsg("✅ Subido correctamente");
+        setMsg("Subido correctamente");
         setFile(null);
         onUploaded?.({ id, category });
         return;
       }
 
-      // =========================
-      // 2) Flujo nuevo: archivo grande -> subida directa a GCS
-      // =========================
       setMsg("Subiendo archivo grande...");
 
       const initRes = await fetch("/api/upload-minio", {
@@ -295,11 +332,11 @@ export default function DropUploader({
         finalizeData?.file?.id ||
         finalizeData?.record?.id;
 
-      setMsg("✅ Subido correctamente");
+      setMsg("Subido correctamente");
       setFile(null);
       onUploaded?.({ id, category });
     } catch (e: any) {
-      setMsg(`❌ Error: ${e?.message || "falló la subida"}`);
+      setMsg(`Error: ${e?.message || "falló la subida"}`);
     } finally {
       setUploading(false);
     }
@@ -310,41 +347,54 @@ export default function DropUploader({
       <div className="w-full py-4 border-b border-zinc-800 bg-transparent">
         <div className="px-0">
           <p className="text-sm text-zinc-300 mb-2">Guardar en categoría:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {CATEGORIES.map((c) => {
-              const active = category === c.value;
-              return (
-                <button
-                  key={c.value}
-                  type="button"
-                  onClick={() => setCategory(c.value)}
-                  className={[
-                    "rounded-lg border px-3 py-2 text-sm text-left transition",
-                    active
-                      ? "border-orange-400/70 bg-orange-500/10"
-                      : "border-zinc-700/80 bg-transparent hover:bg-white/5",
-                  ].join(" ")}
-                  aria-pressed={active}
-                >
-                  <div className="font-medium">{c.label}</div>
-                  {c.hint && <div className="text-xs text-zinc-400 mt-0.5">{c.hint}</div>}
-                </button>
-              );
-            })}
-          </div>
+
+          {loadingCategories ? (
+            <p className="text-sm text-zinc-500">Cargando categorías...</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+              {categories.map((c) => {
+                const active = category === c.slug;
+
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategory(c.slug)}
+                    className={[
+                      "rounded-lg border px-3 py-2 text-sm text-left transition",
+                      active
+                        ? "border-orange-400/70 bg-orange-500/10"
+                        : "border-zinc-700/80 bg-transparent hover:bg-white/5",
+                    ].join(" ")}
+                    aria-pressed={active}
+                  >
+                    <div className="font-medium">{c.label}</div>
+
+                    {c.description && (
+                      <div className="text-xs text-zinc-400 mt-0.5">
+                        {c.description}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {requiresSub && (
             <div className="mt-3">
               <label className="text-sm text-zinc-300">Subcategoría</label>
+
               <select
                 value={subcategory}
                 onChange={(e) => setSubcategory(e.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-zinc-700/80 bg-transparent text-sm"
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-zinc-700/80 bg-black text-sm"
               >
                 <option value="">Selecciona subcategoría…</option>
+
                 {subcats.map((s) => (
-                  <option key={s} value={s} className="bg-black">
-                    {s}
+                  <option key={s.id} value={s.label} className="bg-black">
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -356,7 +406,9 @@ export default function DropUploader({
       <div className="w-full py-5 bg-transparent">
         <div className="px-0">
           <h3 className="text-base font-semibold">Datos del archivo</h3>
-          <p className="text-[12px] text-zinc-400 mt-1">Completa lo necesario antes de subir.</p>
+          <p className="text-[12px] text-zinc-400 mt-1">
+            Completa lo necesario antes de subir.
+          </p>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
             {TEXT_FIELDS.map(({ key, label, placeholder }) => (
@@ -367,6 +419,7 @@ export default function DropUploader({
                     <span className="text-orange-400 ml-1">*</span>
                   )}
                 </label>
+
                 <input
                   type="text"
                   value={(meta[key] as any) ?? ""}
@@ -378,17 +431,19 @@ export default function DropUploader({
             ))}
 
             <div className="flex flex-col">
-              <label className="block text-[11px] text-zinc-400 mb-1">Oficina</label>
+              <label className="block text-[11px] text-zinc-400 mb-1">
+                Oficina
+              </label>
+
               <select
                 value={meta.oficina ?? ""}
                 onChange={(e) => setMetaField("oficina", e.target.value as any)}
-                className="w-full px-3 py-2 rounded border border-zinc-700/80 bg-transparent text-sm"
+                className="w-full px-3 py-2 rounded border border-zinc-700/80 bg-black text-sm"
               >
-                <option value="" className="bg-black">
-                  Selecciona…
-                </option>
+                <option value="">Selecciona…</option>
+
                 {OFICINA_OPTIONS.map((o) => (
-                  <option key={o} value={o} className="bg-black">
+                  <option key={o} value={o}>
                     {o}
                   </option>
                 ))}
@@ -399,9 +454,11 @@ export default function DropUploader({
               <label className="block text-[11px] text-zinc-400 mb-2">
                 Tipo (puede ser una o varias)
               </label>
+
               <div className="flex flex-wrap gap-2">
                 {TIPO_OPTIONS.map((opt) => {
                   const active = (meta.tipo ?? []).includes(opt);
+
                   return (
                     <button
                       key={opt}
@@ -420,6 +477,7 @@ export default function DropUploader({
                   );
                 })}
               </div>
+
               <div className="mt-2 text-[11px] text-zinc-500">
                 Seleccionado:{" "}
                 <span className="text-zinc-200">
@@ -441,30 +499,39 @@ export default function DropUploader({
             setDragOver(true);
           }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          className={`w-full min-h-44 sm:min-h-56 lg:min-h-64
-                      rounded-xl border-2
-                      ${dragOver ? "border-orange-300/80" : "border-orange-500/60"}
-                      bg-transparent hover:bg-white/5 transition
-                      grid place-items-center text-center cursor-pointer select-none`}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleSelect(f);
+          }}
+          className={`w-full min-h-44 sm:min-h-56 lg:min-h-64 rounded-xl border-2 ${
+            dragOver ? "border-orange-300/80" : "border-orange-500/60"
+          } bg-transparent hover:bg-white/5 transition grid place-items-center text-center cursor-pointer select-none`}
         >
           <div className="px-4">
             <div className="text-white font-semibold text-base sm:text-lg lg:text-xl truncate">
               {file ? file.name : "Haz click o arrastra para subir un archivo"}
             </div>
+
             <div className="text-zinc-400 text-xs sm:text-sm mt-2">
               Video/Documento ({maxSizeMB}MB máximo)
             </div>
+
             <div className="text-zinc-500 text-[11px] mt-2">
               Archivos mayores a {LARGE_FILE_THRESHOLD_MB}MB usarán subida directa a storage.
             </div>
           </div>
+
           <input
             ref={inputRef}
             type="file"
             accept={accept}
             className="hidden"
-            onChange={onInputChange}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleSelect(f);
+            }}
           />
         </div>
 

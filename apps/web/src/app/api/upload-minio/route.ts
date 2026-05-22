@@ -32,10 +32,22 @@ function sanitizeFileName(name: string) {
 const storage = new Storage();
 const BUCKET = process.env.GCS_BUCKET;
 
-type CatSlug = "publicidad" | "entretenimiento" | "vxf" | "ia";
-const ALLOWED_CATEGORIES: CatSlug[] = ["publicidad", "entretenimiento", "vxf", "ia"];
-const isValidCat = (c: string): c is CatSlug =>
-  (ALLOWED_CATEGORIES as string[]).includes(c);
+type CatSlug = string;
+
+async function isValidCat(c: string) {
+  const { rows } = await pool.query(
+    `
+    SELECT slug
+    FROM categories
+    WHERE slug = $1
+      AND is_active = true
+    LIMIT 1
+    `,
+    [c]
+  );
+
+  return rows.length > 0;
+}
 
 type FichaInput = {
   titulo?: string;
@@ -396,10 +408,11 @@ async function handleDirectGcsInit(req: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  const rawCat = String(body.category || "").toLowerCase();
-  if (!isValidCat(rawCat)) {
-    return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
-  }
+ const rawCat = String(body.category || "").trim().toLowerCase();
+
+if (!(await isValidCat(rawCat))) {
+  return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
+}
 
   const fileName = String(body.fileName || "").trim();
   if (!fileName) {
@@ -593,10 +606,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const rawCat = ((formData.get("category") as string | null)?.toLowerCase() || "");
-    if (!isValidCat(rawCat)) {
-      return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
-    }
+  const rawCat = ((formData.get("category") as string | null)?.trim().toLowerCase() || "");
+
+if (!(await isValidCat(rawCat))) {
+  return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
+}
 
     const category: CatSlug = rawCat;
 

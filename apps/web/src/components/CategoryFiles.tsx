@@ -10,65 +10,81 @@ const DEMO_MODE = false;
 const API_PATH = "/api/uploads";
 
 /* ================== Categorías principales ================== */
-const CATS = [
-  {
-    slug: "publicidad",
-    label: "Publicidad",
-    cover: "/Publicidad.avif",
-    desc: "Piezas y campañas publicitarias.",
-  },
-  {
-    slug: "entretenimiento",
-    label: "Entretenimiento",
-    cover: "/babybandito2.jpg",
-    desc: "Contenido y piezas de entretenimiento.",
-  },
-{
-  slug: "vxf",
-  label: "Corporativo",
-  cover: "/Garage.jpg",
-  desc: "Contenido corporativo, institucional y nuevos negocios.",
-},
-{
-  slug: "ia",
-  label: "IA",
-  cover: "/service-7.jpg",
-  desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-},
-] as const;
+// const CATS = [
+//   {
+//     slug: "publicidad",
+//     label: "Publicidad",
+//     cover: "/Publicidad.avif",
+//     desc: "Piezas y campañas publicitarias.",
+//   },
+//   {
+//     slug: "entretenimiento",
+//     label: "Entretenimiento",
+//     cover: "/babybandito2.jpg",
+//     desc: "Contenido y piezas de entretenimiento.",
+//   },
+// {
+//   slug: "vxf",
+//   label: "Corporativo",
+//   cover: "/Garage.jpg",
+//   desc: "Contenido corporativo, institucional y nuevos negocios.",
+// },
+// {
+//   slug: "ia",
+//   label: "IA",
+//   cover: "/service-7.jpg",
+//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
+// },
+// ] as const;
 
 type Group = { label: string };
 
-const STRUCTURE: Record<string, Group[]> = {
-  publicidad: [
-    { label: "Marca" },
-    { label: "Agencia" },
-    { label: "Productora" },
-    { label: "Contacto" },
-    { label: "Oficina" },
-    { label: "Tipo" },
-  ],
-  entretenimiento: [
-    { label: "Estudio" },
-    { label: "Productora" },
-    { label: "Director" },
-    { label: "Productor" },
-    { label: "Oficina" },
-    { label: "Tipo" },
-  ],
-  vxf: [
-    { label: "Producción" },
-    { label: "Corporativo" },
-    { label: "Nuevos Negocios" },
-  ],
-  ia: [
-  { label: "Generativo" },
-  { label: "Edición IA" },
-  { label: "Video IA" },
-  { label: "Imagen IA" },
-  { label: "Audio IA" },
-],
+type CategoryFromApi = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string;
+  cover?: string;
+  is_active: boolean;
+  sort_order: number;
+  subcategories: {
+    id: string;
+    label: string;
+    is_active: boolean;
+    sort_order: number;
+  }[];
 };
+
+// const STRUCTURE: Record<string, Group[]> = {
+//   publicidad: [
+//     { label: "Marca" },
+//     { label: "Agencia" },
+//     { label: "Productora" },
+//     { label: "Contacto" },
+//     { label: "Oficina" },
+//     { label: "Tipo" },
+//   ],
+//   entretenimiento: [
+//     { label: "Estudio" },
+//     { label: "Productora" },
+//     { label: "Director" },
+//     { label: "Productor" },
+//     { label: "Oficina" },
+//     { label: "Tipo" },
+//   ],
+//   vxf: [
+//     { label: "Producción" },
+//     { label: "Corporativo" },
+//     { label: "Nuevos Negocios" },
+//   ],
+//   ia: [
+//   { label: "Generativo" },
+//   { label: "Edición IA" },
+//   { label: "Video IA" },
+//   { label: "Imagen IA" },
+//   { label: "Audio IA" },
+// ],
+// };
 
 const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
 const COLOR_PUBLICIDAD = ["3D", "IA", "Musica", "Sonido"] as const;
@@ -335,6 +351,8 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   const [fullPage, setFullPage] = useState(0);
   const FULL_PAGE_SIZE = 8;
   const [activeShelf, setActiveShelf] = useState<string>("Todo");
+  const [categories, setCategories] = useState<CategoryFromApi[]>([]);
+const [loadingCategories, setLoadingCategories] = useState(true);
 
   useEffect(() => setActiveSlug(slug), [slug]);
 
@@ -385,6 +403,40 @@ export default function CategoryFiles({ slug }: { slug: string }) {
       alive = false;
     };
   }, [activeSlug]);
+  useEffect(() => {
+  let alive = true;
+
+  async function loadCategories() {
+    try {
+      setLoadingCategories(true);
+
+      const res = await fetch("/api/categories", {
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+
+      if (!alive) return;
+
+      const list: CategoryFromApi[] = Array.isArray(data?.categories)
+        ? data.categories
+        : [];
+
+      setCategories(list);
+    } catch (err) {
+      console.error("Error cargando categorías:", err);
+      if (alive) setCategories([]);
+    } finally {
+      if (alive) setLoadingCategories(false);
+    }
+  }
+
+  loadCategories();
+
+  return () => {
+    alive = false;
+  };
+}, []);
 
   useEffect(() => {
     setMenuMain("");
@@ -400,7 +452,12 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     if (fullViewSub) setFullPage(0);
   }, [fullViewSub]);
 
-  const groups = STRUCTURE[activeSlug] || [];
+  const activeCategory = categories.find((c) => c.slug === activeSlug) || null;
+
+const groups: Group[] =
+  activeCategory?.subcategories
+    ?.filter((s) => s.is_active)
+    .map((s) => ({ label: s.label })) || [];
   const hasGroups = groups.length > 0;
 
   const colorsForSlug = useMemo(() => {
@@ -458,7 +515,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
     return groupEntries.filter(([sub]) => sub === activeShelf);
   }, [activeShelf, groupEntries]);
 
-  const title = CATS.find((c) => c.slug === activeSlug)?.label ?? "Sección";
+  const title = activeCategory?.label ?? "Sección";
 
   useEffect(() => {
     if (!navTarget) return;
@@ -635,7 +692,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
               </h1>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-stretch auto-rows-fr gap-4 sm:gap-6">
-                {CATS.map((c, i) => (
+                {categories.map((c, i) => (
                   <Link
                     key={c.slug}
                     href={`/organizar/${c.slug}`}
@@ -645,8 +702,8 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                     <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
                       <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
                         <Image
-                          src={c.cover}
-                          alt={c.label}
+                         src={c.cover || "/Publicidad.avif"}
+alt={c.label}
                           fill
                           className="object-cover group-hover:object-contain transition-all duration-300"
                           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
@@ -659,7 +716,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
                           {c.label}
                         </h3>
                         <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-snug">
-                          {c.desc}
+                          {c.description}
                         </p>
                       </div>
                     </article>

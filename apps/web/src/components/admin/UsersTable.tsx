@@ -34,7 +34,7 @@ type User = {
   id: string;
   name: string | null;
   email: string;
-  role: "ADMIN" | "PROFESOR" | "ESTUDIANTE";
+  role: "SUPER_ADMIN" | "ADMIN" | "USUARIO";
   is_active: boolean;
   created_at: string; // ISO
 };
@@ -66,9 +66,9 @@ async function patchUser(
 
 /* ---------- Labels visuales ---------- */
 const ROLE_LABELS: Record<User["role"], string> = {
-  ADMIN: "Administrador",
-  PROFESOR: "Gestor",
-  ESTUDIANTE: "Usuario",
+  SUPER_ADMIN: "Super admin",
+  ADMIN: "Admin",
+  USUARIO: "Usuario",
 };
 
 /* ---------- Componente ---------- */
@@ -180,9 +180,9 @@ export default function UsersTable() {
                     }
                     className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   >
-                   <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
-<option value="PROFESOR">{ROLE_LABELS.PROFESOR}</option>
-<option value="ESTUDIANTE">{ROLE_LABELS.ESTUDIANTE}</option>
+                   <option value="SUPER_ADMIN">{ROLE_LABELS.SUPER_ADMIN}</option>
+<option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
+<option value="USUARIO">{ROLE_LABELS.USUARIO}</option>
                   </select>
                 </td>
 
