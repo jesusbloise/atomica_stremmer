@@ -261,6 +261,7 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [reloadNonce, setReloadNonce] = useState(0);
 
 const [isAdmin, setIsAdmin] = useState(false);
+const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 const [copiedId, setCopiedId] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -535,7 +536,8 @@ useEffect(() => {
       const me = await res.json();
 
       if (alive) {
-        setIsAdmin(me?.role === "ADMIN");
+        setIsAdmin(me?.role === "SUPER_ADMIN" || me?.role === "ADMIN");
+setIsSuperAdmin(me?.role === "SUPER_ADMIN");
       }
     } catch {
       if (alive) setIsAdmin(false);
@@ -601,6 +603,14 @@ useEffect(() => {
       {copiedId ? "ID copiado" : "Copiar ID del archivo"}
     </button>
   </div>
+)}
+{isSuperAdmin && (
+  <a
+    href={`/api/uploads/${id}/download`}
+    className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
+  >
+    Descargar archivo
+  </a>
 )}
           {tipo === "video" && videoUrl && (
             <div className="mb-4">

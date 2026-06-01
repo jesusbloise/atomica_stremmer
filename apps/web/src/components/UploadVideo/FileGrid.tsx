@@ -43,21 +43,21 @@ export default function FileGrid({
   const isSelected = (id: string) => selectedIds.includes(id);
 
   return (
-    <div className="px-2 sm:px-0">
-      <div className="grid w-full max-w-screen-xl grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {uniqueItems.map((item) => (
-          <FileCard
-            key={item.id}
-            item={item}
-            selectionMode={selectionMode}
-            selected={isSelected(item.id)}
-            onToggleSelect={onToggleSelect}
-            onDeleted={onDeleted}
-            href={makeHref(item.id)}
-          />
-        ))}
-      </div>
+  <div className="px-2 sm:px-0">
+    <div className="grid w-full max-w-screen-xl mx-auto grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {uniqueItems.map((item) => (
+        <FileCard
+          key={item.id}
+          item={item}
+          selectionMode={selectionMode}
+          selected={isSelected(item.id)}
+          onToggleSelect={onToggleSelect}
+          onDeleted={onDeleted}
+          href={makeHref(item.id)}
+        />
+      ))}
     </div>
-  );
+  </div>
+);
 }
 

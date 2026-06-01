@@ -7,16 +7,13 @@ import { useEffect, useRef, useState } from "react";
 import type { VideoInfo } from "./types";
 import { getExt, isVideoExt } from "./helpers";
 
-/* ====================== Utils ====================== */
 function stripExt(s?: string | null) {
   if (!s) return "Archivo";
 
   let safe = s;
   try {
     safe = decodeURIComponent(s);
-  } catch {
-    safe = s;
-  }
+  } catch {}
 
   const base = safe.split("/").pop() || safe;
   return base.replace(/\.[^.\/\\]+$/g, "");
@@ -42,7 +39,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-/* ====================== Previews de documentos ====================== */
 function DocumentPreview({
   url,
   kind,
@@ -92,13 +88,12 @@ function DocumentPreview({
   );
 }
 
-/* ====================== Componente ====================== */
 export default function FileCard({
   item,
   selectionMode,
   selected,
   onToggleSelect,
-  onDeleted, // no se usa, lo dejamos por compatibilidad
+  onDeleted,
   href,
 }: {
   item: VideoInfo;
@@ -108,8 +103,12 @@ export default function FileCard({
   onDeleted: (id: string) => void;
   href: string;
 }) {
-  const ext = (getExt(item.name || item.url) || "").toLowerCase();
-  const isVid = isVideoExt(ext);
+  const ext = (getExt(item.url || item.name) || "").toLowerCase();
+
+const isVid =
+  isVideoExt(ext) ||
+  item.mimeType?.startsWith("video/") ||
+  /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(item.url || "");
   const isPdf = ext === "pdf" || /\.pdf$/i.test(item.url || "");
   const isDocx = ext === "docx" || /\.docx$/i.test(item.url || "");
   const isDoc = !isDocx && (ext === "doc" || /\.doc$/i.test(item.url || ""));
@@ -126,13 +125,16 @@ export default function FileCard({
 
     const onLoaded = () => {
       const d = v.duration;
+
       if (Number.isFinite(d) && d > 7) {
         start = Math.max(0, Math.random() * (d - 6));
         end = Math.min(d, start + 6);
+
         try {
           v.currentTime = start;
         } catch {}
       }
+
       v.play().catch(() => {});
       setTimeout(() => v.play().catch(() => {}), 60);
     };
@@ -160,12 +162,12 @@ export default function FileCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9, y: 24 }}
+      initial={{ opacity: 0, scale: 0.94, y: 18 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.45, type: "spring", stiffness: 210, damping: 20 }}
+      transition={{ duration: 0.35, type: "spring", stiffness: 210, damping: 20 }}
     >
       <motion.article
-        className={`relative bg-zinc-900 border rounded-2xl overflow-hidden shadow-sm flex flex-col ${
+        className={`relative bg-zinc-900 border rounded-2xl overflow-hidden shadow-sm ${
           selected ? "border-orange-500" : "border-zinc-800"
         }`}
         {...(!isMobile ? { initial: "rest", animate: "rest", whileHover: "hover" } : {})}
@@ -182,7 +184,7 @@ export default function FileCard({
           </label>
         )}
 
-        <div className="relative h-[58vh] sm:h-[64vh] md:h-[22rem] lg:h-[26rem] xl:h-[28rem] bg-zinc-800">
+        <div className="relative aspect-video w-full bg-zinc-800 overflow-hidden">
           {isVid ? (
             <video
               ref={videoRef}
@@ -213,75 +215,40 @@ export default function FileCard({
 
           {!isMobile ? (
             <motion.div
-              className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50"
+              className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/10"
               variants={{
-                rest: { opacity: 0.65 },
-                hover: { opacity: 0.9, transition: { duration: 0.2 } },
+                rest: { opacity: 0.75 },
+                hover: { opacity: 0.95, transition: { duration: 0.2 } },
               }}
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/55" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/15" />
           )}
 
-          {isMobile ? (
-            <div className="absolute inset-0 flex items-center justify-center px-3">
-              <div className="px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
-                <p className="text-white text-lg sm:text-xl md:text-2xl font-bold break-words whitespace-normal max-h-48 overflow-auto">
-                  {name}
-                </p>
-                <div className="mt-4">
-                  <Link href={selectionMode ? "#" : href} aria-disabled={selectionMode}>
-                    <button
-                      disabled={selectionMode}
-                      className={`text-sm px-4 py-2 rounded border transition ${
-                        selectionMode
-                          ? "text-zinc-500 border-zinc-700"
-                          : "text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500"
-                      }`}
-                    >
-                      Ver más
-                    </button>
-                  </Link>
-                </div>
+          <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pointer-events-none">
+            <div className="pointer-events-auto max-w-[88%]">
+              <p className="text-white text-lg md:text-xl font-bold drop-shadow line-clamp-2">
+                {name}
+              </p>
+
+              <div className="mt-3">
+                <Link href={selectionMode ? "#" : href} aria-disabled={selectionMode}>
+                  <motion.button
+                    disabled={selectionMode}
+                    whileHover={!isMobile ? { scale: 1.05 } : undefined}
+                    whileTap={{ scale: 0.96 }}
+                    className={`text-sm px-4 py-2 rounded-lg border transition ${
+                      selectionMode
+                        ? "text-zinc-500 border-zinc-700"
+                        : "text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500 bg-black/30"
+                    }`}
+                  >
+                    Ver más
+                  </motion.button>
+                </Link>
               </div>
             </div>
-          ) : (
-            <motion.div
-              className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none"
-              variants={{
-                rest: { opacity: 0, y: 18, scale: 0.98, filter: "blur(6px)" },
-                hover: {
-                  opacity: 1,
-                  y: 0,
-                  scale: 1,
-                  filter: "blur(0px)",
-                  transition: { type: "spring", stiffness: 260, damping: 18 },
-                },
-              }}
-            >
-              <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
-                <p className="text-white text-lg sm:text-xl md:text-2xl font-bold break-words whitespace-normal max-h-48 overflow-auto">
-                  {name}
-                </p>
-                <div className="mt-4">
-                  <Link href={selectionMode ? "#" : href} aria-disabled={selectionMode}>
-                    <motion.button
-                      disabled={selectionMode}
-                      whileHover={{ scale: 1.07 }}
-                      whileTap={{ scale: 0.96 }}
-                      className={`text-sm px-4 py-2 rounded border transition ${
-                        selectionMode
-                          ? "text-zinc-500 border-zinc-700"
-                          : "text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500"
-                      }`}
-                    >
-                      Ver más
-                    </motion.button>
-                  </Link>
-                </div>
-              </div>
-            </motion.div>
-          )}
+          </div>
         </div>
       </motion.article>
     </motion.div>

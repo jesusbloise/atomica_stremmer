@@ -794,7 +794,7 @@ function CardItem({ item }: { item: UploadItem }) {
       animate={isMobile ? undefined : "rest"}
       whileHover={isMobile ? undefined : "hover"}
     >
-      <div className="relative h-[48vh] sm:h-[50vh] md:h-[18rem] lg:h-[22rem] xl:h-[24rem] bg-zinc-800 overflow-hidden">
+      <div className="relative aspect-video w-full bg-zinc-800 overflow-hidden">
         {isVideo ? (
           <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
         ) : isPdf ? (
@@ -821,13 +821,13 @@ function CardItem({ item }: { item: UploadItem }) {
           />
         )}
 
-        <div className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none">
-          <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
-            <p className="text-white text-xl md:text-2xl font-bold drop-shadow break-words whitespace-normal max-h-40 overflow-auto">
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pointer-events-none">
+          <div className="pointer-events-auto text-left">
+            <p className="text-white text-lg md:text-xl font-bold drop-shadow line-clamp-2">
               {name}
             </p>
 
-            <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
+            <div className="mt-3 flex items-center justify-start gap-3 flex-wrap">
               <Link
                 href={`/videos/${item.id}`}
                 prefetch={false}
@@ -885,13 +885,13 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/50" />
 
-        <div className="absolute inset-0 flex items-center justify-center px-3 pointer-events-none">
-          <div className="pointer-events-auto px-6 py-5 rounded-xl bg-black/45 border border-white/15 backdrop-blur-md text-center shadow-2xl max-w-[90vw] md:max-w-[720px]">
-            <p className="text-white text-xl md:text-2xl font-bold drop-shadow break-words whitespace-normal max-h-40 overflow-auto">
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pointer-events-none">
+          <div className="pointer-events-auto text-left">
+            <p className="text-white text-lg md:text-xl font-bold drop-shadow line-clamp-2">
               {name}
             </p>
 
-            <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
+            <div className="mt-3 flex items-center justify-start gap-3 flex-wrap">
               <Link
                 href={`/videos/${item.id}`}
                 prefetch={false}
@@ -949,7 +949,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
           {items.map((u) => (
             <div
               key={u.id}
-              className="shrink-0 w-[72vw] sm:w-[340px] md:w-[300px] lg:w-[280px] xl:w-[270px]"
+              className="shrink-0 w-[82vw] sm:w-[460px] md:w-[480px] lg:w-[520px] xl:w-[540px]"
             >
               <CardItem item={u} />
             </div>

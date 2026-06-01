@@ -105,7 +105,13 @@ function mapAnyToVideoInfo(file: any, subtitulos: any[]): VideoInfo | null {
 
   return {
     id: file.id,
-    name: file.file_name || file.name || "sin_nombre",
+    name:
+  file.titulo ||
+  file.ficha?.titulo ||
+  file.display_name ||
+  file.file_name ||
+  file.name ||
+  "sin_nombre",
     url: normalizePlayableUrl(rawUrl),
     subtituloTexto,
     mimeType,
@@ -122,7 +128,7 @@ export default function UploadVideo() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const videosPerPage = 8;
+ const videosPerPage = 16;
 
   const loadVideos = async () => {
     try {
@@ -253,7 +259,13 @@ export default function UploadVideo() {
 
             return {
               id: r.id,
-              name: r.file_name || r.name || "sin_nombre",
+              name:
+  r.titulo ||
+  r.ficha?.titulo ||
+  r.display_name ||
+  r.file_name ||
+  r.name ||
+  "sin_nombre",
               url: normalizePlayableUrl(rawUrl),
               subtituloTexto: r.subtituloTexto,
               mimeType: r.contentType || r.mimeType || r.type || undefined,
