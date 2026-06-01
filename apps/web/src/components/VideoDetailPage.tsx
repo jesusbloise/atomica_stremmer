@@ -42,32 +42,7 @@ type Subtitulo = {
   [k: string]: any;
 };
 
-// const CATS = [
-//   {
-//     slug: "publicidad",
-//     label: "Publicidad",
-//     cover: "/Publicidad.avif",
-//     desc: "Piezas y campañas publicitarias.",
-//   },
-//   {
-//     slug: "entretenimiento",
-//     label: "Entretenimiento",
-//     cover: "/babybandito2.jpg",
-//     desc: "Contenido y piezas de entretenimiento.",
-//   },
-//   {
-//   slug: "vxf",
-//   label: "Corporativo",
-//   cover: "/Garage.jpg",
-//   desc: "Contenido corporativo, institucional y nuevos negocios.",
-// },
-// {
-//   slug: "ia",
-//   label: "IA",
-//   cover: "/service-7.jpg",
-//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-// },
-// ] as const;
+
 
 type CategoryFromApi = {
   id: string;
@@ -77,6 +52,12 @@ type CategoryFromApi = {
   cover?: string;
   is_active: boolean;
   sort_order: number;
+  subcategories?: {
+    id: string;
+    label: string;
+    is_active: boolean;
+    sort_order: number;
+  }[];
 };
 
 function normalizeSubtitlesResponse(data: any): any[] {
@@ -254,15 +235,22 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [views, setViews] = useState(0);
   const [categories, setCategories] = useState<CategoryFromApi[]>([]);
+  const [currentCategory, setCurrentCategory] = useState("");
+const [currentSubcategory, setCurrentSubcategory] = useState("");
+const [moveOpen, setMoveOpen] = useState(false);
+const [moveCategory, setMoveCategory] = useState("");
+const [moveSubcategory, setMoveSubcategory] = useState("");
+const [movingFile, setMovingFile] = useState(false);
+const [moveMessage, setMoveMessage] = useState("");
 
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoBuffering, setVideoBuffering] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
 
-const [isAdmin, setIsAdmin] = useState(false);
-const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-const [copiedId, setCopiedId] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const seekingLockRef = useRef(false);
@@ -308,10 +296,10 @@ const [copiedId, setCopiedId] = useState(false);
       const end =
         toSecFromUnknown(
           r.time_end ??
-            r.end ??
-            r.end_s ??
-            r.end_ms ??
-            (typeof r.__startSec === "number" ? r.__startSec + 2 : undefined)
+          r.end ??
+          r.end_s ??
+          r.end_ms ??
+          (typeof r.__startSec === "number" ? r.__startSec + 2 : undefined)
         ) ?? start + 2;
 
       const text = r.text ?? r.content ?? r.line ?? "";
@@ -321,39 +309,39 @@ const [copiedId, setCopiedId] = useState(false);
   }, [subtitulos]);
 
   useEffect(() => {
-  const q = searchParams.get("q");
+    const q = searchParams.get("q");
 
-  if (q && q.trim()) {
-    setSearchTerm(q.trim());
-    setCurrentMatchIndex(0);
-  }
-}, [searchParams]);
-useEffect(() => {
-  let alive = true;
-
-  async function loadCategories() {
-    try {
-      const res = await fetch("/api/categories", {
-        cache: "no-store",
-      });
-
-      const data = await res.json();
-
-      if (!alive) return;
-
-      setCategories(Array.isArray(data?.categories) ? data.categories : []);
-    } catch (err) {
-      console.error("Error cargando categorías:", err);
-      if (alive) setCategories([]);
+    if (q && q.trim()) {
+      setSearchTerm(q.trim());
+      setCurrentMatchIndex(0);
     }
-  }
+  }, [searchParams]);
+  useEffect(() => {
+    let alive = true;
 
-  loadCategories();
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/categories", {
+          cache: "no-store",
+        });
 
-  return () => {
-    alive = false;
-  };
-}, []);
+        const data = await res.json();
+
+        if (!alive) return;
+
+        setCategories(Array.isArray(data?.categories) ? data.categories : []);
+      } catch (err) {
+        console.error("Error cargando categorías:", err);
+        if (alive) setCategories([]);
+      }
+    }
+
+    loadCategories();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -378,6 +366,10 @@ useEffect(() => {
         if (upload?.views !== undefined) {
           setViews(upload.views);
         }
+        setCurrentCategory(upload?.category || "");
+setCurrentSubcategory(upload?.subcategory || "");
+setMoveCategory(upload?.category || "");
+setMoveSubcategory(upload?.subcategory || "");
 
         if (t === "video") {
           const url = upload?.url as string | undefined;
@@ -399,7 +391,7 @@ useEffect(() => {
                 fetch(`/api/procesar-subtitulos/${id}`, {
                   method: "POST",
                   cache: "no-store",
-                }).catch(() => {});
+                }).catch(() => { });
               }
 
               startPolling();
@@ -413,7 +405,7 @@ useEffect(() => {
               fetch(`/api/procesar-subtitulos/${id}`, {
                 method: "POST",
                 cache: "no-store",
-              }).catch(() => {});
+              }).catch(() => { });
             }
 
             startPolling();
@@ -475,7 +467,7 @@ useEffect(() => {
 
     try {
       v.pause();
-    } catch {}
+    } catch { }
 
     const onSeeked = () => {
       v.removeEventListener("seeked", onSeeked);
@@ -485,9 +477,9 @@ useEffect(() => {
         if (Math.abs(v.currentTime - target) < 0.01) {
           v.currentTime = Math.min(v.duration || target + 0.02, target + 0.02);
         }
-      } catch {}
+      } catch { }
 
-      v.play().catch(() => {});
+      v.play().catch(() => { });
     };
 
     v.addEventListener("seeked", onSeeked, { once: true });
@@ -528,28 +520,28 @@ useEffect(() => {
   }, [tipo, matchIndices, currentMatchIndex, getStartSecFor, tableData, jumpTo]);
 
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  async function loadMe() {
-    try {
-      const res = await fetch("/api/me", { cache: "no-store" });
-      const me = await res.json();
+    async function loadMe() {
+      try {
+        const res = await fetch("/api/me", { cache: "no-store" });
+        const me = await res.json();
 
-      if (alive) {
-        setIsAdmin(me?.role === "SUPER_ADMIN" || me?.role === "ADMIN");
-setIsSuperAdmin(me?.role === "SUPER_ADMIN");
+        if (alive) {
+          setIsAdmin(me?.role === "SUPER_ADMIN" || me?.role === "ADMIN");
+          setIsSuperAdmin(me?.role === "SUPER_ADMIN");
+        }
+      } catch {
+        if (alive) setIsAdmin(false);
       }
-    } catch {
-      if (alive) setIsAdmin(false);
     }
-  }
 
-  loadMe();
+    loadMe();
 
-  return () => {
-    alive = false;
-  };
-}, []);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handlePlay = useCallback(() => {
     if (!id) return;
@@ -559,7 +551,7 @@ setIsSuperAdmin(me?.role === "SUPER_ADMIN");
       .then((data) => {
         if (data?.views !== undefined) setViews(data.views);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [id]);
 
   const retryVideo = useCallback(() => {
@@ -568,49 +560,105 @@ setIsSuperAdmin(me?.role === "SUPER_ADMIN");
     setVideoBuffering(false);
     setReloadNonce((n) => n + 1);
   }, []);
+const selectedMoveCategory = useMemo(() => {
+  return categories.find((cat) => cat.slug === moveCategory) || null;
+}, [categories, moveCategory]);
 
+const availableMoveSubcategories = useMemo(() => {
+  return (selectedMoveCategory?.subcategories || []).filter((sub) => sub.is_active);
+}, [selectedMoveCategory]);
+
+const handleMoveFile = async () => {
+  try {
+    setMovingFile(true);
+    setMoveMessage("");
+
+    const res = await fetch(`/api/uploads/${id}/category`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        category: moveCategory,
+        subcategory: moveSubcategory,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error || "No se pudo mover el archivo");
+    }
+
+    setCurrentCategory(data?.upload?.category || moveCategory);
+    setCurrentSubcategory(data?.upload?.subcategory || moveSubcategory);
+    setMoveMessage("Archivo movido correctamente.");
+    setMoveOpen(false);
+
+    router.refresh();
+  } catch (err: any) {
+    setMoveMessage(err?.message || "No se pudo mover el archivo");
+  } finally {
+    setMovingFile(false);
+  }
+};
   return (
     <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
       <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-  <div className="mb-4 flex justify-start">
-    <button
-      onClick={() => router.back()}
-      className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
-    >
-      ← Volver atrás
-    </button>
-  </div>
-  {isAdmin && (
-  <div className="mb-3 flex justify-end">
+          <div className="mb-4 flex justify-start">
+            <button
+              onClick={() => router.back()}
+              className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
+            >
+              ← Volver atrás
+            </button>
+          </div>
+          {isAdmin && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(id);
+                    setCopiedId(true);
+
+                    setTimeout(() => {
+                      setCopiedId(false);
+                    }, 1800);
+                  } catch {
+                    setCopiedId(false);
+                  }
+                }}
+                className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+                title={id}
+              >
+                {copiedId ? "ID copiado" : "Copiar ID del archivo"}
+              </button>
+            </div>
+          )}
+      {isSuperAdmin && (
+  <div className="mb-4 flex flex-wrap justify-end gap-2">
     <button
       type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(id);
-          setCopiedId(true);
-
-          setTimeout(() => {
-            setCopiedId(false);
-          }, 1800);
-        } catch {
-          setCopiedId(false);
-        }
+      onClick={() => {
+        setMoveCategory(currentCategory);
+        setMoveSubcategory(currentSubcategory);
+        setMoveMessage("");
+        setMoveOpen(true);
       }}
       className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-      title={id}
     >
-      {copiedId ? "ID copiado" : "Copiar ID del archivo"}
+      Mover archivo
     </button>
+
+    <a
+      href={`/api/uploads/${id}/download`}
+      className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
+    >
+      Descargar archivo
+    </a>
   </div>
-)}
-{isSuperAdmin && (
-  <a
-    href={`/api/uploads/${id}/download`}
-    className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
-  >
-    Descargar archivo
-  </a>
 )}
           {tipo === "video" && videoUrl && (
             <div className="mb-4">
@@ -801,8 +849,54 @@ setIsSuperAdmin(me?.role === "SUPER_ADMIN");
             />
           )}
 
-<RelatedDiscoveryRail uploadId={id} />
+          {/* <RelatedDiscoveryRail uploadId={id} />
           <div className="mt-12">
+            <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
+              Explorar categorías
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {categories.map((cat, i) => (
+                <Link
+                  key={cat.slug}
+                  href={`/organizar/${cat.slug}`}
+                  className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
+                >
+                  <article className="h-full">
+                    <div className="relative aspect-[4/3] bg-black overflow-hidden">
+                      <Image
+                        src={cat.cover || "/Publicidad.avif"}
+                        alt={cat.label}
+                        fill
+                        className="object-cover group-hover:scale-105 transition duration-500"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        priority={i === 0}
+                      />
+
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <h3 className="text-lg font-bold text-white">{cat.label}</h3>
+                        <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
+                      </div>
+                    </div>
+                  </article>
+                </Link>
+              ))}
+            </div>
+          </div> */}
+        </div>
+
+        <div className="space-y-6">
+          <FichaTecnica uploadId={id} />
+          <ArchivosRelacionadosMock />
+        </div>
+      </div>
+      <div className="mt-12 w-full">
+  <RelatedDiscoveryRail uploadId={id} />
+</div>
+
+<div className="mt-12 w-full">
   <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
     Explorar categorías
   </h2>
@@ -828,8 +922,13 @@ setIsSuperAdmin(me?.role === "SUPER_ADMIN");
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
             <div className="absolute bottom-0 left-0 right-0 p-4">
-              <h3 className="text-lg font-bold text-white">{cat.label}</h3>
-              <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
+              <h3 className="text-lg font-bold text-white">
+                {cat.label}
+              </h3>
+
+              <p className="text-sm text-zinc-300 mt-1">
+                {cat.description}
+              </p>
             </div>
           </div>
         </article>
@@ -837,13 +936,81 @@ setIsSuperAdmin(me?.role === "SUPER_ADMIN");
     ))}
   </div>
 </div>
-        </div>
+      {moveOpen && isSuperAdmin && (
+  <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+    <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+      <div className="mb-4">
+        <h2 className="text-lg font-bold text-white">Mover archivo</h2>
+        <p className="mt-1 text-xs text-zinc-400">
+          Cambia la categoría o subcategoría sin mover el archivo físico.
+        </p>
+      </div>
 
-        <div className="space-y-6">
-          <FichaTecnica uploadId={id} />
-          <ArchivosRelacionadosMock />
+      <div className="space-y-4">
+        <label className="block">
+          <span className="mb-1 block text-xs text-zinc-400">Categoría</span>
+          <select
+            value={moveCategory}
+            onChange={(e) => {
+              setMoveCategory(e.target.value);
+              setMoveSubcategory("");
+            }}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+          >
+            <option value="">Seleccionar categoría</option>
+            {categories
+              .filter((cat) => cat.is_active)
+              .map((cat) => (
+                <option key={cat.id} value={cat.slug}>
+                  {cat.label}
+                </option>
+              ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs text-zinc-400">Subcategoría</span>
+          <select
+            value={moveSubcategory}
+            onChange={(e) => setMoveSubcategory(e.target.value)}
+            disabled={!moveCategory}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            <option value="">Sin subcategoría</option>
+            {availableMoveSubcategories.map((sub) => (
+              <option key={sub.id} value={sub.label}>
+                {sub.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {moveMessage && (
+          <p className="text-xs text-orange-300">{moveMessage}</p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => setMoveOpen(false)}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleMoveFile}
+            disabled={movingFile || !moveCategory}
+            className="rounded-lg border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
+          >
+            {movingFile ? "Moviendo..." : "Guardar cambios"}
+          </button>
         </div>
       </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
