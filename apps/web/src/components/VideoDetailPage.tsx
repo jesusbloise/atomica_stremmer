@@ -242,6 +242,8 @@ const [moveCategory, setMoveCategory] = useState("");
 const [moveSubcategory, setMoveSubcategory] = useState("");
 const [movingFile, setMovingFile] = useState(false);
 const [moveMessage, setMoveMessage] = useState("");
+const [thumbnailUploading, setThumbnailUploading] = useState(false);
+const [thumbnailMessage, setThumbnailMessage] = useState("");
 
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoBuffering, setVideoBuffering] = useState(false);
@@ -602,6 +604,35 @@ const handleMoveFile = async () => {
     setMovingFile(false);
   }
 };
+const handleThumbnailUpload = async (file: File | null) => {
+  if (!file) return;
+
+  try {
+    setThumbnailUploading(true);
+    setThumbnailMessage("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`/api/uploads/${id}/thumbnail`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error || "No se pudo subir la portada");
+    }
+
+    setThumbnailMessage("Portada actualizada correctamente.");
+    router.refresh();
+  } catch (err: any) {
+    setThumbnailMessage(err?.message || "No se pudo subir la portada");
+  } finally {
+    setThumbnailUploading(false);
+  }
+};
   return (
     <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
       <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -637,28 +668,53 @@ const handleMoveFile = async () => {
               </button>
             </div>
           )}
-      {isSuperAdmin && (
-  <div className="mb-4 flex flex-wrap justify-end gap-2">
-    <button
-      type="button"
-      onClick={() => {
-        setMoveCategory(currentCategory);
-        setMoveSubcategory(currentSubcategory);
-        setMoveMessage("");
-        setMoveOpen(true);
-      }}
-      className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-    >
-      Mover archivo
-    </button>
+      {isAdmin && (
+  <>
+    <div className="mb-4 flex flex-wrap justify-end gap-2">
+      <label className="cursor-pointer rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition">
+        {thumbnailUploading ? "Subiendo portada..." : "Cambiar portada"}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          disabled={thumbnailUploading}
+          onChange={(e) => {
+            const file = e.target.files?.[0] || null;
+            handleThumbnailUpload(file);
+            e.currentTarget.value = "";
+          }}
+        />
+      </label>
 
-    <a
-      href={`/api/uploads/${id}/download`}
-      className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
-    >
-      Descargar archivo
-    </a>
-  </div>
+      {isSuperAdmin && (
+        <button
+          type="button"
+          onClick={() => {
+            setMoveCategory(currentCategory);
+            setMoveSubcategory(currentSubcategory);
+            setMoveMessage("");
+            setMoveOpen(true);
+          }}
+          className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+        >
+          Mover archivo
+        </button>
+      )}
+
+      <a
+        href={`/api/uploads/${id}/download`}
+        className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
+      >
+        Descargar archivo
+      </a>
+    </div>
+
+    {thumbnailMessage && (
+      <p className="mb-4 text-right text-xs text-orange-300">
+        {thumbnailMessage}
+      </p>
+    )}
+  </>
 )}
           {tipo === "video" && videoUrl && (
             <div className="mb-4">

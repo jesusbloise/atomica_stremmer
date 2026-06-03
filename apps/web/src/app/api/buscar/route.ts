@@ -28,6 +28,7 @@ export async function GET(req: Request) {
           u.uploaded_at,
           u.category,
           u.subcategory,
+          u.thumbnail_url,
           COALESCE(
             u.tipo,
             CASE
@@ -50,6 +51,7 @@ export async function GET(req: Request) {
           b.uploaded_at,
           b.category,
           b.subcategory,
+          b.thumbnail_url,
           'metadata' AS matched_from,
           NULL::text AS snippet
         FROM base b
@@ -76,6 +78,7 @@ export async function GET(req: Request) {
           b.uploaded_at,
           b.category,
           b.subcategory,
+          b.thumbnail_url,
           'subtitulos' AS matched_from,
           substring(s.text from greatest(position(lower($1) in lower(s.text)) - 40, 1) for 160) AS snippet
         FROM base b
@@ -132,6 +135,7 @@ export async function GET(req: Request) {
       tipo: r.tipo,
       category: r.category,
       subcategory: r.subcategory,
+      thumbnail_url: r.thumbnail_url,
       matched_from: r.matched_from,
       subtituloTexto: (r.snippet || "").trim(),
       uploaded_at: r.uploaded_at,

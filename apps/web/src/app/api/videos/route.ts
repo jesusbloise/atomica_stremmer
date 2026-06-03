@@ -19,6 +19,7 @@ type RowVideo = {
   tipo: string | null;
   category?: string | null;
   subcategory?: string | null;
+  thumbnail_url?: string | null;
 };
 
 function parseGsUrl(raw?: string | null) {
@@ -106,7 +107,8 @@ export async function GET(req: Request) {
         u.uploaded_at,
         u.tipo,
         u.category,
-        u.subcategory
+        u.subcategory,
+        u.thumbnail_url
       FROM uploads u
       LEFT JOIN ficha_tecnica ft
         ON ft.upload_id::text = u.id::text

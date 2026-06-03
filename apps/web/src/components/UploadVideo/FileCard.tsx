@@ -159,6 +159,11 @@ const isVid =
   }, [item.url, isVid]);
 
   const name = stripExt(item.name);
+ const thumbnailUrl = item.thumbnail_url
+  ? item.thumbnail_url.startsWith("gs://")
+    ? `/api/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
+    : item.thumbnail_url
+  : "";
 
   return (
     <motion.div
@@ -185,7 +190,13 @@ const isVid =
         )}
 
         <div className="relative aspect-video w-full bg-zinc-800 overflow-hidden">
-          {isVid ? (
+         {thumbnailUrl ? (
+<img
+  src={thumbnailUrl}
+  alt={name}
+  className="absolute inset-0 h-full w-full object-cover"
+/>
+) : isVid ? (
             <video
               ref={videoRef}
               src={item.url}

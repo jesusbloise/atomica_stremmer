@@ -192,15 +192,15 @@ function VideoStaticPreview({
   src: string;
   poster?: string | null;
 }) {
+  const posterUrl = poster ? proxiedUrl(poster) : "";
+
   return (
     <div className="absolute inset-0 bg-black">
-      {poster ? (
-        <Image
-          src={poster}
+      {posterUrl ? (
+        <img
+          src={posterUrl}
           alt="Vista previa de video"
-          fill
-          className="object-cover"
-          sizes="300px"
+          className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
         <video
@@ -215,7 +215,6 @@ function VideoStaticPreview({
       )}
 
       <div className="absolute inset-0 bg-black/15" />
-
     </div>
   );
 }
@@ -352,7 +351,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   const FULL_PAGE_SIZE = 8;
   const [activeShelf, setActiveShelf] = useState<string>("Todo");
   const [categories, setCategories] = useState<CategoryFromApi[]>([]);
-const [loadingCategories, setLoadingCategories] = useState(true);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   useEffect(() => setActiveSlug(slug), [slug]);
 
@@ -404,39 +403,39 @@ const [loadingCategories, setLoadingCategories] = useState(true);
     };
   }, [activeSlug]);
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  async function loadCategories() {
-    try {
-      setLoadingCategories(true);
+    async function loadCategories() {
+      try {
+        setLoadingCategories(true);
 
-      const res = await fetch("/api/categories", {
-        cache: "no-store",
-      });
+        const res = await fetch("/api/categories", {
+          cache: "no-store",
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (!alive) return;
+        if (!alive) return;
 
-      const list: CategoryFromApi[] = Array.isArray(data?.categories)
-        ? data.categories
-        : [];
+        const list: CategoryFromApi[] = Array.isArray(data?.categories)
+          ? data.categories
+          : [];
 
-      setCategories(list);
-    } catch (err) {
-      console.error("Error cargando categorías:", err);
-      if (alive) setCategories([]);
-    } finally {
-      if (alive) setLoadingCategories(false);
+        setCategories(list);
+      } catch (err) {
+        console.error("Error cargando categorías:", err);
+        if (alive) setCategories([]);
+      } finally {
+        if (alive) setLoadingCategories(false);
+      }
     }
-  }
 
-  loadCategories();
+    loadCategories();
 
-  return () => {
-    alive = false;
-  };
-}, []);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     setMenuMain("");
@@ -454,10 +453,10 @@ const [loadingCategories, setLoadingCategories] = useState(true);
 
   const activeCategory = categories.find((c) => c.slug === activeSlug) || null;
 
-const groups: Group[] =
-  activeCategory?.subcategories
-    ?.filter((s) => s.is_active)
-    .map((s) => ({ label: s.label })) || [];
+  const groups: Group[] =
+    activeCategory?.subcategories
+      ?.filter((s) => s.is_active)
+      .map((s) => ({ label: s.label })) || [];
   const hasGroups = groups.length > 0;
 
   const colorsForSlug = useMemo(() => {
@@ -488,13 +487,13 @@ const groups: Group[] =
       }
 
       const defaultKey =
-       activeSlug === "publicidad"
-  ? "Marca"
-  : activeSlug === "entretenimiento"
-  ? "Estudio"
-  : activeSlug === "ia"
-  ? "Generativo"
-  : "Producción";
+        activeSlug === "publicidad"
+          ? "Marca"
+          : activeSlug === "entretenimiento"
+            ? "Estudio"
+            : activeSlug === "ia"
+              ? "Generativo"
+              : "Producción";
 
       if (!map.has(defaultKey)) map.set(defaultKey, []);
       map.get(defaultKey)!.push(it);
@@ -551,12 +550,12 @@ const groups: Group[] =
 
       const defaultKey =
         activeSlug === "publicidad"
-  ? "Marca"
-  : activeSlug === "entretenimiento"
-  ? "Estudio"
-  : activeSlug === "ia"
-  ? "Generativo"
-  : "Producción";
+          ? "Marca"
+          : activeSlug === "entretenimiento"
+            ? "Estudio"
+            : activeSlug === "ia"
+              ? "Generativo"
+              : "Producción";
 
       return defaultKey === fullViewSub;
     });
@@ -702,8 +701,8 @@ const groups: Group[] =
                     <article className="h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow">
                       <div className="relative w-full aspect-[4/3] overflow-hidden bg-black">
                         <Image
-                         src={c.cover || "/Publicidad.avif"}
-alt={c.label}
+                          src={c.cover || "/Publicidad.avif"}
+                          alt={c.label}
                           fill
                           className="object-cover group-hover:object-contain transition-all duration-300"
                           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"

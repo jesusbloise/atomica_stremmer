@@ -194,6 +194,7 @@ export default function RelatedDiscoveryRail({ uploadId }: { uploadId: string })
 
               const rawUrl = item.url || item.file_path || "";
               const previewUrl = proxiedUrl(rawUrl);
+              const thumbnailUrl = proxiedUrl(item.thumbnail_url);
 
               const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
               const isPdf = PDF_EXT.test(rawUrl);
@@ -218,7 +219,13 @@ export default function RelatedDiscoveryRail({ uploadId }: { uploadId: string })
                       : "border-zinc-800 hover:border-orange-500/70",
                   ].join(" ")}
                 >
-                  {isVideo && previewUrl ? (
+                  {thumbnailUrl ? (
+  <img
+    src={thumbnailUrl}
+    alt={name}
+    className="absolute inset-0 h-full w-full object-cover"
+  />
+) : isVideo && previewUrl ? (
                     <video
                       src={previewUrl}
                       muted

@@ -12,6 +12,7 @@ type Item = {
   display_name?: string | null;
   titulo?: string | null;
   tipo?: string;
+  thumbnail_url?: string | null;
 };
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
@@ -185,7 +186,9 @@ const [categories, setCategories] = useState<CategoryFromApi[]>([]);
   };
 
   const src = current ? proxiedUrl(current.url) : "";
+  const thumbnailSrc = current ? proxiedUrl(current.thumbnail_url) : "";
   const isVideo = current?.tipo === "video" || VIDEO_EXT.test(current?.url || "");
+
   const name = stripExt(
   current?.display_name ||
   current?.titulo ||
@@ -198,7 +201,13 @@ const [categories, setCategories] = useState<CategoryFromApi[]>([]);
       {current && (
         <div className="relative w-full overflow-hidden bg-zinc-950">
           <div className="relative h-[40vh] sm:h-[50vh] md:h-[60vh] bg-zinc-900">
-            {isVideo ? (
+            {thumbnailSrc ? (
+  <img
+    src={thumbnailSrc}
+    alt={name}
+    className="absolute inset-0 w-full h-full object-cover"
+  />
+) : isVideo ? (
               <video
                 key={current.id}
                 ref={videoRef}

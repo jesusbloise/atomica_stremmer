@@ -104,20 +104,21 @@ function mapAnyToVideoInfo(file: any, subtitulos: any[]): VideoInfo | null {
   if (!rawUrl) return null;
 
   return {
-    id: file.id,
-    name:
-  file.titulo ||
-  file.ficha?.titulo ||
-  file.display_name ||
-  file.file_name ||
-  file.name ||
-  "sin_nombre",
-    url: normalizePlayableUrl(rawUrl),
-    subtituloTexto,
-    mimeType,
-    sizeBytes: file.size || file.sizeBytes,
-    created_at: file.created_at || file.uploaded_at,
-  };
+  id: file.id,
+  name:
+    file.titulo ||
+    file.ficha?.titulo ||
+    file.display_name ||
+    file.file_name ||
+    file.name ||
+    "sin_nombre",
+  url: normalizePlayableUrl(rawUrl),
+  thumbnail_url: file.thumbnail_url || null,
+  subtituloTexto,
+  mimeType,
+  sizeBytes: file.size || file.sizeBytes,
+  created_at: file.created_at || file.uploaded_at,
+};
 }
 
 export default function UploadVideo() {
@@ -257,21 +258,22 @@ export default function UploadVideo() {
               (r.file_key ? `/api/files/${r.file_key}` : "");
             if (!rawUrl) return null;
 
-            return {
-              id: r.id,
-              name:
-  r.titulo ||
-  r.ficha?.titulo ||
-  r.display_name ||
-  r.file_name ||
-  r.name ||
-  "sin_nombre",
-              url: normalizePlayableUrl(rawUrl),
-              subtituloTexto: r.subtituloTexto,
-              mimeType: r.contentType || r.mimeType || r.type || undefined,
-              sizeBytes: r.size || r.sizeBytes,
-              created_at: r.created_at || r.uploaded_at,
-            } as VideoInfo;
+           return {
+  id: r.id,
+  name:
+    r.titulo ||
+    r.ficha?.titulo ||
+    r.display_name ||
+    r.file_name ||
+    r.name ||
+    "sin_nombre",
+  url: normalizePlayableUrl(rawUrl),
+  thumbnail_url: r.thumbnail_url || null,
+  subtituloTexto: r.subtituloTexto,
+  mimeType: r.contentType || r.mimeType || r.type || undefined,
+  sizeBytes: r.size || r.sizeBytes,
+  created_at: r.created_at || r.uploaded_at,
+} as VideoInfo;
           })
           .filter(Boolean) as VideoInfo[];
 

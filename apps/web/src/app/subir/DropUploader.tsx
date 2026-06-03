@@ -90,6 +90,7 @@ export default function DropUploader({
 
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -228,6 +229,23 @@ export default function DropUploader({
     (requiresSub && !subcategory) ||
     (titleRequired && !(meta.titulo && meta.titulo.trim().length > 0));
 
+const uploadThumbnailIfNeeded = async (uploadId?: string) => {
+  if (!uploadId || !thumbnailFile) return;
+
+  const fd = new FormData();
+  fd.append("thumbnail", thumbnailFile);
+
+  const res = await fetch(`/api/uploads/${uploadId}/thumbnail`, {
+    method: "POST",
+    body: fd,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data?.error || "El archivo subió, pero falló la portada");
+  }
+};
   const upload = async () => {
     if (!file || uploading) return;
     if (!category) return setMsg("Selecciona una categoría.");
@@ -260,10 +278,13 @@ export default function DropUploader({
         const id: string | undefined =
           data?.id || data?.upload?.id || data?.file?.id || data?.record?.id;
 
-        setMsg("Subido correctamente");
-        setFile(null);
-        onUploaded?.({ id, category });
-        return;
+        await uploadThumbnailIfNeeded(id);
+
+setMsg("Subido correctamente");
+setFile(null);
+setThumbnailFile(null);
+onUploaded?.({ id, category });
+return;
       }
 
       setMsg("Subiendo archivo grande...");
@@ -331,10 +352,12 @@ export default function DropUploader({
         finalizeData?.upload?.id ||
         finalizeData?.file?.id ||
         finalizeData?.record?.id;
+await uploadThumbnailIfNeeded(id);
 
-      setMsg("Subido correctamente");
-      setFile(null);
-      onUploaded?.({ id, category });
+setMsg("Subido correctamente");
+setFile(null);
+setThumbnailFile(null);
+onUploaded?.({ id, category });
     } catch (e: any) {
       setMsg(`Error: ${e?.message || "falló la subida"}`);
     } finally {
@@ -488,7 +511,55 @@ export default function DropUploader({
           </div>
         </div>
       </div>
+<div className="w-full py-4 bg-transparent">
+  <div className="rounded-xl border border-zinc-800/80 bg-black/20 p-4">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold text-white">
+          Imagen de portada opcional
+        </h3>
+        <p className="text-xs text-zinc-400 mt-1">
+          Si no subes una imagen, el sistema usará una portada automática o una vista previa del archivo.
+        </p>
+      </div>
 
+      <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-orange-500/60 px-4 py-2 text-sm text-orange-300 hover:bg-orange-500/10">
+        Seleccionar portada
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const img = e.target.files?.[0] || null;
+
+            if (img && !img.type.startsWith("image/")) {
+              setMsg("La portada debe ser una imagen.");
+              return;
+            }
+
+            setThumbnailFile(img);
+          }}
+        />
+      </label>
+    </div>
+
+    {thumbnailFile && (
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+        <span className="text-xs text-zinc-300 truncate">
+          Portada seleccionada: {thumbnailFile.name}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setThumbnailFile(null)}
+          className="text-xs text-zinc-400 hover:text-white"
+        >
+          Quitar
+        </button>
+      </div>
+    )}
+  </div>
+</div>
       <div className="w-full py-5 bg-transparent">
         <div
           role="button"
@@ -548,8 +619,9 @@ export default function DropUploader({
             type="button"
             disabled={uploading}
             onClick={() => {
-              setFile(null);
-              setMsg(null);
+            setFile(null);
+setThumbnailFile(null);
+setMsg(null);
             }}
             className="px-4 py-2 rounded border border-zinc-700/80 hover:border-zinc-500 text-sm"
           >

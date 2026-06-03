@@ -9,6 +9,7 @@ export type VideoInfo = {
   sizeBytes?: number;
   created_at?: string;
   tipo?: "video" | "documento" | string;
+  thumbnail_url?: string | null;
 };
 
 export type FilterKey = "con_subtitulos" | "sin_subtitulos" | "hoy" | null;

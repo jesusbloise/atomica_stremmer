@@ -116,6 +116,40 @@ function runCommand(command: string, args: string[]) {
   });
 }
 
+async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
+  if (!BUCKET || !thumbnail) return null;
+
+  if (!thumbnail.type.startsWith("image/")) {
+    return null;
+  }
+
+  const originalName = sanitizeFileName(thumbnail.name || "thumbnail.jpg");
+  const ext = originalName.split(".").pop()?.toLowerCase() || "jpg";
+  const thumbnailKey = `thumbnails/${rowId}-${randomUUID()}.${ext}`;
+  const thumbnailUri = `gs://${BUCKET}/${thumbnailKey}`;
+
+  const buffer = Buffer.from(await thumbnail.arrayBuffer());
+
+  await storage.bucket(BUCKET).file(thumbnailKey).save(buffer, {
+    metadata: {
+      contentType: thumbnail.type || "image/jpeg",
+      cacheControl: "public, max-age=31536000, immutable",
+    },
+    resumable: false,
+  });
+
+  await pool.query(
+    `
+    UPDATE uploads
+    SET thumbnail_url = $1
+    WHERE id = $2
+    `,
+    [thumbnailUri, rowId]
+  );
+
+  return thumbnailUri;
+}
+
 async function createOptimizedStreamingVersion(rowId: string, fileKey: string, ext: string) {
   if (!BUCKET) return null;
   if (!isVideoExt(ext)) return null;
@@ -535,9 +569,9 @@ async function handleDirectGcsFinalize(req: NextRequest) {
       }
     }
 
-    await upsertFichaTecnica(rowId, ficha);
+   await upsertFichaTecnica(rowId, ficha);
 
-    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey);
 
@@ -605,7 +639,7 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
-
+const thumbnail = formData.get("thumbnail") as File | null;
   const rawCat = ((formData.get("category") as string | null)?.trim().toLowerCase() || "");
 
 if (!(await isValidCat(rawCat))) {
@@ -682,23 +716,34 @@ if (!(await isValidCat(rawCat))) {
         throw err;
       }
     }
+await upsertFichaTecnica(rowId, ficha);
 
-    await upsertFichaTecnica(rowId, ficha);
+const thumbnailUrl =
+  await uploadCustomThumbnail(
+    rowId,
+    thumbnail
+  );
 
-    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+const streamingPath =
+  await createOptimizedStreamingVersion(
+    rowId,
+    fileKey,
+    ext
+  );
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey);
 
-    return NextResponse.json({
-      id: rowId,
-      message: `Archivo ${ext.toUpperCase()} subido correctamente`,
-      url: gcsUri,
-      streaming_path: streamingPath,
-      key: fileKey,
-      tipo,
-      category,
-      subcategory,
-    });
+   return NextResponse.json({
+  id: rowId,
+  message: `Archivo ${ext.toUpperCase()} subido correctamente`,
+  url: gcsUri,
+  streaming_path: streamingPath,
+  thumbnail_url: thumbnailUrl,
+  key: fileKey,
+  tipo,
+  category,
+  subcategory,
+});
   } catch (error) {
     console.error("Error general:", error);
     return NextResponse.json(
