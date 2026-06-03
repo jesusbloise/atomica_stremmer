@@ -13,7 +13,10 @@ export async function GET(req: Request) {
   const q = (searchParams.get("q") || "").trim();
 
   if (!q) {
-    return NextResponse.json({ results: [] }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(
+      { results: [] },
+      { headers: { "cache-control": "no-store" } }
+    );
   }
 
   try {
@@ -23,6 +26,8 @@ export async function GET(req: Request) {
         SELECT
           u.id::text AS id,
           u.file_name,
+          ft.titulo,
+          COALESCE(NULLIF(ft.titulo, ''), u.file_name) AS display_name,
           u.file_path,
           u.file_key,
           u.uploaded_at,
@@ -38,6 +43,7 @@ export async function GET(req: Request) {
             END
           ) AS tipo
         FROM uploads u
+        LEFT JOIN ficha_tecnica ft ON ft.upload_id::text = u.id::text
         WHERE u.is_deleted IS NOT TRUE
       ),
 
@@ -45,6 +51,8 @@ export async function GET(req: Request) {
         SELECT DISTINCT ON (b.id)
           b.id,
           b.file_name,
+          b.titulo,
+          b.display_name,
           b.tipo,
           b.file_path,
           b.file_key,
@@ -52,26 +60,52 @@ export async function GET(req: Request) {
           b.category,
           b.subcategory,
           b.thumbnail_url,
-          'metadata' AS matched_from,
-          NULL::text AS snippet
+          'ficha' AS matched_from,
+          COALESCE(
+            NULLIF(ft.titulo, ''),
+            NULLIF(ft.marca, ''),
+            NULLIF(ft.agencia, ''),
+            NULLIF(ft.productora, ''),
+            NULLIF(ft.productora_ficha, ''),
+            NULLIF(ft.contacto, ''),
+            NULLIF(ft.oficina, ''),
+            NULLIF(ft.estudio, ''),
+            NULLIF(ft.director, ''),
+            NULLIF(ft.productor, ''),
+            NULLIF(ft.produccion, ''),
+            NULLIF(ft.corporativo, ''),
+            NULLIF(ft.nuevos_negocios, ''),
+            NULL
+          ) AS snippet
         FROM base b
         LEFT JOIN ficha_tecnica ft ON ft.upload_id::text = b.id
         WHERE
           ${normalizeTextSQL("b.file_name")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("b.display_name")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("b.category")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("b.subcategory")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.titulo")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.marca")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.agencia")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.productora")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.productora_ficha")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.contacto")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.oficina")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.estudio")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.director")} LIKE '%' || lower(unaccent($1)) || '%'
           OR ${normalizeTextSQL("ft.productor")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.produccion")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.corporativo")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR ${normalizeTextSQL("ft.nuevos_negocios")} LIKE '%' || lower(unaccent($1)) || '%'
+          OR lower(unaccent(coalesce(array_to_string(ft.tipo, ' '), ''))) LIKE '%' || lower(unaccent($1)) || '%'
 
         UNION ALL
 
         SELECT DISTINCT ON (b.id)
           b.id,
           b.file_name,
+          b.titulo,
+          b.display_name,
           b.tipo,
           b.file_path,
           b.file_key,
@@ -80,7 +114,11 @@ export async function GET(req: Request) {
           b.subcategory,
           b.thumbnail_url,
           'subtitulos' AS matched_from,
-          substring(s.text from greatest(position(lower($1) in lower(s.text)) - 40, 1) for 160) AS snippet
+          substring(
+            s.text
+            from greatest(position(lower($1) in lower(s.text)) - 40, 1)
+            for 160
+          ) AS snippet
         FROM base b
         JOIN video_subtitulos s ON s.video_id::text = b.id
         WHERE
@@ -92,14 +130,21 @@ export async function GET(req: Request) {
         SELECT DISTINCT ON (b.id)
           b.id,
           b.file_name,
+          b.titulo,
+          b.display_name,
           b.tipo,
           b.file_path,
           b.file_key,
           b.uploaded_at,
           b.category,
           b.subcategory,
+          b.thumbnail_url,
           'documento' AS matched_from,
-          substring(dt.texto_extraido from greatest(position(lower($1) in lower(dt.texto_extraido)) - 40, 1) for 160) AS snippet
+          substring(
+            dt.texto_extraido
+            from greatest(position(lower($1) in lower(dt.texto_extraido)) - 40, 1)
+            for 160
+          ) AS snippet
         FROM base b
         JOIN documentos_texto dt ON dt.upload_id::text = b.id
         WHERE
@@ -110,12 +155,15 @@ export async function GET(req: Request) {
       SELECT DISTINCT ON (id)
         id,
         file_name,
+        titulo,
+        display_name,
         tipo,
         file_path,
         file_key,
         uploaded_at,
         category,
         subcategory,
+        thumbnail_url,
         matched_from,
         snippet
       FROM matches
@@ -128,7 +176,9 @@ export async function GET(req: Request) {
     const results = rows.map((r: any) => ({
       id: r.id,
       file_name: r.file_name || "sin_nombre",
-      name: r.file_name || "sin_nombre",
+      display_name: r.display_name || r.titulo || r.file_name || "sin_nombre",
+      titulo: r.titulo || null,
+      name: r.display_name || r.titulo || r.file_name || "sin_nombre",
       file_path: r.file_path,
       file_key: r.file_key,
       url: r.file_path,

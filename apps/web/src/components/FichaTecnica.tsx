@@ -25,6 +25,7 @@ export type FichaTecnicaData = {
   produccion?: string | null;
   corporativo?: string | null;
   nuevosNegocios?: string | null;
+  otros?: string | null;
 };
 
 type ProfileLite = {
@@ -47,7 +48,12 @@ type ProfileFull = ProfileLite & {
 };
 
 type SessionMe =
-  | { id: string; name: string; role: "ADMIN" | "PROFESOR" | "ESTUDIANTE"; email?: string | null }
+  | {
+    id: string;
+    name: string;
+    role: "SUPER_ADMIN" | "ADMIN" | "USUARIO" | "PROFESOR" | "ESTUDIANTE";
+    email?: string | null;
+  }
   | null;
 
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
@@ -69,7 +75,10 @@ export default function FichaTecnica({
 
   // sesión para saber si puede editar
   const [me, setMe] = useState<SessionMe>(null);
-  const canEdit = me?.role === "ADMIN" || me?.role === "PROFESOR";
+  const canEdit =
+    me?.role === "SUPER_ADMIN" ||
+    me?.role === "ADMIN" ||
+    me?.role === "PROFESOR";
 
   // edición
   const [editing, setEditing] = useState(false);
@@ -134,6 +143,7 @@ export default function FichaTecnica({
           produccion: f.produccion ?? null,
           corporativo: f.corporativo ?? null,
           nuevosNegocios: f.nuevosNegocios ?? f.nuevos_negocios ?? null,
+          otros: f.otros ?? null,
         };
 
         setHasFicha(true);
@@ -228,6 +238,7 @@ export default function FichaTecnica({
         produccion: toNullIfEmpty(form.produccion),
         corporativo: toNullIfEmpty(form.corporativo),
         nuevosNegocios: toNullIfEmpty(form.nuevosNegocios),
+        otros: toNullIfEmpty(form.otros),
       };
 
       const res = await fetch(`/api/fichas/${uploadId}`, {
@@ -265,6 +276,7 @@ export default function FichaTecnica({
           produccion: f.produccion ?? null,
           corporativo: f.corporativo ?? null,
           nuevosNegocios: f.nuevosNegocios ?? f.nuevos_negocios ?? null,
+          otros: f.otros ?? null,
         };
         setHasFicha(true);
         setData(mapped);
@@ -326,115 +338,115 @@ export default function FichaTecnica({
 
   /* ====================== Vista lectura ====================== */
   const cardRead = (
-    <div>
-      {!hasFicha && (
-        <div className="text-[12px] text-zinc-400 mb-3">
-          No hay ficha guardada aún. Puedes completarla con el botón Editar.
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <Section title="Publicidad">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-            <Item label="Título" value={data.titulo} />
-
-            <Item label="Marca" value={data.marca} />
-            <Item label="Agencia" value={data.agencia} />
-            <Item label="Productora" value={data.productora} />
-            <Item label="Contacto" value={data.contacto} />
-
-            <Item label="Oficina" value={data.oficina ?? null} />
-            <Item label="Tipo" value={formatTipo(data.tipo)} />
-          </dl>
-        </Section>
-
-        <Section title="Entretenimiento">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-            <Item label="Estudio" value={data.estudio} />
-            <RoleItem label="Director" name={data.director} onOpen={openProfileByName} />
-            <RoleItem label="Productor" name={data.productor} onOpen={openProfileByName} />
-          </dl>
-        </Section>
-
-        <Section title="Otros">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-            <Item label="Producción" value={data.produccion} />
-            <Item label="Corporativo" value={data.corporativo} />
-            <Item label="Nuevos Negocios" value={data.nuevosNegocios} />
-          </dl>
-        </Section>
+  <div>
+    {!hasFicha && (
+      <div className="text-[12px] text-zinc-400 mb-3">
+        No hay ficha guardada aún. Puedes completarla con el botón Editar.
       </div>
-    </div>
-  );
+    )}
 
-  /* ====================== Vista edición ====================== */
-  const cardEdit = (
-    <div className="space-y-4">
-      <Section title="Publicidad">
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-          <InputItem label="Título" value={form.titulo} onChange={(v) => setField("titulo", v)} />
+    <Section title="Información del archivo">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
+        <Item label="Título" value={data.titulo} />
+        <Item label="Marca" value={data.marca} />
+        <Item label="Agencia" value={data.agencia} />
+        <Item label="Productora" value={data.productora} />
+        <Item label="Contacto" value={data.contacto} />
 
-          <InputItem label="Marca" value={form.marca} onChange={(v) => setField("marca", v)} />
-          <InputItem label="Agencia" value={form.agencia} onChange={(v) => setField("agencia", v)} />
-          <InputItem label="Productora" value={form.productora} onChange={(v) => setField("productora", v)} />
-          <InputItem label="Contacto" value={form.contacto} onChange={(v) => setField("contacto", v)} />
+        <Item label="Producción" value={data.produccion} />
+        <Item label="Corporativo" value={data.corporativo} />
+        <Item label="Nuevos Negocios" value={data.nuevosNegocios} />
 
-          <SelectItem
-            label="Oficina"
-            value={(form.oficina ?? "") as any}
-            onChange={(v) => setField("oficina", v ? (v as any) : null)}
-            options={[{ value: "", label: "Selecciona…" }, ...OFICINA_OPTIONS.map((o) => ({ value: o, label: o }))]}
+        <Item label="Oficina" value={data.oficina ?? null} />
+        <Item label="Tipo" value={formatTipo(data.tipo)} />
+      </dl>
+
+      <div className="mt-3">
+        <dt className="text-zinc-500 text-[11px]">Otros</dt>
+        <dd className="text-zinc-100 text-[13px] whitespace-pre-wrap">
+          {data.otros && String(data.otros).trim() ? data.otros : "—"}
+        </dd>
+      </div>
+    </Section>
+  </div>
+);
+
+ /* ====================== Vista edición ====================== */
+const cardEdit = (
+  <div className="space-y-4">
+    <Section title="Información del archivo">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
+        <InputItem label="Título" value={form.titulo} onChange={(v) => setField("titulo", v)} />
+        <InputItem label="Marca" value={form.marca} onChange={(v) => setField("marca", v)} />
+        <InputItem label="Agencia" value={form.agencia} onChange={(v) => setField("agencia", v)} />
+        <InputItem label="Productora" value={form.productora} onChange={(v) => setField("productora", v)} />
+        <InputItem label="Contacto" value={form.contacto} onChange={(v) => setField("contacto", v)} />
+
+        <InputItem label="Producción" value={form.produccion} onChange={(v) => setField("produccion", v)} />
+        <InputItem label="Corporativo" value={form.corporativo} onChange={(v) => setField("corporativo", v)} />
+        <InputItem label="Nuevos Negocios" value={form.nuevosNegocios} onChange={(v) => setField("nuevosNegocios", v)} />
+
+        <SelectItem
+          label="Oficina"
+          value={(form.oficina ?? "") as any}
+          onChange={(v) => setField("oficina", v ? (v as any) : null)}
+          options={[
+            { value: "", label: "Selecciona…" },
+            ...OFICINA_OPTIONS.map((o) => ({ value: o, label: o })),
+          ]}
+        />
+
+        <div className="flex flex-col sm:col-span-2">
+          <dt className="text-zinc-500 text-[11px] mb-2">
+            Tipo (puede ser una o varias)
+          </dt>
+          <dd>
+            <div className="flex flex-wrap gap-2">
+              {TIPO_OPTIONS.map((opt) => {
+                const active = ((form.tipo ?? []) as string[]).includes(opt);
+
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => toggleTipo(opt)}
+                    className={[
+                      "px-3 py-1.5 rounded-full text-xs border transition",
+                      active
+                        ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                        : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white",
+                    ].join(" ")}
+                    aria-pressed={active}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-2 text-[11px] text-zinc-500">
+              Seleccionado:{" "}
+              <span className="text-zinc-200">{formatTipo(form.tipo)}</span>
+            </div>
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-3">
+        <dt className="text-zinc-500 text-[11px]">Otros</dt>
+        <dd>
+          <textarea
+            value={form.otros ?? ""}
+            onChange={(e) => setField("otros", e.target.value)}
+            rows={5}
+            placeholder="Escribe una nota, descripción, comentario o información adicional..."
+            className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-600 text-[13px] resize-y"
           />
-
-          <div className="flex flex-col sm:col-span-2">
-            <dt className="text-zinc-500 text-[11px] mb-2">Tipo (puede ser una o varias)</dt>
-            <dd>
-              <div className="flex flex-wrap gap-2">
-                {TIPO_OPTIONS.map((opt) => {
-                  const active = ((form.tipo ?? []) as string[]).includes(opt);
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => toggleTipo(opt)}
-                      className={[
-                        "px-3 py-1.5 rounded-full text-xs border transition",
-                        active
-                          ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
-                          : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white",
-                      ].join(" ")}
-                      aria-pressed={active}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-2 text-[11px] text-zinc-500">
-                Seleccionado: <span className="text-zinc-200">{formatTipo(form.tipo)}</span>
-              </div>
-            </dd>
-          </div>
-        </dl>
-      </Section>
-
-      <Section title="Entretenimiento">
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-          <InputItem label="Estudio" value={form.estudio} onChange={(v) => setField("estudio", v)} />
-          <InputItem label="Director" value={form.director} onChange={(v) => setField("director", v)} />
-          <InputItem label="Productor" value={form.productor} onChange={(v) => setField("productor", v)} />
-        </dl>
-      </Section>
-
-      <Section title="Otros">
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-          <InputItem label="Producción" value={form.produccion} onChange={(v) => setField("produccion", v)} />
-          <InputItem label="Corporativo" value={form.corporativo} onChange={(v) => setField("corporativo", v)} />
-          <InputItem label="Nuevos Negocios" value={form.nuevosNegocios} onChange={(v) => setField("nuevosNegocios", v)} />
-        </dl>
-      </Section>
-    </div>
-  );
+        </dd>
+      </div>
+    </Section>
+  </div>
+);
 
   const card = (
     <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow">
@@ -457,11 +469,10 @@ export default function FichaTecnica({
         <div className="fixed inset-0 z-50" aria-modal="true" role="dialog" onClick={modal.onClose}>
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div
-            className={`${
-              (modal.side ?? "right") === "center"
+            className={`${(modal.side ?? "right") === "center"
                 ? "inset-0 max-w-2xl mx-auto my-8"
                 : "absolute inset-x-0 md:inset-x-auto md:right-8 md:max-w-xl top-8 bottom-8"
-            } overflow-auto p-4`}
+              } overflow-auto p-4`}
           >
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
@@ -595,10 +606,10 @@ function ProfileOverlay({
   onPick,
 }: {
   state:
-    | { kind: "idle" }
-    | { kind: "loading"; name: string }
-    | { kind: "select"; name: string; options: ProfileLite[] }
-    | { kind: "view"; user_id: string };
+  | { kind: "idle" }
+  | { kind: "loading"; name: string }
+  | { kind: "select"; name: string; options: ProfileLite[] }
+  | { kind: "view"; user_id: string };
   onClose: () => void;
   onPick: (id: string) => void;
 }) {
