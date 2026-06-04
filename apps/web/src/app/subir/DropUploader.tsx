@@ -35,6 +35,12 @@ type UploadMeta = {
   otros?: string;
 };
 
+type LocalThumbnailCandidate = {
+  previewUrl: string;
+  file: File;
+  timeSec: number;
+};
+
 const FALLBACK_CATEGORIES: Category[] = [
   {
     id: "fallback-publicidad",
@@ -89,6 +95,10 @@ export default function DropUploader({
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailModalOpen, setThumbnailModalOpen] = useState(false);
+const [thumbnailCandidates, setThumbnailCandidates] = useState<LocalThumbnailCandidate[]>([]);
+const [thumbnailLoadingCandidates, setThumbnailLoadingCandidates] = useState(false);
+const [selectedThumbnailPreview, setSelectedThumbnailPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -200,25 +210,34 @@ export default function DropUploader({
 
   const openPicker = () => inputRef.current?.click();
 
-  const handleSelect = (f: File) => {
-    if (!f) return;
+const handleSelect = (f: File) => {
+  if (!f) return;
 
-    if (f.size > maxSizeMB * 1024 * 1024) {
-      setMsg(`El archivo supera ${maxSizeMB}MB`);
-      return;
-    }
+  if (f.size > maxSizeMB * 1024 * 1024) {
+    setMsg(`El archivo supera ${maxSizeMB}MB`);
+    return;
+  }
 
-    setMsg(null);
-    setFile(f);
+  setMsg(null);
+  setFile(f);
+  setThumbnailFile(null);
+  setSelectedThumbnailPreview(null);
+  setThumbnailCandidates([]);
 
-    setMeta((prev) => {
-      const hasTitle = !!(prev.titulo && String(prev.titulo).trim());
-      if (hasTitle) return prev;
-      const base = f.name.replace(/\.[^/.]+$/, "");
-      return { ...prev, titulo: base };
+  setMeta((prev) => {
+    const hasTitle = !!(prev.titulo && String(prev.titulo).trim());
+    if (hasTitle) return prev;
+    const base = f.name.replace(/\.[^/.]+$/, "");
+    return { ...prev, titulo: base };
+  });
+
+  if (isVideoFile(f)) {
+    generateLocalThumbnailCandidates(f).catch((err) => {
+      setThumbnailLoadingCandidates(false);
+      setMsg(`No se pudieron generar capturas: ${err?.message || "error"}`);
     });
-  };
-
+  }
+};
   const uploadDisabled =
     !file ||
     uploading ||
@@ -231,7 +250,7 @@ const uploadThumbnailIfNeeded = async (uploadId?: string) => {
   if (!uploadId || !thumbnailFile) return;
 
   const fd = new FormData();
-  fd.append("thumbnail", thumbnailFile);
+  fd.append("file", thumbnailFile);
 
   const res = await fetch(`/api/uploads/${uploadId}/thumbnail`, {
     method: "POST",
@@ -244,6 +263,80 @@ const uploadThumbnailIfNeeded = async (uploadId?: string) => {
     throw new Error(data?.error || "El archivo subió, pero falló la portada");
   }
 };
+
+
+function isVideoFile(f?: File | null) {
+  if (!f) return false;
+  return (
+    f.type.startsWith("video/") ||
+    /\.(mp4|mov|mkv|webm|m4v|avi)$/i.test(f.name)
+  );
+}
+async function generateLocalThumbnailCandidates(videoFile: File) {
+  setThumbnailLoadingCandidates(true);
+  setThumbnailCandidates([]);
+  setThumbnailModalOpen(true);
+  setMsg("Generando capturas del video...");
+
+  const objectUrl = URL.createObjectURL(videoFile);
+  const video = document.createElement("video");
+
+  video.src = objectUrl;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+
+  await new Promise<void>((resolve, reject) => {
+    video.onloadedmetadata = () => resolve();
+    video.onerror = () => reject(new Error("No se pudo leer el video"));
+  });
+
+  const duration = video.duration || 0;
+  const times = [0.15, 0.3, 0.45, 0.6, 0.75].map((p) =>
+    Math.max(1, Math.floor(duration * p))
+  );
+
+  const results: LocalThumbnailCandidate[] = [];
+
+  for (const timeSec of times) {
+    await new Promise<void>((resolve) => {
+      video.currentTime = Math.min(timeSec, Math.max(duration - 1, 1));
+      video.onseeked = () => resolve();
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.9);
+    });
+
+    if (!blob) continue;
+
+    const file = new File([blob], `portada-${timeSec}s.jpg`, {
+      type: "image/jpeg",
+    });
+
+    results.push({
+      previewUrl: URL.createObjectURL(blob),
+      file,
+      timeSec,
+    });
+  }
+
+  URL.revokeObjectURL(objectUrl);
+
+  setThumbnailCandidates(results);
+  setThumbnailLoadingCandidates(false);
+  setMsg(results.length ? "Elige una portada o sube una imagen propia." : null);
+}
+
   const upload = async () => {
     if (!file || uploading) return;
     if (!category) return setMsg("Selecciona una categoría.");
@@ -276,7 +369,17 @@ const uploadThumbnailIfNeeded = async (uploadId?: string) => {
         const id: string | undefined =
           data?.id || data?.upload?.id || data?.file?.id || data?.record?.id;
 
-        await uploadThumbnailIfNeeded(id);
+       if (thumbnailFile) {
+  await uploadThumbnailIfNeeded(id);
+
+  setMsg("Subido correctamente");
+  setFile(null);
+  setThumbnailFile(null);
+  onUploaded?.({ id, category });
+  return;
+}
+
+
 
 setMsg("Subido correctamente");
 setFile(null);
@@ -350,18 +453,30 @@ return;
         finalizeData?.upload?.id ||
         finalizeData?.file?.id ||
         finalizeData?.record?.id;
-await uploadThumbnailIfNeeded(id);
+if (thumbnailFile) {
+  await uploadThumbnailIfNeeded(id);
+
+  setMsg("Subido correctamente");
+  setFile(null);
+  setThumbnailFile(null);
+  onUploaded?.({ id, category });
+  return;
+}
+
+
 
 setMsg("Subido correctamente");
 setFile(null);
 setThumbnailFile(null);
 onUploaded?.({ id, category });
+return;
     } catch (e: any) {
       setMsg(`Error: ${e?.message || "falló la subida"}`);
     } finally {
       setUploading(false);
     }
   };
+  
 return (
   <div className="w-full min-h-screen text-white bg-transparent">
     <div className="w-full py-4 border-b border-zinc-800 bg-transparent">
@@ -531,43 +646,42 @@ return (
               Imagen de portada opcional
             </h3>
             <p className="text-xs text-zinc-400 mt-1">
-              Si no subes una imagen, el sistema usará una portada automática o una vista previa del archivo.
+              Puedes elegir una captura del video o subir una imagen propia antes de subir el archivo.
             </p>
           </div>
 
-          <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-orange-500/60 px-4 py-2 text-sm text-orange-300 hover:bg-orange-500/10">
-            Seleccionar portada
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const img = e.target.files?.[0] || null;
-
-                if (img && !img.type.startsWith("image/")) {
-                  setMsg("La portada debe ser una imagen.");
-                  return;
-                }
-
-                setThumbnailFile(img);
-              }}
-            />
-          </label>
+          <button
+            type="button"
+            disabled={!file || !isVideoFile(file)}
+            onClick={() => setThumbnailModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-lg border border-orange-500/60 px-4 py-2 text-sm text-orange-300 hover:bg-orange-500/10 disabled:opacity-50"
+          >
+            Elegir portada
+          </button>
         </div>
 
-        {thumbnailFile && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-            <span className="text-xs text-zinc-300 truncate">
-              Portada seleccionada: {thumbnailFile.name}
-            </span>
+        {selectedThumbnailPreview && (
+          <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs text-zinc-400">Portada seleccionada:</p>
 
-            <button
-              type="button"
-              onClick={() => setThumbnailFile(null)}
-              className="text-xs text-zinc-400 hover:text-white"
-            >
-              Quitar
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setThumbnailFile(null);
+                  setSelectedThumbnailPreview(null);
+                }}
+                className="text-xs text-zinc-400 hover:text-white"
+              >
+                Quitar
+              </button>
+            </div>
+
+            <img
+              src={selectedThumbnailPreview}
+              alt="Portada seleccionada"
+              className="w-full max-w-xs rounded-lg border border-zinc-800 object-cover"
+            />
           </div>
         )}
       </div>
@@ -634,6 +748,9 @@ return (
           onClick={() => {
             setFile(null);
             setThumbnailFile(null);
+            setSelectedThumbnailPreview(null);
+            setThumbnailCandidates([]);
+            setThumbnailModalOpen(false);
             setMsg(null);
           }}
           className="px-4 py-2 rounded border border-zinc-700/80 hover:border-zinc-500 text-sm"
@@ -644,5 +761,101 @@ return (
         {msg && <div className="text-sm text-zinc-300 break-words">{msg}</div>}
       </div>
     </div>
+
+    {thumbnailModalOpen && (
+      <div className="fixed inset-0 z-[90] grid place-items-center bg-black/75 px-4 backdrop-blur-sm">
+        <div className="w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-white">Elegir portada</h2>
+              <p className="mt-1 text-xs text-zinc-400">
+                Selecciona una captura del video o sube una imagen propia.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setThumbnailModalOpen(false)}
+              className="text-zinc-400 hover:text-white text-xl"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="mb-5 rounded-xl border border-zinc-800 bg-black/30 p-4">
+            <p className="mb-3 text-sm text-zinc-300">
+              Subir portada personalizada
+            </p>
+
+            <label className="inline-flex cursor-pointer rounded-lg border border-orange-500/70 bg-orange-500/10 px-4 py-2 text-sm text-orange-300 hover:bg-orange-500/20 transition">
+              Seleccionar imagen
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const img = e.target.files?.[0] || null;
+
+                  if (img && !img.type.startsWith("image/")) {
+                    setMsg("La portada debe ser una imagen.");
+                    return;
+                  }
+
+                  if (img) {
+                    const preview = URL.createObjectURL(img);
+                    setThumbnailFile(img);
+                    setSelectedThumbnailPreview(preview);
+                    setThumbnailModalOpen(false);
+                  }
+
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="rounded-xl border border-dashed border-zinc-800 bg-black/20 p-4">
+            <p className="text-sm text-zinc-300">
+              Capturas automáticas del video
+            </p>
+
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {thumbnailLoadingCandidates ? (
+                <div className="col-span-full rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-400">
+                  Generando capturas del video...
+                </div>
+              ) : thumbnailCandidates.length ? (
+                thumbnailCandidates.map((candidate) => (
+                  <button
+                    key={`${candidate.timeSec}-${candidate.previewUrl}`}
+                    type="button"
+                    onClick={() => {
+                      setThumbnailFile(candidate.file);
+                      setSelectedThumbnailPreview(candidate.previewUrl);
+                      setThumbnailModalOpen(false);
+                    }}
+                    className="group relative aspect-video overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 hover:border-orange-500/70 transition"
+                  >
+                    <img
+                      src={candidate.previewUrl}
+                      alt={`Frame ${candidate.timeSec}s`}
+                      className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
+                    />
+
+                    <div className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[11px] text-white">
+                      {candidate.timeSec}s
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="col-span-full rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-400">
+                  Selecciona un video para generar capturas.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 );}
