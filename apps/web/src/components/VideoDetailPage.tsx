@@ -42,8 +42,6 @@ type Subtitulo = {
   [k: string]: any;
 };
 
-
-
 type CategoryFromApi = {
   id: string;
   slug: string;
@@ -131,6 +129,12 @@ function resolvePlayableSrc(url?: string | null) {
   }
 
   return s;
+}
+function previewUrl(u?: string | null) {
+  if (!u) return "";
+  if (u.startsWith("/api/proxy?url=")) return u;
+  if (u.startsWith("gs://")) return `/api/proxy?url=${encodeURIComponent(u)}`;
+  return u;
 }
 function ArchivosRelacionadosMock() {
   const relacionados = [
@@ -236,14 +240,20 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [views, setViews] = useState(0);
   const [categories, setCategories] = useState<CategoryFromApi[]>([]);
   const [currentCategory, setCurrentCategory] = useState("");
-const [currentSubcategory, setCurrentSubcategory] = useState("");
-const [moveOpen, setMoveOpen] = useState(false);
-const [moveCategory, setMoveCategory] = useState("");
-const [moveSubcategory, setMoveSubcategory] = useState("");
-const [movingFile, setMovingFile] = useState(false);
-const [moveMessage, setMoveMessage] = useState("");
-const [thumbnailUploading, setThumbnailUploading] = useState(false);
-const [thumbnailMessage, setThumbnailMessage] = useState("");
+  const [currentSubcategory, setCurrentSubcategory] = useState("");
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveCategory, setMoveCategory] = useState("");
+  const [moveSubcategory, setMoveSubcategory] = useState("");
+  const [movingFile, setMovingFile] = useState(false);
+  const [moveMessage, setMoveMessage] = useState("");
+  const [thumbnailUploading, setThumbnailUploading] = useState(false);
+  const [thumbnailMessage, setThumbnailMessage] = useState("");
+  const [thumbnailCandidates, setThumbnailCandidates] = useState<
+    { url: string; gsUri: string; timeSec: number }[]
+  >([]);
+  const [thumbnailLoadingCandidates, setThumbnailLoadingCandidates] = useState(false);
+  const [thumbnailSelecting, setThumbnailSelecting] = useState(false);
+  const [thumbnailModalOpen, setThumbnailModalOpen] = useState(false);
 
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoBuffering, setVideoBuffering] = useState(false);
@@ -369,9 +379,9 @@ const [thumbnailMessage, setThumbnailMessage] = useState("");
           setViews(upload.views);
         }
         setCurrentCategory(upload?.category || "");
-setCurrentSubcategory(upload?.subcategory || "");
-setMoveCategory(upload?.category || "");
-setMoveSubcategory(upload?.subcategory || "");
+        setCurrentSubcategory(upload?.subcategory || "");
+        setMoveCategory(upload?.category || "");
+        setMoveSubcategory(upload?.subcategory || "");
 
         if (t === "video") {
           const url = upload?.url as string | undefined;
@@ -562,511 +572,617 @@ setMoveSubcategory(upload?.subcategory || "");
     setVideoBuffering(false);
     setReloadNonce((n) => n + 1);
   }, []);
-const selectedMoveCategory = useMemo(() => {
-  return categories.find((cat) => cat.slug === moveCategory) || null;
-}, [categories, moveCategory]);
+  const selectedMoveCategory = useMemo(() => {
+    return categories.find((cat) => cat.slug === moveCategory) || null;
+  }, [categories, moveCategory]);
 
-const availableMoveSubcategories = useMemo(() => {
-  return (selectedMoveCategory?.subcategories || []).filter((sub) => sub.is_active);
-}, [selectedMoveCategory]);
+  const availableMoveSubcategories = useMemo(() => {
+    return (selectedMoveCategory?.subcategories || []).filter((sub) => sub.is_active);
+  }, [selectedMoveCategory]);
 
-const handleMoveFile = async () => {
-  try {
-    setMovingFile(true);
-    setMoveMessage("");
+  const handleMoveFile = async () => {
+    try {
+      setMovingFile(true);
+      setMoveMessage("");
 
-    const res = await fetch(`/api/uploads/${id}/category`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        category: moveCategory,
-        subcategory: moveSubcategory,
-      }),
-    });
+      const res = await fetch(`/api/uploads/${id}/category`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          category: moveCategory,
+          subcategory: moveSubcategory,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      throw new Error(data?.error || "No se pudo mover el archivo");
+      if (!res.ok) {
+        throw new Error(data?.error || "No se pudo mover el archivo");
+      }
+
+      setCurrentCategory(data?.upload?.category || moveCategory);
+      setCurrentSubcategory(data?.upload?.subcategory || moveSubcategory);
+      setMoveMessage("Archivo movido correctamente.");
+      setMoveOpen(false);
+
+      router.refresh();
+    } catch (err: any) {
+      setMoveMessage(err?.message || "No se pudo mover el archivo");
+    } finally {
+      setMovingFile(false);
     }
+  };
+  const handleThumbnailUpload = async (file: File | null) => {
+    if (!file) return;
 
-    setCurrentCategory(data?.upload?.category || moveCategory);
-    setCurrentSubcategory(data?.upload?.subcategory || moveSubcategory);
-    setMoveMessage("Archivo movido correctamente.");
-    setMoveOpen(false);
+    try {
+      setThumbnailUploading(true);
+      setThumbnailMessage("");
 
-    router.refresh();
-  } catch (err: any) {
-    setMoveMessage(err?.message || "No se pudo mover el archivo");
-  } finally {
-    setMovingFile(false);
-  }
-};
-const handleThumbnailUpload = async (file: File | null) => {
-  if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
 
-  try {
-    setThumbnailUploading(true);
-    setThumbnailMessage("");
+      const res = await fetch(`/api/uploads/${id}/thumbnail`, {
+        method: "POST",
+        body: formData,
+      });
 
-    const formData = new FormData();
-    formData.append("file", file);
+      const data = await res.json();
 
-    const res = await fetch(`/api/uploads/${id}/thumbnail`, {
-      method: "POST",
-      body: formData,
-    });
+      if (!res.ok) {
+        throw new Error(data?.error || "No se pudo subir la portada");
+      }
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data?.error || "No se pudo subir la portada");
+      setThumbnailMessage("Portada actualizada correctamente.");
+      router.refresh();
+    } catch (err: any) {
+      setThumbnailMessage(err?.message || "No se pudo subir la portada");
+    } finally {
+      setThumbnailUploading(false);
     }
+  };
+  const loadThumbnailCandidates = async () => {
+    try {
+      setThumbnailLoadingCandidates(true);
+      setThumbnailMessage("");
 
-    setThumbnailMessage("Portada actualizada correctamente.");
-    router.refresh();
-  } catch (err: any) {
-    setThumbnailMessage(err?.message || "No se pudo subir la portada");
-  } finally {
-    setThumbnailUploading(false);
-  }
-};
-  return (
-    <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
-      <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <div className="mb-4 flex justify-start">
+      const res = await fetch(`/api/uploads/${id}/thumbnail-candidates`, {
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+      console.log("THUMBNAIL_CANDIDATES_RESPONSE", data);
+
+
+      if (!res.ok) {
+        throw new Error(data?.error || "No se pudieron generar las portadas");
+      }
+
+      const candidates =
+        Array.isArray(data?.candidates)
+          ? data.candidates
+          : Array.isArray(data?.frames)
+            ? data.frames
+            : Array.isArray(data?.thumbnails)
+              ? data.thumbnails
+              : Array.isArray(data?.items)
+                ? data.items
+                : [];
+
+      setThumbnailCandidates(candidates);
+
+      if (!candidates.length) {
+        setThumbnailMessage("Se generaron capturas, pero no llegaron miniaturas para mostrar.");
+      } else {
+        setThumbnailMessage("");
+      }
+      setThumbnailMessage("");
+    } catch (err: any) {
+      setThumbnailMessage(err?.message || "No se pudieron generar las portadas");
+      setThumbnailCandidates([]);
+    } finally {
+      setThumbnailLoadingCandidates(false);
+    }
+  };
+
+  const handleSelectThumbnailCandidate = async (gsUri: string) => {
+    try {
+      setThumbnailSelecting(true);
+      setThumbnailMessage("");
+
+      const res = await fetch(`/api/uploads/${id}/thumbnail-select`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          thumbnail_url: gsUri,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "No se pudo guardar la portada");
+      }
+
+      setThumbnailMessage("Portada actualizada correctamente.");
+      setThumbnailModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      setThumbnailMessage(err?.message || "No se pudo guardar la portada");
+    } finally {
+      setThumbnailSelecting(false);
+    }
+  };
+ return (
+  <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
+    <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2">
+        <div className="mb-4 flex justify-start">
+          <button
+            onClick={() => router.back()}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
+          >
+            ← Volver atrás
+          </button>
+        </div>
+
+        {isAdmin && (
+          <div className="mb-3 flex justify-end">
             <button
-              onClick={() => router.back()}
-              className="bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-2 rounded-lg text-sm border border-zinc-600 shadow"
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(id);
+                  setCopiedId(true);
+                  setTimeout(() => setCopiedId(false), 1800);
+                } catch {
+                  setCopiedId(false);
+                }
+              }}
+              className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+              title={id}
             >
-              ← Volver atrás
+              {copiedId ? "ID copiado" : "Copiar ID del archivo"}
             </button>
           </div>
-          {isAdmin && (
-            <div className="mb-3 flex justify-end">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(id);
-                    setCopiedId(true);
-
-                    setTimeout(() => {
-                      setCopiedId(false);
-                    }, 1800);
-                  } catch {
-                    setCopiedId(false);
-                  }
-                }}
-                className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-                title={id}
-              >
-                {copiedId ? "ID copiado" : "Copiar ID del archivo"}
-              </button>
-            </div>
-          )}
-      {isAdmin && (
-  <>
-    <div className="mb-4 flex flex-wrap justify-end gap-2">
-      <label className="cursor-pointer rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition">
-        {thumbnailUploading ? "Subiendo portada..." : "Cambiar portada"}
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          disabled={thumbnailUploading}
-          onChange={(e) => {
-            const file = e.target.files?.[0] || null;
-            handleThumbnailUpload(file);
-            e.currentTarget.value = "";
-          }}
-        />
-      </label>
-
-      {isSuperAdmin && (
-        <button
-          type="button"
-          onClick={() => {
-            setMoveCategory(currentCategory);
-            setMoveSubcategory(currentSubcategory);
-            setMoveMessage("");
-            setMoveOpen(true);
-          }}
-          className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-        >
-          Mover archivo
-        </button>
-      )}
-
-      <a
-        href={`/api/uploads/${id}/download`}
-        className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
-      >
-        Descargar archivo
-      </a>
-    </div>
-
-    {thumbnailMessage && (
-      <p className="mb-4 text-right text-xs text-orange-300">
-        {thumbnailMessage}
-      </p>
-    )}
-  </>
-)}
-          {tipo === "video" && videoUrl && (
-            <div className="mb-4">
-              <div
-                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
-                title={documentFileName}
-              >
-                {documentFileName || "Video sin nombre"}
-              </div>
-
-              <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
-                {(videoLoading || videoBuffering) && !videoError && (
-                  <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
-                      <p className="text-xs text-zinc-300">
-                        {videoBuffering ? "Cargando reproducción..." : "Preparando video..."}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {videoError && (
-                  <div className="absolute inset-0 z-20 grid place-items-center bg-black/80 px-4">
-                    <div className="max-w-md text-center">
-                      <p className="text-sm text-zinc-200 mb-3">{videoError}</p>
-                      <button
-                        type="button"
-                        onClick={retryVideo}
-                        className="px-4 py-2 rounded-lg border border-orange-400 text-orange-300 hover:bg-orange-500/10 text-sm"
-                      >
-                        Reintentar reproducción
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <video
-                  ref={videoRef}
-                  src={videoSrcWithReload ?? undefined}
-                  controls
-                  playsInline
-                  controlsList="nodownload"
-                  className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
-                  preload="metadata"
-                  onLoadStart={() => {
-                    setVideoLoading(true);
-                    setVideoError(null);
-                  }}
-                  onLoadedMetadata={() => {
-                    setVideoLoading(false);
-                  }}
-                  onCanPlay={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onCanPlayThrough={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onWaiting={() => {
-                    setVideoBuffering(true);
-                  }}
-                  onPlaying={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onStalled={() => {
-                    setVideoBuffering(true);
-                  }}
-                  onError={() => {
-                    if (!retriedRef.current) {
-                      retriedRef.current = true;
-                      setReloadNonce((n) => n + 1);
-                      return;
-                    }
-
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                    setVideoError(
-                      "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
-                    );
-                  }}
-                  onPlay={handlePlay}
-                />
-              </div>
-
-              <div className="text-xs sm:text-sm text-zinc-400 mt-2 text-center">
-                {views} visualización{views === 1 ? "" : "es"}
-              </div>
-            </div>
-          )}
-
-          {tipo === "documento" && documentUrl && (
-            <div className="mb-4">
-              <div
-                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
-                title={documentFileName}
-              >
-                {documentFileName || "Documento sin nombre"}
-              </div>
-
-              <DocumentViewer
-                url={documentUrl}
-                fileName={documentFileName || documentUrl}
-                searchTerm={searchTerm}
-                registerNavApi={(api) => {
-                  viewerApiRef.current = { ...viewerApiRef.current, ...api };
-                }}
-              />
-            </div>
-          )}
-
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <input
-              type="text"
-              placeholder=" Buscar palabra o frase..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentMatchIndex(0);
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-
-                e.preventDefault();
-
-                const dir = e.shiftKey ? -1 : 1;
-
-                if (tipo === "documento" && viewerApiRef.current?.step) {
-                  const nextFromViewer = viewerApiRef.current.step(dir);
-
-                  if (Number.isFinite(nextFromViewer) && matchIndices.length) {
-                    const synced =
-                      ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
-                      matchIndices.length;
-
-                    setCurrentMatchIndex(synced);
-                  }
-
-                  return;
-                }
-
-                if (!matchIndices.length) return;
-
-                const next =
-                  (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
-
-                setCurrentMatchIndex(next);
-              }}
-              className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
-            />
-
-            <div className="text-xs text-zinc-400">
-              {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
-              <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
-            </div>
-          </div>
-
-          {polling && subtitulos.length === 0 && tipo === "video" && (
-            <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
-          )}
-
-          {tipo === "video" && (
-            <TablaSubtitulos
-              data={tableData}
-              searchTerm={searchTerm}
-              matchIndices={matchIndices}
-              currentMatchIndex={currentMatchIndex}
-              setMatchIndices={setMatchIndices}
-              setCurrentMatchIndex={setCurrentMatchIndex}
-            />
-          )}
-
-          {tipo === "documento" && (
-            <TablaDocumento
-              texto={documentoTexto}
-              searchTerm={searchTerm}
-              url={documentUrl}
-              matchIndices={matchIndices}
-              currentMatchIndex={currentMatchIndex}
-              setMatchIndices={setMatchIndices}
-              setCurrentMatchIndex={setCurrentMatchIndex}
-            />
-          )}
-
-          {/* <RelatedDiscoveryRail uploadId={id} />
-          <div className="mt-12">
-            <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
-              Explorar categorías
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {categories.map((cat, i) => (
-                <Link
-                  key={cat.slug}
-                  href={`/organizar/${cat.slug}`}
-                  className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
-                >
-                  <article className="h-full">
-                    <div className="relative aspect-[4/3] bg-black overflow-hidden">
-                      <Image
-                        src={cat.cover || "/Publicidad.avif"}
-                        alt={cat.label}
-                        fill
-                        className="object-cover group-hover:scale-105 transition duration-500"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        priority={i === 0}
-                      />
-
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-
-                      <div className="absolute bottom-0 left-0 right-0 p-4">
-                        <h3 className="text-lg font-bold text-white">{cat.label}</h3>
-                        <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
-                      </div>
-                    </div>
-                  </article>
-                </Link>
-              ))}
-            </div>
-          </div> */}
-        </div>
-
-        <div className="space-y-6">
-          <FichaTecnica uploadId={id} />
-          <ArchivosRelacionadosMock />
-        </div>
-      </div>
-      <div className="mt-12 w-full">
-  <RelatedDiscoveryRail uploadId={id} />
-</div>
-
-<div className="mt-12 w-full">
-  <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
-    Explorar categorías
-  </h2>
-
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-    {categories.map((cat, i) => (
-      <Link
-        key={cat.slug}
-        href={`/organizar/${cat.slug}`}
-        className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
-      >
-        <article className="h-full">
-          <div className="relative aspect-[4/3] bg-black overflow-hidden">
-            <Image
-              src={cat.cover || "/Publicidad.avif"}
-              alt={cat.label}
-              fill
-              className="object-cover group-hover:scale-105 transition duration-500"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-              priority={i === 0}
-            />
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-
-            <div className="absolute bottom-0 left-0 right-0 p-4">
-              <h3 className="text-lg font-bold text-white">
-                {cat.label}
-              </h3>
-
-              <p className="text-sm text-zinc-300 mt-1">
-                {cat.description}
-              </p>
-            </div>
-          </div>
-        </article>
-      </Link>
-    ))}
-  </div>
-</div>
-      {moveOpen && isSuperAdmin && (
-  <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
-    <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-      <div className="mb-4">
-        <h2 className="text-lg font-bold text-white">Mover archivo</h2>
-        <p className="mt-1 text-xs text-zinc-400">
-          Cambia la categoría o subcategoría sin mover el archivo físico.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <label className="block">
-          <span className="mb-1 block text-xs text-zinc-400">Categoría</span>
-          <select
-            value={moveCategory}
-            onChange={(e) => {
-              setMoveCategory(e.target.value);
-              setMoveSubcategory("");
-            }}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
-          >
-            <option value="">Seleccionar categoría</option>
-            {categories
-              .filter((cat) => cat.is_active)
-              .map((cat) => (
-                <option key={cat.id} value={cat.slug}>
-                  {cat.label}
-                </option>
-              ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-xs text-zinc-400">Subcategoría</span>
-          <select
-            value={moveSubcategory}
-            onChange={(e) => setMoveSubcategory(e.target.value)}
-            disabled={!moveCategory}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-          >
-            <option value="">Sin subcategoría</option>
-            {availableMoveSubcategories.map((sub) => (
-              <option key={sub.id} value={sub.label}>
-                {sub.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {moveMessage && (
-          <p className="text-xs text-orange-300">{moveMessage}</p>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={() => setMoveOpen(false)}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
-          >
-            Cancelar
-          </button>
+        {isAdmin && (
+          <>
+            <div className="mb-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={thumbnailLoadingCandidates}
+                onClick={() => {
+                  setThumbnailModalOpen(true);
+                  setThumbnailMessage("Generando capturas del video...");
+                  loadThumbnailCandidates();
+                }}
+                className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition disabled:opacity-50"
+              >
+                {thumbnailLoadingCandidates ? "Generando..." : "Cambiar portada"}
+              </button>
 
-          <button
-            type="button"
-            onClick={handleMoveFile}
-            disabled={movingFile || !moveCategory}
-            className="rounded-lg border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
-          >
-            {movingFile ? "Moviendo..." : "Guardar cambios"}
-          </button>
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoveCategory(currentCategory);
+                    setMoveSubcategory(currentSubcategory);
+                    setMoveMessage("");
+                    setMoveOpen(true);
+                  }}
+                  className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+                >
+                  Mover archivo
+                </button>
+              )}
+
+              <a
+                href={`/api/uploads/${id}/download`}
+                className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
+              >
+                Descargar archivo
+              </a>
+            </div>
+
+            {thumbnailMessage && (
+              <p className="mb-4 text-right text-xs text-orange-300">
+                {thumbnailMessage}
+              </p>
+            )}
+          </>
+        )}
+
+        {tipo === "video" && videoUrl && (
+          <div className="mb-4">
+            <div
+              className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
+              title={documentFileName}
+            >
+              {documentFileName || "Video sin nombre"}
+            </div>
+
+            <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
+              {(videoLoading || videoBuffering) && !videoError && (
+                <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
+                    <p className="text-xs text-zinc-300">
+                      {videoBuffering ? "Cargando reproducción..." : "Preparando video..."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {videoError && (
+                <div className="absolute inset-0 z-20 grid place-items-center bg-black/80 px-4">
+                  <div className="max-w-md text-center">
+                    <p className="text-sm text-zinc-200 mb-3">{videoError}</p>
+                    <button
+                      type="button"
+                      onClick={retryVideo}
+                      className="px-4 py-2 rounded-lg border border-orange-400 text-orange-300 hover:bg-orange-500/10 text-sm"
+                    >
+                      Reintentar reproducción
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <video
+                ref={videoRef}
+                src={videoSrcWithReload ?? undefined}
+                controls
+                playsInline
+                controlsList="nodownload"
+                className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
+                preload="metadata"
+                onLoadStart={() => {
+                  setVideoLoading(true);
+                  setVideoError(null);
+                }}
+                onLoadedMetadata={() => setVideoLoading(false)}
+                onCanPlay={() => {
+                  setVideoLoading(false);
+                  setVideoBuffering(false);
+                }}
+                onCanPlayThrough={() => {
+                  setVideoLoading(false);
+                  setVideoBuffering(false);
+                }}
+                onWaiting={() => setVideoBuffering(true)}
+                onPlaying={() => {
+                  setVideoLoading(false);
+                  setVideoBuffering(false);
+                }}
+                onStalled={() => setVideoBuffering(true)}
+                onError={() => {
+                  if (!retriedRef.current) {
+                    retriedRef.current = true;
+                    setReloadNonce((n) => n + 1);
+                    return;
+                  }
+
+                  setVideoLoading(false);
+                  setVideoBuffering(false);
+                  setVideoError(
+                    "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
+                  );
+                }}
+                onPlay={handlePlay}
+              />
+            </div>
+
+            <div className="text-xs sm:text-sm text-zinc-400 mt-2 text-center">
+              {views} visualización{views === 1 ? "" : "es"}
+            </div>
+          </div>
+        )}
+
+        {tipo === "documento" && documentUrl && (
+          <div className="mb-4">
+            <div
+              className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
+              title={documentFileName}
+            >
+              {documentFileName || "Documento sin nombre"}
+            </div>
+
+            <DocumentViewer
+              url={documentUrl}
+              fileName={documentFileName || documentUrl}
+              searchTerm={searchTerm}
+              registerNavApi={(api) => {
+                viewerApiRef.current = { ...viewerApiRef.current, ...api };
+              }}
+            />
+          </div>
+        )}
+
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <input
+            type="text"
+            placeholder=" Buscar palabra o frase..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentMatchIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+
+              e.preventDefault();
+              const dir = e.shiftKey ? -1 : 1;
+
+              if (tipo === "documento" && viewerApiRef.current?.step) {
+                const nextFromViewer = viewerApiRef.current.step(dir);
+
+                if (Number.isFinite(nextFromViewer) && matchIndices.length) {
+                  const synced =
+                    ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
+                    matchIndices.length;
+
+                  setCurrentMatchIndex(synced);
+                }
+
+                return;
+              }
+
+              if (!matchIndices.length) return;
+
+              const next =
+                (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
+
+              setCurrentMatchIndex(next);
+            }}
+            className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
+          />
+
+          <div className="text-xs text-zinc-400">
+            {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
+            <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
+          </div>
         </div>
+
+        {polling && subtitulos.length === 0 && tipo === "video" && (
+          <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
+        )}
+
+        {tipo === "video" && (
+          <TablaSubtitulos
+            data={tableData}
+            searchTerm={searchTerm}
+            matchIndices={matchIndices}
+            currentMatchIndex={currentMatchIndex}
+            setMatchIndices={setMatchIndices}
+            setCurrentMatchIndex={setCurrentMatchIndex}
+          />
+        )}
+
+        {tipo === "documento" && (
+          <TablaDocumento
+            texto={documentoTexto}
+            searchTerm={searchTerm}
+            url={documentUrl}
+            matchIndices={matchIndices}
+            currentMatchIndex={currentMatchIndex}
+            setMatchIndices={setMatchIndices}
+            setCurrentMatchIndex={setCurrentMatchIndex}
+          />
+        )}
+      </div>
+
+      <div className="space-y-6">
+        <FichaTecnica uploadId={id} />
+        <ArchivosRelacionadosMock />
       </div>
     </div>
-  </div>
-)}
+
+    <div className="mt-12 w-full">
+      <RelatedDiscoveryRail uploadId={id} />
     </div>
-  );
-}
+
+    <div className="mt-12 w-full">
+      <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
+        Explorar categorías
+      </h2>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {categories.map((cat, i) => (
+          <Link
+            key={cat.slug}
+            href={`/organizar/${cat.slug}`}
+            className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
+          >
+            <article className="h-full">
+              <div className="relative aspect-[4/3] bg-black overflow-hidden">
+                <Image
+                  src={cat.cover || "/Publicidad.avif"}
+                  alt={cat.label}
+                  fill
+                  className="object-cover group-hover:scale-105 transition duration-500"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  priority={i === 0}
+                />
+
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <h3 className="text-lg font-bold text-white">{cat.label}</h3>
+                  <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
+                </div>
+              </div>
+            </article>
+          </Link>
+        ))}
+      </div>
+    </div>
+
+    {moveOpen && isSuperAdmin && (
+      <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+        <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-white">Mover archivo</h2>
+            <p className="mt-1 text-xs text-zinc-400">
+              Cambia la categoría o subcategoría sin mover el archivo físico.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-1 block text-xs text-zinc-400">Categoría</span>
+              <select
+                value={moveCategory}
+                onChange={(e) => {
+                  setMoveCategory(e.target.value);
+                  setMoveSubcategory("");
+                }}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+              >
+                <option value="">Seleccionar categoría</option>
+                {categories
+                  .filter((cat) => cat.is_active)
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.slug}>
+                      {cat.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-xs text-zinc-400">Subcategoría</span>
+              <select
+                value={moveSubcategory}
+                onChange={(e) => setMoveSubcategory(e.target.value)}
+                disabled={!moveCategory}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              >
+                <option value="">Sin subcategoría</option>
+                {availableMoveSubcategories.map((sub) => (
+                  <option key={sub.id} value={sub.label}>
+                    {sub.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {moveMessage && (
+              <p className="text-xs text-orange-300">{moveMessage}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setMoveOpen(false)}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMoveFile}
+                disabled={movingFile || !moveCategory}
+                className="rounded-lg border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
+              >
+                {movingFile ? "Moviendo..." : "Guardar cambios"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {thumbnailModalOpen && (
+      <div className="fixed inset-0 z-[90] grid place-items-center bg-black/75 px-4 backdrop-blur-sm">
+        <div className="w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-white">Cambiar portada</h2>
+              <p className="mt-1 text-xs text-zinc-400">
+                Puedes subir una imagen propia o elegir una captura del video.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setThumbnailModalOpen(false)}
+              className="text-zinc-400 hover:text-white text-xl"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black/30 p-4">
+            <p className="text-sm text-zinc-300 mb-3">Subir portada personalizada</p>
+
+            <label className="inline-flex cursor-pointer rounded-lg border border-orange-500/70 bg-orange-500/10 px-4 py-2 text-sm text-orange-300 hover:bg-orange-500/20 transition">
+              {thumbnailUploading ? "Subiendo..." : "Seleccionar imagen"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={thumbnailUploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  handleThumbnailUpload(file);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+
+            {thumbnailMessage && (
+              <p className="mt-3 text-xs text-orange-300">{thumbnailMessage}</p>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-dashed border-zinc-800 bg-black/20 p-4">
+            <p className="text-sm text-zinc-300">Capturas automáticas del video</p>
+
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {thumbnailLoadingCandidates ? (
+                <div className="col-span-full rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-400">
+                  Generando capturas del video...
+                </div>
+              ) : thumbnailCandidates.length ? (
+                thumbnailCandidates.map((candidate) => (
+                  <button
+                    key={candidate.gsUri}
+                    type="button"
+                    disabled={thumbnailSelecting}
+                    onClick={() => handleSelectThumbnailCandidate(candidate.gsUri)}
+                    className="group relative aspect-video overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 hover:border-orange-500/70 transition disabled:opacity-60"
+                  >
+                    <img
+                      src={previewUrl(candidate.url)}
+                      alt={`Frame ${candidate.timeSec}s`}
+                      className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
+                    />
+
+                    <div className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[11px] text-white">
+                      {candidate.timeSec}s
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="col-span-full rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-400">
+                  No hay capturas disponibles.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);}
