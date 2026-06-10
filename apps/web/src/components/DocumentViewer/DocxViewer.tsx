@@ -33,7 +33,17 @@ export default function DocxViewer({ url, searchTerm = "", registerNavApi }: Pro
   const currentIdxRef = useRef<number>(0);
 
   // URL segura (espacios y caracteres)
-  const safeUrl = useMemo(() => encodeURI(url), [url]);
+const safeUrl = useMemo(() => {
+  if (!url) return "";
+
+  if (url.startsWith("/api/proxy?url=")) return url;
+
+  if (url.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+}, [url]);
 
   useEffect(() => {
     let cancel = false;
@@ -54,7 +64,9 @@ export default function DocxViewer({ url, searchTerm = "", registerNavApi }: Pro
           signal: controller.signal,
         });
 
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        if (!res.ok) {
+  throw new Error(`HTTP ${res.status} al cargar el DOCX`);
+}
 
         const buf = await res.arrayBuffer();
 

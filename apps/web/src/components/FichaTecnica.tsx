@@ -26,6 +26,10 @@ export type FichaTecnicaData = {
   corporativo?: string | null;
   nuevosNegocios?: string | null;
   otros?: string | null;
+  duracion?: string | null;
+  formato?: string | null;
+  version?: string | null;
+  fecha?: string | null;
 };
 
 type ProfileLite = {
@@ -57,7 +61,18 @@ type SessionMe =
   | null;
 
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
-const TIPO_OPTIONS = ["Color", "3D", "IA", "Musica", "Sonido", "VFX", "Edicion"] as const;
+const TIPO_OPTIONS = [
+  "Color",
+  "3D",
+  "IA",
+  "Musica",
+  "Sonido",
+  "VFX",
+  "Edicion",
+  "Motion",
+  "Dailies",
+  "Master & Deliveries",
+] as const;
 
 /* ====================== Componente principal ====================== */
 export default function FichaTecnica({
@@ -144,6 +159,10 @@ export default function FichaTecnica({
           corporativo: f.corporativo ?? null,
           nuevosNegocios: f.nuevosNegocios ?? f.nuevos_negocios ?? null,
           otros: f.otros ?? null,
+duracion: f.duracion ?? null,
+formato: f.formato ?? null,
+version: f.version ?? null,
+fecha: f.fecha ?? null,
         };
 
         setHasFicha(true);
@@ -239,6 +258,10 @@ export default function FichaTecnica({
         corporativo: toNullIfEmpty(form.corporativo),
         nuevosNegocios: toNullIfEmpty(form.nuevosNegocios),
         otros: toNullIfEmpty(form.otros),
+duracion: toNullIfEmpty(form.duracion),
+formato: toNullIfEmpty(form.formato),
+version: toNullIfEmpty(form.version),
+fecha: toNullIfEmpty(form.fecha),
       };
 
       const res = await fetch(`/api/fichas/${uploadId}`, {
@@ -277,6 +300,10 @@ export default function FichaTecnica({
           corporativo: f.corporativo ?? null,
           nuevosNegocios: f.nuevosNegocios ?? f.nuevos_negocios ?? null,
           otros: f.otros ?? null,
+          duracion: f.duracion ?? null,
+          formato: f.formato ?? null,
+          version: f.version ?? null,
+          fecha: f.fecha ?? null,
         };
         setHasFicha(true);
         setData(mapped);
@@ -338,115 +365,123 @@ export default function FichaTecnica({
 
   /* ====================== Vista lectura ====================== */
   const cardRead = (
-  <div>
-    {!hasFicha && (
-      <div className="text-[12px] text-zinc-400 mb-3">
-        No hay ficha guardada aún. Puedes completarla con el botón Editar.
-      </div>
-    )}
+    <div>
+      {!hasFicha && (
+        <div className="text-[12px] text-zinc-400 mb-3">
+          No hay ficha guardada aún. Puedes completarla con el botón Editar.
+        </div>
+      )}
 
-    <Section title="Información del archivo">
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-        <Item label="Título" value={data.titulo} />
-        <Item label="Marca" value={data.marca} />
-        <Item label="Agencia" value={data.agencia} />
-        <Item label="Productora" value={data.productora} />
-        <Item label="Contacto" value={data.contacto} />
+      <Section title="Información del archivo">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
+          <Item label="Título" value={data.titulo} />
+          <Item label="Marca" value={data.marca} />
+          <Item label="Agencia" value={data.agencia} />
+          <Item label="Productora" value={data.productora} />
+          <Item label="Contacto" value={data.contacto} />
+          <Item label="Duración" value={data.duracion} />
+<Item label="Formato" value={data.formato} />
+<Item label="Versión" value={data.version} />
+<Item label="Fecha" value={data.fecha} />
 
-        <Item label="Producción" value={data.produccion} />
-        <Item label="Corporativo" value={data.corporativo} />
-        <Item label="Nuevos Negocios" value={data.nuevosNegocios} />
+          <Item label="Producción" value={data.produccion} />
+          <Item label="Corporativo" value={data.corporativo} />
+          <Item label="Nuevos Negocios" value={data.nuevosNegocios} />
 
-        <Item label="Oficina" value={data.oficina ?? null} />
-        <Item label="Tipo" value={formatTipo(data.tipo)} />
-      </dl>
+          <Item label="Oficina" value={data.oficina ?? null} />
+          <Item label="Tipo" value={formatTipo(data.tipo)} />
+        </dl>
 
-      <div className="mt-3">
-        <dt className="text-zinc-500 text-[11px]">Otros</dt>
-        <dd className="text-zinc-100 text-[13px] whitespace-pre-wrap">
-          {data.otros && String(data.otros).trim() ? data.otros : "—"}
-        </dd>
-      </div>
-    </Section>
-  </div>
-);
-
- /* ====================== Vista edición ====================== */
-const cardEdit = (
-  <div className="space-y-4">
-    <Section title="Información del archivo">
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
-        <InputItem label="Título" value={form.titulo} onChange={(v) => setField("titulo", v)} />
-        <InputItem label="Marca" value={form.marca} onChange={(v) => setField("marca", v)} />
-        <InputItem label="Agencia" value={form.agencia} onChange={(v) => setField("agencia", v)} />
-        <InputItem label="Productora" value={form.productora} onChange={(v) => setField("productora", v)} />
-        <InputItem label="Contacto" value={form.contacto} onChange={(v) => setField("contacto", v)} />
-
-        <InputItem label="Producción" value={form.produccion} onChange={(v) => setField("produccion", v)} />
-        <InputItem label="Corporativo" value={form.corporativo} onChange={(v) => setField("corporativo", v)} />
-        <InputItem label="Nuevos Negocios" value={form.nuevosNegocios} onChange={(v) => setField("nuevosNegocios", v)} />
-
-        <SelectItem
-          label="Oficina"
-          value={(form.oficina ?? "") as any}
-          onChange={(v) => setField("oficina", v ? (v as any) : null)}
-          options={[
-            { value: "", label: "Selecciona…" },
-            ...OFICINA_OPTIONS.map((o) => ({ value: o, label: o })),
-          ]}
-        />
-
-        <div className="flex flex-col sm:col-span-2">
-          <dt className="text-zinc-500 text-[11px] mb-2">
-            Tipo (puede ser una o varias)
-          </dt>
-          <dd>
-            <div className="flex flex-wrap gap-2">
-              {TIPO_OPTIONS.map((opt) => {
-                const active = ((form.tipo ?? []) as string[]).includes(opt);
-
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => toggleTipo(opt)}
-                    className={[
-                      "px-3 py-1.5 rounded-full text-xs border transition",
-                      active
-                        ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
-                        : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white",
-                    ].join(" ")}
-                    aria-pressed={active}
-                  >
-                    {opt}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-2 text-[11px] text-zinc-500">
-              Seleccionado:{" "}
-              <span className="text-zinc-200">{formatTipo(form.tipo)}</span>
-            </div>
+        <div className="mt-3">
+          <dt className="text-zinc-500 text-[11px]">Otros</dt>
+          <dd className="text-zinc-100 text-[13px] whitespace-pre-wrap">
+            {data.otros && String(data.otros).trim() ? data.otros : "—"}
           </dd>
         </div>
-      </dl>
+      </Section>
+    </div>
+  );
 
-      <div className="mt-3">
-        <dt className="text-zinc-500 text-[11px]">Otros</dt>
-        <dd>
-          <textarea
-            value={form.otros ?? ""}
-            onChange={(e) => setField("otros", e.target.value)}
-            rows={5}
-            placeholder="Escribe una nota, descripción, comentario o información adicional..."
-            className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-600 text-[13px] resize-y"
+  /* ====================== Vista edición ====================== */
+  const cardEdit = (
+    <div className="space-y-4">
+      <Section title="Información del archivo">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
+          <InputItem label="Título" value={form.titulo} onChange={(v) => setField("titulo", v)} />
+          <InputItem label="Marca" value={form.marca} onChange={(v) => setField("marca", v)} />
+          <InputItem label="Agencia" value={form.agencia} onChange={(v) => setField("agencia", v)} />
+          <InputItem label="Productora" value={form.productora} onChange={(v) => setField("productora", v)} />
+          <InputItem label="Contacto" value={form.contacto} onChange={(v) => setField("contacto", v)} />
+          <InputItem label="Duración" value={form.duracion} onChange={(v) => setField("duracion", v)} placeholder="Ej: 00:30 / 1:20" />
+<InputItem label="Formato" value={form.formato} onChange={(v) => setField("formato", v)} placeholder="Ej: 16:9 / 9:16 / 4:5" />
+<InputItem label="Versión" value={form.version} onChange={(v) => setField("version", v)} placeholder="Ej: V1 / Final / Master" />
+<InputItem label="Fecha" value={form.fecha} onChange={(v) => setField("fecha", v)} type="date" />
+
+          <InputItem label="Producción" value={form.produccion} onChange={(v) => setField("produccion", v)} />
+          <InputItem label="Corporativo" value={form.corporativo} onChange={(v) => setField("corporativo", v)} />
+          <InputItem label="Nuevos Negocios" value={form.nuevosNegocios} onChange={(v) => setField("nuevosNegocios", v)} />
+
+          <SelectItem
+            label="Oficina"
+            value={(form.oficina ?? "") as any}
+            onChange={(v) => setField("oficina", v ? (v as any) : null)}
+            options={[
+              { value: "", label: "Selecciona…" },
+              ...OFICINA_OPTIONS.map((o) => ({ value: o, label: o })),
+            ]}
           />
-        </dd>
-      </div>
-    </Section>
-  </div>
-);
+
+          <div className="flex flex-col sm:col-span-2">
+            <dt className="text-zinc-500 text-[11px] mb-2">
+              Tipo (puede ser una o varias)
+            </dt>
+            <dd>
+              <div className="flex flex-wrap gap-2">
+                {TIPO_OPTIONS.map((opt) => {
+                  const active = ((form.tipo ?? []) as string[]).includes(opt);
+
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => toggleTipo(opt)}
+                      className={[
+                        "px-3 py-1.5 rounded-full text-xs border transition",
+                        active
+                          ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                          : "bg-zinc-900 border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white",
+                      ].join(" ")}
+                      aria-pressed={active}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 text-[11px] text-zinc-500">
+                Seleccionado:{" "}
+                <span className="text-zinc-200">{formatTipo(form.tipo)}</span>
+              </div>
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-3">
+          <dt className="text-zinc-500 text-[11px]">Otros</dt>
+          <dd>
+            <textarea
+              value={form.otros ?? ""}
+              onChange={(e) => setField("otros", e.target.value)}
+              rows={5}
+              placeholder="Escribe una nota, descripción, comentario o información adicional..."
+              className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-600 text-[13px] resize-y"
+            />
+          </dd>
+        </div>
+      </Section>
+    </div>
+  );
 
   const card = (
     <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow">
@@ -470,8 +505,8 @@ const cardEdit = (
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div
             className={`${(modal.side ?? "right") === "center"
-                ? "inset-0 max-w-2xl mx-auto my-8"
-                : "absolute inset-x-0 md:inset-x-auto md:right-8 md:max-w-xl top-8 bottom-8"
+              ? "inset-0 max-w-2xl mx-auto my-8"
+              : "absolute inset-x-0 md:inset-x-auto md:right-8 md:max-w-xl top-8 bottom-8"
               } overflow-auto p-4`}
           >
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl" onClick={(e) => e.stopPropagation()}>

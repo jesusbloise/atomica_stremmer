@@ -12,7 +12,7 @@ type Payload = {
   contacto?: string | null;
 
   oficina?: "Chile" | "Mexico" | null;
-  tipo?: string[] | string | null; // puede venir array o string
+  tipo?: string[] | string | null;
 
   estudio?: string | null;
   director?: string | null;
@@ -22,6 +22,11 @@ type Payload = {
   corporativo?: string | null;
   nuevosNegocios?: string | null;
   otros?: string | null;
+
+  duracion?: string | null;
+  formato?: string | null;
+  version?: string | null;
+  fecha?: string | null;
 };
 
 function normString(v: any) {
@@ -60,7 +65,11 @@ export async function GET(
         estudio, director, productor,
         produccion, corporativo,
         nuevos_negocios,
-        otros
+        otros,
+duracion,
+formato,
+version,
+fecha
       FROM ficha_tecnica
       WHERE upload_id = $1
       LIMIT 1
@@ -96,6 +105,10 @@ export async function GET(
           corporativo: row.corporativo ?? null,
           nuevosNegocios: row.nuevos_negocios ?? null,
           otros: row.otros ?? null,
+          duracion: row.duracion ?? null,
+          formato: row.formato ?? null,
+          version: row.version ?? null,
+          fecha: row.fecha ?? null,
         },
       },
       { status: 200 }
@@ -135,6 +148,10 @@ export async function PUT(
       corporativo: normString(body.corporativo),
       nuevos_negocios: normString(body.nuevosNegocios),
       otros: normString(body.otros),
+      duracion: normString(body.duracion),
+formato: normString(body.formato),
+version: normString(body.version),
+fecha: normString(body.fecha),
     };
 
     // tipo es text[] en tu DB -> usamos $8::text[]
@@ -149,7 +166,11 @@ export async function PUT(
         estudio, director, productor,
         produccion, corporativo,
         nuevos_negocios,
-        otros
+otros,
+duracion,
+formato,
+version,
+fecha
       )
       VALUES (
         $1,
@@ -159,7 +180,7 @@ export async function PUT(
         $8::text[],
         $9, $10, $11,
         $12, $13,
-        $14, $15
+        $14, $15, $16, $17, $18, $19
       )
       ON CONFLICT (upload_id) DO UPDATE SET
         titulo = EXCLUDED.titulo,
@@ -175,7 +196,11 @@ export async function PUT(
         produccion = EXCLUDED.produccion,
         corporativo = EXCLUDED.corporativo,
         nuevos_negocios = EXCLUDED.nuevos_negocios,
-        otros = EXCLUDED.otros
+        otros = EXCLUDED.otros,
+        duracion = EXCLUDED.duracion,
+formato = EXCLUDED.formato,
+version = EXCLUDED.version,
+fecha = EXCLUDED.fecha
       `,
       [
         uploadId,
@@ -193,6 +218,10 @@ export async function PUT(
         payload.corporativo,
         payload.nuevos_negocios,
         payload.otros,
+        payload.duracion,
+        payload.formato,
+        payload.version,
+        payload.fecha
       ]
     );
 

@@ -416,10 +416,18 @@ async function triggerPostProcess(
       expires: Date.now() + 1000 * 60 * 60,
     });
 
-    const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
-      cwd: process.cwd(),
-      shell: true,
-    });
+   const proceso = spawn(
+  python,
+  [
+    scriptPath,
+    rowId,
+    signedUrl
+  ],
+  {
+    cwd: process.cwd(),
+    shell: false,
+  }
+);
 
     proceso.stdout.on("data", (d) => console.log(`[STDOUT ${ext}]:`, d.toString()));
     proceso.stderr.on("data", (d) => console.error(`[STDERR ${ext}]:`, d.toString()));
