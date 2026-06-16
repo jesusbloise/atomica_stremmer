@@ -7,11 +7,18 @@ import { Readable } from "stream";
 import { Storage } from "@google-cloud/storage";
 import fs from "fs/promises";
 import os from "os";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
+import {
+  copyVideoToCloudflareStream,
+  createR2SignedReadUrl,
+} from "@/lib/cloudflareStream";
 
-console.log("UPLOAD_ROUTE_HIT (GCS direct upload + web optimized version)");
+console.log("UPLOAD_ROUTE_HIT (GCS direct upload + R2 + Cloudflare Stream)");
 
 function webStreamToNodeReadable(webStream: ReadableStream<Uint8Array>): Readable {
   const reader = webStream.getReader();
+
   return new Readable({
     highWaterMark: 1024 * 64,
     async read() {
@@ -31,6 +38,107 @@ function sanitizeFileName(name: string) {
 
 const storage = new Storage();
 const BUCKET = process.env.GCS_BUCKET;
+
+async function uploadBufferToR2(params: {
+  key: string;
+  buffer: Buffer;
+  contentType?: string | null;
+}) {
+  try {
+    const r2Client = getR2Client();
+    const bucket = getR2BucketName();
+
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: params.key,
+        Body: params.buffer,
+        ContentType: params.contentType || "application/octet-stream",
+      })
+    );
+
+    return `r2://${bucket}/${params.key}`;
+  } catch (error) {
+    console.error("R2_UPLOAD_COPY_ERROR", error);
+    return null;
+  }
+}
+
+async function sendVideoToCloudflareStream(params: {
+  rowId: string;
+  fileName: string;
+  r2Path: string | null;
+}) {
+  const { rowId, fileName, r2Path } = params;
+
+  let cfStreamUid: string | null = null;
+  let cfStreamReady = false;
+  let cfStreamStatus: string | null = null;
+  let cfStreamPlaybackUrl: string | null = null;
+
+  if (!r2Path) {
+    return {
+      cfStreamUid,
+      cfStreamReady,
+      cfStreamStatus,
+      cfStreamPlaybackUrl,
+    };
+  }
+
+  try {
+    const signedR2Url = await createR2SignedReadUrl(r2Path);
+
+const cf = await copyVideoToCloudflareStream({
+  videoUrl: signedR2Url,
+  name: fileName,
+});
+
+    cfStreamUid = cf.uid;
+    cfStreamReady = cf.ready;
+    cfStreamStatus = cf.status;
+    cfStreamPlaybackUrl = cf.playbackUrl;
+
+    await pool.query(
+      `
+      UPDATE uploads
+      SET cf_stream_uid = $1,
+          cf_stream_status = $2,
+          cf_stream_ready = $3,
+          cf_stream_playback_url = $4
+      WHERE id = $5
+      `,
+      [cfStreamUid, cfStreamStatus, cfStreamReady, cfStreamPlaybackUrl, rowId]
+    );
+
+    console.log("CF_STREAM_COPY_OK", {
+      rowId,
+      cfStreamUid,
+      cfStreamReady,
+      cfStreamPlaybackUrl,
+    });
+  } catch (cfErr) {
+    cfStreamStatus = "error";
+    console.error("CF_STREAM_COPY_FAILED", cfErr);
+
+    await pool
+      .query(
+        `
+        UPDATE uploads
+        SET cf_stream_status = $1
+        WHERE id = $2
+        `,
+        [cfStreamStatus, rowId]
+      )
+      .catch(() => {});
+  }
+
+  return {
+    cfStreamUid,
+    cfStreamReady,
+    cfStreamStatus,
+    cfStreamPlaybackUrl,
+  };
+}
 
 type CatSlug = string;
 
@@ -106,7 +214,6 @@ function runCommand(command: string, args: string[]) {
 
     child.stdout.on("data", (d) => console.log(`[${command} stdout]`, d.toString()));
     child.stderr.on("data", (d) => console.log(`[${command} stderr]`, d.toString()));
-
     child.on("error", reject);
 
     child.on("close", (code) => {
@@ -118,10 +225,7 @@ function runCommand(command: string, args: string[]) {
 
 async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
   if (!BUCKET || !thumbnail) return null;
-
-  if (!thumbnail.type.startsWith("image/")) {
-    return null;
-  }
+  if (!thumbnail.type.startsWith("image/")) return null;
 
   const originalName = sanitizeFileName(thumbnail.name || "thumbnail.jpg");
   const ext = originalName.split(".").pop()?.toLowerCase() || "jpg";
@@ -206,20 +310,14 @@ async function createOptimizedStreamingVersion(rowId: string, fileKey: string, e
       },
     });
 
-    try {
-      await pool.query(
-        `UPDATE uploads
-         SET streaming_path = $1
-         WHERE id = $2`,
-        [streamingUri, rowId]
-      );
-    } catch (err: any) {
-      if (err?.code === "42703") {
-        console.warn("Column streaming_path does not exist yet.");
-      } else {
-        throw err;
-      }
-    }
+    await pool.query(
+      `
+      UPDATE uploads
+      SET streaming_path = $1
+      WHERE id = $2
+      `,
+      [streamingUri, rowId]
+    );
 
     console.log("Video optimization completed:", { rowId, streamingUri });
     return streamingUri;
@@ -227,8 +325,8 @@ async function createOptimizedStreamingVersion(rowId: string, fileKey: string, e
     console.error("Video optimization failed:", err);
     return null;
   } finally {
-    await fs.unlink(inputPath).catch(() => { });
-    await fs.unlink(outputPath).catch(() => { });
+    await fs.unlink(inputPath).catch(() => {});
+    await fs.unlink(outputPath).catch(() => {});
   }
 }
 
@@ -322,73 +420,66 @@ async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
       ]
     );
   } catch (err: any) {
-    if (err?.code === "42703") {
-      await pool.query(
-        `
-        INSERT INTO ficha_tecnica (
-          upload_id,
-          titulo,
-          marca, agencia, productora_ficha, contacto,
-          oficina,
-          tipo,
-          estudio, director, productor,
-          produccion, corporativo,
-          nuevos_negocios
-        )
-        VALUES (
-          $1,
-          $2,
-          $3, $4, $5, $6,
-          $7,
-          $8::text[],
-          $9, $10, $11,
-          $12, $13,
-          $14
-        )
-        ON CONFLICT (upload_id) DO UPDATE SET
-          titulo = EXCLUDED.titulo,
-          marca = EXCLUDED.marca,
-          agencia = EXCLUDED.agencia,
-          productora_ficha = EXCLUDED.productora_ficha,
-          contacto = EXCLUDED.contacto,
-          oficina = EXCLUDED.oficina,
-          tipo = EXCLUDED.tipo,
-          estudio = EXCLUDED.estudio,
-          director = EXCLUDED.director,
-          productor = EXCLUDED.productor,
-          produccion = EXCLUDED.produccion,
-          corporativo = EXCLUDED.corporativo,
-          nuevos_negocios = EXCLUDED.nuevos_negocios
-        `,
-        [
-          rowId,
-          payload.titulo,
-          payload.marca,
-          payload.agencia,
-          payload.productora,
-          payload.contacto,
-          payload.oficina,
-          payload.tipo,
-          payload.estudio,
-          payload.director,
-          payload.productor,
-          payload.produccion,
-          payload.corporativo,
-          payload.nuevos_negocios,
-        ]
-      );
-    } else {
-      throw err;
-    }
+    if (err?.code !== "42703") throw err;
+
+    await pool.query(
+      `
+      INSERT INTO ficha_tecnica (
+        upload_id,
+        titulo,
+        marca, agencia, productora_ficha, contacto,
+        oficina,
+        tipo,
+        estudio, director, productor,
+        produccion, corporativo,
+        nuevos_negocios
+      )
+      VALUES (
+        $1,
+        $2,
+        $3, $4, $5, $6,
+        $7,
+        $8::text[],
+        $9, $10, $11,
+        $12, $13,
+        $14
+      )
+      ON CONFLICT (upload_id) DO UPDATE SET
+        titulo = EXCLUDED.titulo,
+        marca = EXCLUDED.marca,
+        agencia = EXCLUDED.agencia,
+        productora_ficha = EXCLUDED.productora_ficha,
+        contacto = EXCLUDED.contacto,
+        oficina = EXCLUDED.oficina,
+        tipo = EXCLUDED.tipo,
+        estudio = EXCLUDED.estudio,
+        director = EXCLUDED.director,
+        productor = EXCLUDED.productor,
+        produccion = EXCLUDED.produccion,
+        corporativo = EXCLUDED.corporativo,
+        nuevos_negocios = EXCLUDED.nuevos_negocios
+      `,
+      [
+        rowId,
+        payload.titulo,
+        payload.marca,
+        payload.agencia,
+        payload.productora,
+        payload.contacto,
+        payload.oficina,
+        payload.tipo,
+        payload.estudio,
+        payload.director,
+        payload.productor,
+        payload.produccion,
+        payload.corporativo,
+        payload.nuevos_negocios,
+      ]
+    );
   }
 }
 
-async function triggerPostProcess(
-  rowId: string,
-  ext: string,
-  _gcsUri: string,
-  fileKey: string
-) {
+async function triggerPostProcess(rowId: string, ext: string, _gcsUri: string, fileKey: string) {
   const python =
     process.env.PYTHON_BIN ||
     (process.platform === "win32"
@@ -416,18 +507,10 @@ async function triggerPostProcess(
       expires: Date.now() + 1000 * 60 * 60,
     });
 
-   const proceso = spawn(
-  python,
-  [
-    scriptPath,
-    rowId,
-    signedUrl
-  ],
-  {
-    cwd: process.cwd(),
-    shell: false,
-  }
-);
+    const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
+      cwd: process.cwd(),
+      shell: false,
+    });
 
     proceso.stdout.on("data", (d) => console.log(`[STDOUT ${ext}]:`, d.toString()));
     proceso.stderr.on("data", (d) => console.error(`[STDERR ${ext}]:`, d.toString()));
@@ -439,10 +522,7 @@ async function triggerPostProcess(
 
 async function handleDirectGcsInit(req: NextRequest) {
   if (!BUCKET) {
-    return NextResponse.json(
-      { error: "Falta GCS_BUCKET en variables de entorno" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Falta GCS_BUCKET en variables de entorno" }, { status: 500 });
   }
 
   const body = await req.json().catch(() => null);
@@ -450,11 +530,11 @@ async function handleDirectGcsInit(req: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
- const rawCat = String(body.category || "").trim().toLowerCase();
+  const rawCat = String(body.category || "").trim().toLowerCase();
 
-if (!(await isValidCat(rawCat))) {
-  return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
-}
+  if (!(await isValidCat(rawCat))) {
+    return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
+  }
 
   const fileName = String(body.fileName || "").trim();
   if (!fileName) {
@@ -475,14 +555,6 @@ if (!(await isValidCat(rawCat))) {
       : null;
 
   const ficha = (body.ficha as FichaInput | null) || null;
-
-  console.log("UPLOAD_DIRECT_METADATA", {
-    category,
-    subcategory,
-    rawSubcategory: body.subcategory,
-    ficha,
-  });
-
 
   const safeFileName = sanitizeFileName(fileName);
   const fileKey = `${randomUUID()}_${safeFileName}`;
@@ -523,6 +595,7 @@ if (!(await isValidCat(rawCat))) {
 
 async function handleDirectGcsFinalize(req: NextRequest) {
   const body = await req.json().catch(() => null);
+
   if (!body) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
@@ -551,35 +624,46 @@ async function handleDirectGcsFinalize(req: NextRequest) {
 
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   const tipo = getTipoFromExt(ext);
+  let r2Path: string | null = null;
 
   try {
-    try {
-      await pool.query(
-        `INSERT INTO uploads
-          (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
-           tipo, category, subcategory)
-         VALUES
-          ($1, $2, $3, $4, $5, $6, NOW(),
-           $7, $8, $9)`,
-        [rowId, fileName, fileKey, gcsUri, size, "uploaded", tipo, category, subcategory]
-      );
-    } catch (err: any) {
-      if (err?.code === "42703") {
-        await pool.query(
-          `INSERT INTO uploads
-            (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at, tipo, category)
-           VALUES
-            ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,
-          [rowId, fileName, fileKey, gcsUri, size, "uploaded", tipo, category]
-        );
-      } else {
-        throw err;
-      }
-    }
+    const [gcsBuffer] = await storage.bucket(BUCKET!).file(fileKey).download();
 
-   await upsertFichaTecnica(rowId, ficha);
+    r2Path = await uploadBufferToR2({
+      key: fileKey,
+      buffer: gcsBuffer,
+      contentType,
+    });
 
-const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+    await pool.query(
+      `
+      INSERT INTO uploads
+        (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
+         tipo, category, subcategory, r2_path)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, NOW(),
+         $7, $8, $9, $10)
+      `,
+      [rowId, fileName, fileKey, gcsUri, size, "uploaded", tipo, category, subcategory, r2Path]
+    );
+
+    await upsertFichaTecnica(rowId, ficha);
+
+    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+
+    const cfData =
+      tipo === "video"
+        ? await sendVideoToCloudflareStream({
+            rowId,
+            fileName,
+            r2Path,
+          })
+        : {
+            cfStreamUid: null,
+            cfStreamReady: false,
+            cfStreamStatus: null,
+            cfStreamPlaybackUrl: null,
+          };
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey);
 
@@ -589,7 +673,12 @@ const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext)
       id: rowId,
       message: `Archivo ${ext.toUpperCase()} subido correctamente`,
       url: gcsUri,
+      r2_path: r2Path,
       streaming_path: streamingPath,
+      cf_stream_uid: cfData.cfStreamUid,
+      cf_stream_ready: cfData.cfStreamReady,
+      cf_stream_status: cfData.cfStreamStatus,
+      cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
       key: fileKey,
       tipo,
       category,
@@ -609,9 +698,9 @@ export async function POST(req: NextRequest) {
   console.log("UPLOAD_POST", new Date().toISOString());
 
   try {
-    const contentType = req.headers.get("content-type") || "";
+    const requestContentType = req.headers.get("content-type") || "";
 
-    if (contentType.includes("application/json")) {
+    if (requestContentType.includes("application/json")) {
       const clone = req.clone();
       const body = await clone.json().catch(() => null);
       const mode = body?.mode;
@@ -628,10 +717,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!BUCKET) {
-      return NextResponse.json(
-        { error: "Falta GCS_BUCKET en variables de entorno" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Falta GCS_BUCKET en variables de entorno" }, { status: 500 });
     }
 
     const fileSize = Number(req.headers.get("x-filesize") || 0);
@@ -644,15 +730,17 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
-const thumbnail = formData.get("thumbnail") as File | null;
-  const rawCat = ((formData.get("category") as string | null)?.trim().toLowerCase() || "");
 
-if (!(await isValidCat(rawCat))) {
-  return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
-}
+    const thumbnail = formData.get("thumbnail") as File | null;
+    const rawCat = ((formData.get("category") as string | null)?.trim().toLowerCase() || "");
+
+    if (!(await isValidCat(rawCat))) {
+      return NextResponse.json({ error: "Categoría inválida" }, { status: 400 });
+    }
 
     const category: CatSlug = rawCat;
 
@@ -663,6 +751,7 @@ if (!(await isValidCat(rawCat))) {
 
     let ficha: FichaInput | null = null;
     const fichaStr = (formData.get("ficha") as string | null) || "";
+
     if (fichaStr) {
       try {
         ficha = JSON.parse(fichaStr);
@@ -670,12 +759,6 @@ if (!(await isValidCat(rawCat))) {
         ficha = null;
       }
     }
-    console.log("UPLOAD_FORMDATA_METADATA", {
-      category,
-      subcategory,
-      rawSubcategory: formData.get("subcategory"),
-      ficha,
-    });
 
     const filename = file.name;
     const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -701,57 +784,76 @@ if (!(await isValidCat(rawCat))) {
         .on("finish", () => resolve());
     });
 
+    let r2Path: string | null = null;
+
     try {
-      await pool.query(
-        `INSERT INTO uploads
-          (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
-           tipo, category, subcategory)
-         VALUES
-          ($1, $2, $3, $4, $5, $6, NOW(),
-           $7, $8, $9)`,
-        [rowId, filename, fileKey, gcsUri, file.size, "uploaded", tipo, category, subcategory]
-      );
-    } catch (err: any) {
-      if (err?.code === "42703") {
-        await pool.query(
-          `INSERT INTO uploads
-            (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at, tipo, category)
-           VALUES
-            ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,
-          [rowId, filename, fileKey, gcsUri, file.size, "uploaded", tipo, category]
-        );
-      } else {
-        throw err;
-      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      r2Path = await uploadBufferToR2({
+        key: fileKey,
+        buffer,
+        contentType: file.type || "application/octet-stream",
+      });
+
+      console.log("R2_FORMDATA_COPY_RESULT", {
+        rowId,
+        fileKey,
+        r2Path,
+      });
+    } catch (r2Err) {
+      console.error("R2_FORMDATA_COPY_FAILED", r2Err);
     }
-await upsertFichaTecnica(rowId, ficha);
 
-const thumbnailUrl =
-  await uploadCustomThumbnail(
-    rowId,
-    thumbnail
-  );
+    await pool.query(
+      `
+      INSERT INTO uploads
+        (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
+         tipo, category, subcategory, r2_path)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, NOW(),
+         $7, $8, $9, $10)
+      `,
+      [rowId, filename, fileKey, gcsUri, file.size, "uploaded", tipo, category, subcategory, r2Path]
+    );
 
-const streamingPath =
-  await createOptimizedStreamingVersion(
-    rowId,
-    fileKey,
-    ext
-  );
+    await upsertFichaTecnica(rowId, ficha);
+
+    const thumbnailUrl = await uploadCustomThumbnail(rowId, thumbnail);
+
+    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+
+    const cfData =
+      tipo === "video"
+        ? await sendVideoToCloudflareStream({
+            rowId,
+            fileName: filename,
+            r2Path,
+          })
+        : {
+            cfStreamUid: null,
+            cfStreamReady: false,
+            cfStreamStatus: null,
+            cfStreamPlaybackUrl: null,
+          };
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey);
 
-   return NextResponse.json({
-  id: rowId,
-  message: `Archivo ${ext.toUpperCase()} subido correctamente`,
-  url: gcsUri,
-  streaming_path: streamingPath,
-  thumbnail_url: thumbnailUrl,
-  key: fileKey,
-  tipo,
-  category,
-  subcategory,
-});
+    return NextResponse.json({
+      id: rowId,
+      message: `Archivo ${ext.toUpperCase()} subido correctamente`,
+      url: gcsUri,
+      r2_path: r2Path,
+      streaming_path: streamingPath,
+      thumbnail_url: thumbnailUrl,
+      cf_stream_uid: cfData.cfStreamUid,
+      cf_stream_ready: cfData.cfStreamReady,
+      cf_stream_status: cfData.cfStreamStatus,
+      cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
+      key: fileKey,
+      tipo,
+      category,
+      subcategory,
+    });
   } catch (error) {
     console.error("Error general:", error);
     return NextResponse.json(

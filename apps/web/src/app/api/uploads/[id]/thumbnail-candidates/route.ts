@@ -7,6 +7,8 @@ import os from "os";
 import path from "path";
 import pool from "@/db";
 import { Storage } from "@google-cloud/storage";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +16,30 @@ export const dynamic = "force-dynamic";
 const storage = new Storage();
 const GCS_BUCKET = process.env.GCS_BUCKET;
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+async function uploadBufferToR2(params: {
+  key: string;
+  buffer: Buffer;
+  contentType?: string | null;
+}) {
+  try {
+    const r2Client = getR2Client();
+    const bucket = getR2BucketName();
 
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: params.key,
+        Body: params.buffer,
+        ContentType: params.contentType || "application/octet-stream",
+      })
+    );
+
+    return `r2://${bucket}/${params.key}`;
+  } catch (error) {
+    console.error("R2_THUMBNAIL_CANDIDATE_UPLOAD_ERROR", error);
+    return null;
+  }
+}
 function getRoleFromReq(req: Request) {
   const cookie = (req.headers.get("cookie") || "")
     .split(";")
@@ -109,7 +134,12 @@ export async function GET(
     });
 
     const times = [2, 5, 8, 12, 16, 20];
-    const candidates: { url: string; gsUri: string; timeSec: number }[] = [];
+    const candidates: {
+  url: string;
+  gsUri: string;
+  r2Uri: string | null;
+  timeSec: number;
+}[] = [];
 
     for (const timeSec of times) {
       const fileName = `${id}-${timeSec}-${randomUUID()}.jpg`;
@@ -130,21 +160,32 @@ export async function GET(
         localImage,
       ]);
 
-      await storage.bucket(GCS_BUCKET).upload(localImage, {
-        destination: objectPath,
-        metadata: {
-          contentType: "image/jpeg",
-          cacheControl: "public, max-age=86400",
-        },
-      });
+    await storage.bucket(GCS_BUCKET).upload(localImage, {
+  destination: objectPath,
+  metadata: {
+    contentType: "image/jpeg",
+    cacheControl: "public, max-age=86400",
+  },
+});
 
-      await fs.unlink(localImage).catch(() => {});
+const imageBuffer = await fs.readFile(localImage);
 
-      candidates.push({
-        timeSec,
-        gsUri,
-        url: `/api/proxy?url=${encodeURIComponent(gsUri)}`,
-      });
+const r2Uri = await uploadBufferToR2({
+  key: objectPath,
+  buffer: imageBuffer,
+  contentType: "image/jpeg",
+});
+
+await fs.unlink(localImage).catch(() => {});
+
+candidates.push({
+  timeSec,
+  gsUri,
+  r2Uri,
+  url: r2Uri
+    ? `/api/r2/proxy?url=${encodeURIComponent(r2Uri)}`
+    : `/api/proxy?url=${encodeURIComponent(gsUri)}`,
+});
     }
 
     await fs.unlink(localVideo).catch(() => {});

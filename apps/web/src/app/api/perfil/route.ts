@@ -2,10 +2,36 @@ import { NextResponse } from "next/server";
 import pool from "@/db";
 import crypto from "crypto";
 import { Storage } from "@google-cloud/storage";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
 import { cookies } from "next/headers";
 
 const storage = new Storage();
 const GCS_BUCKET = process.env.GCS_BUCKET;
+async function uploadBufferToR2(params: {
+  key: string;
+  buffer: Buffer;
+  contentType?: string | null;
+}) {
+  try {
+    const r2Client = getR2Client();
+    const bucket = getR2BucketName();
+
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: params.key,
+        Body: params.buffer,
+        ContentType: params.contentType || "application/octet-stream",
+      })
+    );
+
+    return `r2://${bucket}/${params.key}`;
+  } catch (error) {
+    console.error("R2_AVATAR_UPLOAD_ERROR", error);
+    return null;
+  }
+}
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -106,10 +132,21 @@ async function saveAvatarToGCS(
     },
     resumable: false,
   });
+const gsPath = `gs://${GCS_BUCKET}/${objectPath}`;
 
-  const gsPath = `gs://${GCS_BUCKET}/${objectPath}`;
+const r2Path = await uploadBufferToR2({
+  key: objectPath,
+  buffer,
+  contentType: mime,
+});
 
-  return `/api/proxy?url=${encodeURIComponent(gsPath)}&ts=${Date.now()}`;
+const finalPath = r2Path || gsPath;
+
+if (r2Path) {
+  return `/api/r2/proxy?url=${encodeURIComponent(r2Path)}&ts=${Date.now()}`;
+}
+
+return `/api/proxy?url=${encodeURIComponent(gsPath)}&ts=${Date.now()}`;
 }
 
 export async function PUT(req: Request) {

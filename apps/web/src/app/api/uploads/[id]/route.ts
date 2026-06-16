@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
 import { Storage } from "@google-cloud/storage";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl as getR2SignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
+import { getCloudflareStreamVideoStatus } from "@/lib/cloudflareStream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +17,17 @@ type RowUploadBase = {
   id: string;
   tipo: string | null;
   file_path: string | null;
+  r2_path?: string | null;
   file_name: string | null;
   file_key: string | null;
   uploaded_at: string | null;
   views?: number | null;
   category?: string | null;
   subcategory?: string | null;
+  cf_stream_uid?: string | null;
+cf_stream_status?: string | null;
+cf_stream_ready?: boolean | null;
+cf_stream_playback_url?: string | null;
 };
 
 type RowUploadWithMore = RowUploadBase & {
@@ -117,6 +126,21 @@ function parseGsUrl(raw?: string | null) {
   return { bucket, objectPath };
 }
 
+function parseR2Url(raw?: string | null) {
+  if (!raw || !raw.startsWith("r2://")) return null;
+
+  const withoutScheme = raw.slice(5);
+  const firstSlash = withoutScheme.indexOf("/");
+  if (firstSlash === -1) return null;
+
+  const bucket = withoutScheme.slice(0, firstSlash);
+  const objectPath = withoutScheme.slice(firstSlash + 1);
+
+  if (!bucket || !objectPath) return null;
+
+  return { bucket, objectPath };
+}
+
 async function buildDirectSignedUrl(params: {
   filePath?: string | null;
   fileKey?: string | null;
@@ -145,6 +169,33 @@ async function buildDirectSignedUrl(params: {
     expires: Date.now() + 1000 * 60 * 60 * 6,
     responseType: contentType || undefined,
     responseDisposition: fileName ? `inline; filename="${fileName.replace(/"/g, "")}"` : "inline",
+  });
+
+  return signedUrl;
+}
+
+async function buildR2SignedUrl(params: {
+  r2Path?: string | null;
+  contentType?: string | null;
+  fileName?: string | null;
+}) {
+  const parsed = parseR2Url(params.r2Path);
+  if (!parsed) return null;
+
+  const bucket = parsed.bucket || getR2BucketName();
+  const r2Client = getR2Client();
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: parsed.objectPath,
+    ResponseContentType: params.contentType || undefined,
+    ResponseContentDisposition: params.fileName
+      ? `inline; filename="${params.fileName.replace(/"/g, "")}"`
+      : "inline",
+  });
+
+  const signedUrl = await getR2SignedUrl(r2Client, command, {
+    expiresIn: 60 * 60 * 6,
   });
 
   return signedUrl;
@@ -217,38 +268,44 @@ export async function GET(
 
     try {
       const q1 = await pool.query<RowUploadWithMore>(
-        `SELECT id, tipo, file_path, file_name, file_key, uploaded_at,
-                content_type, streaming_path, views, category, subcategory,
-                vimeo_id, duration_sec, thumbnail_url
-         FROM uploads
-         WHERE id = $1
-         LIMIT 1`,
+        `SELECT id, tipo, file_path, r2_path, file_name, file_key, uploaded_at,
+    content_type, streaming_path, views, category, subcategory,
+    vimeo_id, duration_sec, thumbnail_url,
+    cf_stream_uid, cf_stream_status, cf_stream_ready, cf_stream_playback_url
+ FROM uploads
+ WHERE id = $1
+ LIMIT 1`,
         [id]
       );
 
       row = q1.rows[0] || null;
     } catch {
       const q2 = await pool.query<RowUploadBase>(
-        `SELECT id, tipo, file_path, file_name, file_key, uploaded_at, views,
-                category, subcategory
-         FROM uploads
-         WHERE id = $1
-         LIMIT 1`,
+        `SELECT id, tipo, file_path, r2_path, file_name, file_key, uploaded_at, views,
+    category, subcategory,
+    cf_stream_uid, cf_stream_status, cf_stream_ready, cf_stream_playback_url
+FROM uploads
+ WHERE id = $1
+ LIMIT 1`,
         [id]
       );
 
       const r = q2.rows[0] || null;
 
       if (r) {
-        row = {
-          ...r,
-          content_type: null,
-          streaming_path: null,
-          vimeo_id: null,
-          duration_sec: null,
-          thumbnail_url: null,
-        };
-      }
+  row = {
+    ...r,
+    content_type: null,
+    streaming_path: null,
+    vimeo_id: null,
+    duration_sec: null,
+    thumbnail_url: null,
+    cf_stream_uid: r.cf_stream_uid ?? null,
+    cf_stream_status: r.cf_stream_status ?? null,
+    cf_stream_ready: r.cf_stream_ready ?? null,
+    cf_stream_playback_url: r.cf_stream_playback_url ?? null,
+  };
+}
     }
 
     if (!row) {
@@ -295,16 +352,77 @@ export async function GET(
     }
 
     const finalStreamingPath = row.streaming_path || recoveredStreamingPath;
-    const usingStreaming = tipo === "video" && Boolean(finalStreamingPath);
-    const playbackPath = usingStreaming ? finalStreamingPath : row.file_path;
+
+const preferR2 = Boolean(row.r2_path);
+
+const usingStreaming = tipo === "video" && Boolean(finalStreamingPath) && !preferR2;
+
+const playbackPath = preferR2
+  ? row.r2_path
+  : usingStreaming
+    ? finalStreamingPath
+    : row.file_path;
+
     const playbackContentType = usingStreaming ? "video/mp4" : contentType;
 
-    const url = await buildDirectSignedUrl({
-      filePath: playbackPath,
-      fileKey: row.file_key,
+    let url: string | null = null;
+
+    let cfStreamUid = row.cf_stream_uid ?? null;
+let cfStreamStatus = row.cf_stream_status ?? null;
+let cfStreamReady = Boolean(row.cf_stream_ready);
+let cfStreamPlaybackUrl = row.cf_stream_playback_url ?? null;
+
+if (tipo === "video" && cfStreamUid && !cfStreamReady) {
+  try {
+    const cf = await getCloudflareStreamVideoStatus(cfStreamUid);
+
+    cfStreamStatus = cf.status;
+    cfStreamReady = cf.ready;
+    cfStreamPlaybackUrl = cf.playbackUrl;
+
+    await pool.query(
+      `
+      UPDATE uploads
+      SET cf_stream_status = $1,
+          cf_stream_ready = $2,
+          cf_stream_playback_url = $3
+      WHERE id = $4
+      `,
+      [cfStreamStatus, cfStreamReady, cfStreamPlaybackUrl, row.id]
+    );
+  } catch (e) {
+    console.warn("No se pudo sincronizar estado Cloudflare Stream:", e);
+  }
+}
+if (tipo === "video" && cfStreamReady && cfStreamPlaybackUrl) {
+  url = cfStreamPlaybackUrl;
+}
+if (!url && preferR2 && row.r2_path) {
+  if (tipo === "video") {
+    url = await buildR2SignedUrl({
+      r2Path: row.r2_path,
       contentType: playbackContentType,
       fileName: row.file_name,
     });
+  } else {
+    url = `/api/r2/proxy?url=${encodeURIComponent(row.r2_path)}`;
+  }
+}
+console.log("PLAYBACK_URL_SELECTED", {
+  id: row.id,
+  tipo,
+  cfStreamReady,
+  cfStreamPlaybackUrl,
+  finalUrl: url,
+});
+    if (!url) {
+      url = await buildDirectSignedUrl({
+        filePath: usingStreaming ? finalStreamingPath : row.file_path,
+        fileKey: row.file_key,
+        contentType: playbackContentType,
+        fileName: row.file_name,
+      });
+    }
 
     return NextResponse.json(
       {
@@ -325,9 +443,18 @@ export async function GET(
           thumbnail_url: row.thumbnail_url ?? null,
 
           file_path: row.file_path ?? null,
+          r2_path: row.r2_path ?? null,
           streaming_path: finalStreamingPath ?? null,
           playback_path: playbackPath ?? null,
           using_streaming: usingStreaming,
+          using_r2: preferR2,
+          
+          cf_stream_uid: cfStreamUid,
+cf_stream_status: cfStreamStatus,
+cf_stream_ready: cfStreamReady,
+cf_stream_playback_url: cfStreamPlaybackUrl,
+using_cloudflare_stream:
+  tipo === "video" && cfStreamReady && Boolean(cfStreamPlaybackUrl),
         },
       },
       {

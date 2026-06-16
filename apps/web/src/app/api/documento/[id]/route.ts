@@ -12,8 +12,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ documento: null }, { status: 404 });
-    }
+  return NextResponse.json({ documento: null }, { status: 200 });
+}
 
     return NextResponse.json({ documento: result.rows[0] });
   } catch (error) {

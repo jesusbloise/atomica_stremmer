@@ -57,23 +57,13 @@ if (host && host !== CANONICAL_HOST && !isLocalHost) {
   pathname.startsWith("/api/uploads/") ||
   pathname.startsWith("/api/subtitulos/") ||
   pathname.startsWith("/api/views/") ||
+  pathname.startsWith("/api/r2/proxy") ||
 
   pathname.startsWith("/_next") ||
   pathname.startsWith("/favicon") ||
   pathname === "/robots.txt" ||
   pathname === "/sitemap.xml";
-  // const isPublic =
-  //   pathname.startsWith("/login") ||
-  //   pathname.startsWith("/register") ||
-  //   pathname.startsWith("/api/login") ||
-  //   pathname.startsWith("/api/register") ||
-  //   pathname.startsWith("/api/auth") ||
-  //   pathname.startsWith("/api/auth/") || // ✅ NextAuth (session, signin, callback, etc.)
-  //   pathname.startsWith("/videos/") ||   // ✅ PUBLICO: detalle de video
-  //   pathname.startsWith("/_next") ||
-  //   pathname.startsWith("/favicon") ||
-  //   pathname === "/robots.txt" ||
-  //   pathname === "/sitemap.xml";
+
 
   if (isPublic) return NextResponse.next();
 

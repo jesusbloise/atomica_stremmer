@@ -9,34 +9,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const DEMO_MODE = false;
 const API_PATH = "/api/uploads";
 
-/* ================== Categorías principales ================== */
-// const CATS = [
-//   {
-//     slug: "publicidad",
-//     label: "Publicidad",
-//     cover: "/Publicidad.avif",
-//     desc: "Piezas y campañas publicitarias.",
-//   },
-//   {
-//     slug: "entretenimiento",
-//     label: "Entretenimiento",
-//     cover: "/babybandito2.jpg",
-//     desc: "Contenido y piezas de entretenimiento.",
-//   },
-// {
-//   slug: "vxf",
-//   label: "Corporativo",
-//   cover: "/Garage.jpg",
-//   desc: "Contenido corporativo, institucional y nuevos negocios.",
-// },
-// {
-//   slug: "ia",
-//   label: "IA",
-//   cover: "/service-7.jpg",
-//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-// },
-// ] as const;
-
 type Group = { label: string };
 
 type CategoryFromApi = {
@@ -55,36 +27,6 @@ type CategoryFromApi = {
   }[];
 };
 
-// const STRUCTURE: Record<string, Group[]> = {
-//   publicidad: [
-//     { label: "Marca" },
-//     { label: "Agencia" },
-//     { label: "Productora" },
-//     { label: "Contacto" },
-//     { label: "Oficina" },
-//     { label: "Tipo" },
-//   ],
-//   entretenimiento: [
-//     { label: "Estudio" },
-//     { label: "Productora" },
-//     { label: "Director" },
-//     { label: "Productor" },
-//     { label: "Oficina" },
-//     { label: "Tipo" },
-//   ],
-//   vxf: [
-//     { label: "Producción" },
-//     { label: "Corporativo" },
-//     { label: "Nuevos Negocios" },
-//   ],
-//   ia: [
-//   { label: "Generativo" },
-//   { label: "Edición IA" },
-//   { label: "Video IA" },
-//   { label: "Imagen IA" },
-//   { label: "Audio IA" },
-// ],
-// };
 
 const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
 const COLOR_PUBLICIDAD = ["3D", "IA", "Musica", "Sonido"] as const;
@@ -123,7 +65,10 @@ function stripExt(s?: string | null) {
   const base = safe.split("/").pop() || safe;
   return base.replace(/\.[^.\/\\]+$/g, "");
 }
-
+function getExt(item: UploadItem) {
+  const source = item.file_name || item.display_name || item.titulo || item.file_path || item.url || "";
+  return source.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() || "";
+}
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
   const s = String(u);
@@ -230,42 +175,35 @@ function DocumentPreview({
 }) {
   const safeUrl = proxiedUrl(url);
 
-  if (kind === "pdf") {
-    if (isMobile) {
-      return (
-        <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200 text-lg font-semibold tracking-widest">
+  const label = kind === "pdf" ? "PDF" : kind === "docx" ? "WORD" : "DOC";
+
+  if (kind === "pdf" && !isMobile && safeUrl) {
+    return (
+      <div className="absolute inset-0 bg-zinc-900">
+        <iframe
+          title="Vista previa PDF"
+          src={`${safeUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+          className="absolute inset-0 w-full h-full pointer-events-none opacity-80"
+          loading="lazy"
+        />
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/30" />
+
+        <div className="absolute top-4 left-4 rounded-xl border border-red-400/40 bg-red-500/15 px-3 py-1 text-xs font-bold text-red-200">
           PDF
         </div>
-      );
-    }
-
-    return (
-      <iframe
-        title="Vista previa PDF"
-        src={`${safeUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        loading="lazy"
-      />
-    );
-  }
-
-  if (kind === "docx") {
-    return (
-      <div className="absolute inset-0">
-        <Image
-          src="/docx1.png"
-          alt="Documento DOCX"
-          fill
-          className="object-cover pointer-events-none select-none"
-          sizes="300px"
-        />
       </div>
     );
   }
 
   return (
-    <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200 text-lg font-semibold tracking-widest">
-      DOC
+    <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+      <div className="text-center">
+        <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-2xl border border-orange-500/40 bg-orange-500/10 text-orange-300 text-xl font-black">
+          {label}
+        </div>
+        <p className="text-xs text-zinc-400">Vista previa de documento</p>
+      </div>
     </div>
   );
 }
@@ -781,10 +719,14 @@ function CardItem({ item }: { item: UploadItem }) {
   );
   const previewUrl = proxiedUrl(rawUrl);
 
-  const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
-  const isPdf = PDF_EXT.test(rawUrl);
-  const isDocx = DOCX_EXT.test(rawUrl);
-  const isDoc = !isDocx && DOC_EXT.test(rawUrl);
+const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
+
+const ext = getExt(item);
+
+const isVideo = item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
+const isPdf = ext === "pdf";
+const isDocx = ext === "docx";
+const isDoc = ext === "doc";
 
   return (
     <motion.article
@@ -860,10 +802,14 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
   );
   const previewUrl = proxiedUrl(rawUrl);
 
-  const isVideo = item.tipo === "video" || VIDEO_EXT.test(rawUrl);
-  const isPdf = PDF_EXT.test(rawUrl);
-  const isDocx = DOCX_EXT.test(rawUrl);
-  const isDoc = !isDocx && DOC_EXT.test(rawUrl);
+const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
+
+const ext = getExt(item);
+
+const isVideo = item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
+const isPdf = ext === "pdf";
+const isDocx = ext === "docx";
+const isDoc = ext === "doc";
 
   return (
     <motion.article className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm">
