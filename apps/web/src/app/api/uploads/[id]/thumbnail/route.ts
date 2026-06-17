@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 import pool from "@/db";
 import { Storage } from "@google-cloud/storage";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +13,31 @@ export const revalidate = 0;
 const storage = new Storage();
 const GCS_BUCKET = process.env.GCS_BUCKET;
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+
+async function uploadBufferToR2(params: {
+  key: string;
+  buffer: Buffer;
+  contentType?: string | null;
+}) {
+  try {
+    const r2Client = getR2Client();
+    const bucket = getR2BucketName();
+
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: params.key,
+        Body: params.buffer,
+        ContentType: params.contentType || "application/octet-stream",
+      })
+    );
+
+    return `r2://${bucket}/${params.key}`;
+  } catch (error) {
+    console.error("R2_THUMBNAIL_UPLOAD_ERROR", error);
+    return null;
+  }
+}
 
 function getRoleFromReq(req: Request) {
   const cookie = (req.headers.get("cookie") || "")
@@ -86,7 +113,21 @@ export async function POST(
       resumable: false,
     });
 
-    const thumbnailUrl = `gs://${GCS_BUCKET}/${objectPath}`;
+    const gsThumbnailUrl = `gs://${GCS_BUCKET}/${objectPath}`;
+
+const r2ThumbnailUrl = await uploadBufferToR2({
+  key: objectPath,
+  buffer,
+  contentType: file.type,
+});
+console.log("CUSTOM_THUMBNAIL_UPLOAD_RESULT", {
+  id,
+  objectPath,
+  gsThumbnailUrl,
+  r2ThumbnailUrl,
+});
+
+const thumbnailUrl = r2ThumbnailUrl || gsThumbnailUrl;
 
     const { rows } = await pool.query(
       `

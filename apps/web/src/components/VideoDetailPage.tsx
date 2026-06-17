@@ -251,8 +251,8 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
   const [thumbnailUploading, setThumbnailUploading] = useState(false);
   const [thumbnailMessage, setThumbnailMessage] = useState("");
   const [thumbnailCandidates, setThumbnailCandidates] = useState<
-    { url: string; gsUri: string; timeSec: number }[]
-  >([]);
+  { url: string; gsUri: string; r2Uri?: string | null; timeSec: number }[]
+>([]);
   const [thumbnailLoadingCandidates, setThumbnailLoadingCandidates] = useState(false);
   const [thumbnailSelecting, setThumbnailSelecting] = useState(false);
   const [thumbnailModalOpen, setThumbnailModalOpen] = useState(false);
@@ -1181,7 +1181,7 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
                       key={candidate.gsUri}
                       type="button"
                       disabled={thumbnailSelecting}
-                      onClick={() => handleSelectThumbnailCandidate(candidate.gsUri)}
+                      onClick={() => handleSelectThumbnailCandidate(candidate.r2Uri || candidate.gsUri)}
                       className="group relative aspect-video overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 hover:border-orange-500/70 transition disabled:opacity-60"
                     >
                       <img

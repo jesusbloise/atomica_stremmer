@@ -7,7 +7,8 @@ import os from "os";
 import path from "path";
 import pool from "@/db";
 import { Storage } from "@google-cloud/storage";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+
 import { getR2BucketName, getR2Client } from "@/lib/r2";
 
 export const runtime = "nodejs";
@@ -70,6 +71,44 @@ function parseGsUrl(raw?: string | null) {
   };
 }
 
+function parseR2Url(raw?: string | null) {
+  if (!raw || !raw.startsWith("r2://")) return null;
+
+  const clean = raw.slice(5);
+  const slash = clean.indexOf("/");
+  if (slash === -1) return null;
+
+  return {
+    bucket: clean.slice(0, slash),
+    objectPath: clean.slice(slash + 1),
+  };
+}
+
+async function downloadR2ToFile(r2Uri: string, destination: string) {
+  const parsed = parseR2Url(r2Uri);
+  if (!parsed) throw new Error("Ruta R2 inválida");
+
+  const r2Client = getR2Client();
+
+  const result = await r2Client.send(
+    new GetObjectCommand({
+      Bucket: parsed.bucket,
+      Key: parsed.objectPath,
+    })
+  );
+
+  if (!result.Body) {
+    throw new Error("R2 no devolvió contenido");
+  }
+
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of result.Body as any) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  await fs.writeFile(destination, Buffer.concat(chunks));
+}
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn("ffmpeg", args, { shell: false });
@@ -102,7 +141,7 @@ export async function GET(
 
     const { rows } = await pool.query(
       `
-      SELECT id, file_path, streaming_path
+      SELECT id, file_path, r2_path, streaming_path
       FROM uploads
       WHERE id = $1
       LIMIT 1
@@ -116,22 +155,42 @@ export async function GET(
       return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
     }
 
-    const sourcePath = upload.streaming_path || upload.file_path;
-    const parsed = parseGsUrl(sourcePath);
+  const tmpDir = os.tmpdir();
+const localVideo = path.join(tmpDir, `${id}-${randomUUID()}.mp4`);
 
-    if (!parsed) {
-      return NextResponse.json(
-        { error: "El archivo no tiene ruta GCS válida" },
-        { status: 400 }
-      );
-    }
+let thumbnailSource: "r2" | "gcs" | null = null;
 
-    const tmpDir = os.tmpdir();
-    const localVideo = path.join(tmpDir, `${id}-${randomUUID()}.mp4`);
+if (upload.r2_path) {
+  try {
+    await downloadR2ToFile(upload.r2_path, localVideo);
+    thumbnailSource = "r2";
+  } catch (r2Err) {
+    console.error("THUMBNAIL_SOURCE_R2_FAILED", r2Err);
+  }
+}
 
-    await storage.bucket(parsed.bucket).file(parsed.objectPath).download({
-      destination: localVideo,
-    });
+if (!thumbnailSource) {
+  const sourcePath = upload.streaming_path || upload.file_path;
+  const parsed = parseGsUrl(sourcePath);
+
+  if (!parsed) {
+    return NextResponse.json(
+      { error: "El archivo no tiene ruta GCS/R2 válida" },
+      { status: 400 }
+    );
+  }
+
+  await storage.bucket(parsed.bucket).file(parsed.objectPath).download({
+    destination: localVideo,
+  });
+
+  thumbnailSource = "gcs";
+}
+
+console.log("THUMBNAIL_SOURCE_SELECTED", {
+  id,
+  thumbnailSource,
+});
 
     const times = [2, 5, 8, 12, 16, 20];
     const candidates: {

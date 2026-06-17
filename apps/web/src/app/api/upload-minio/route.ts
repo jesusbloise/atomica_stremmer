@@ -479,7 +479,13 @@ async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
   }
 }
 
-async function triggerPostProcess(rowId: string, ext: string, _gcsUri: string, fileKey: string) {
+async function triggerPostProcess(
+  rowId: string,
+  ext: string,
+  _gcsUri: string,
+  fileKey: string,
+  r2Path?: string | null
+) {
   const python =
     process.env.PYTHON_BIN ||
     (process.platform === "win32"
@@ -495,19 +501,42 @@ async function triggerPostProcess(rowId: string, ext: string, _gcsUri: string, f
 
   if (!scriptPath) return;
 
-  if (!BUCKET) {
-    console.error("No existe GCS_BUCKET para generar signed URL");
-    return;
+try {
+  let signedUrl: string | null = null;
+  let processSource: "r2" | "gcs" | null = null;
+
+  if (r2Path) {
+    try {
+      signedUrl = await createR2SignedReadUrl(r2Path);
+      processSource = "r2";
+    } catch (r2Err) {
+      console.error("POSTPROCESS_R2_SIGNED_URL_ERROR", r2Err);
+    }
   }
 
-  try {
-    const [signedUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
+  if (!signedUrl) {
+    if (!BUCKET) {
+      console.error("No existe GCS_BUCKET para generar signed URL de respaldo");
+      return;
+    }
+
+    const [gcsSignedUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
       version: "v4",
       action: "read",
       expires: Date.now() + 1000 * 60 * 60,
     });
 
-    const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
+    signedUrl = gcsSignedUrl;
+    processSource = "gcs";
+  }
+
+  console.log("POSTPROCESS_SOURCE_SELECTED", {
+    rowId,
+    ext,
+    processSource,
+  });
+
+  const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
       cwd: process.cwd(),
       shell: false,
     });
@@ -665,7 +694,7 @@ async function handleDirectGcsFinalize(req: NextRequest) {
             cfStreamPlaybackUrl: null,
           };
 
-    await triggerPostProcess(rowId, ext, gcsUri, fileKey);
+    await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
 
     pendingUploads.delete(finalizeToken);
 
@@ -836,7 +865,7 @@ export async function POST(req: NextRequest) {
             cfStreamPlaybackUrl: null,
           };
 
-    await triggerPostProcess(rowId, ext, gcsUri, fileKey);
+ await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
 
     return NextResponse.json({
       id: rowId,

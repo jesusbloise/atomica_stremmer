@@ -39,10 +39,16 @@ export async function POST(
     const { id } = await context.params;
     const body = await req.json().catch(() => null);
     const thumbnailUrl = String(body?.thumbnail_url || "").trim();
-
-    if (!thumbnailUrl || !thumbnailUrl.startsWith("gs://")) {
+console.log("THUMBNAIL_SELECT_RECEIVED", {
+  id,
+  thumbnailUrl,
+});
+    if (
+  !thumbnailUrl ||
+  (!thumbnailUrl.startsWith("gs://") && !thumbnailUrl.startsWith("r2://"))
+) {
       return NextResponse.json(
-        { error: "thumbnail_url inválida" },
+        { error: "thumbnail_url inválida. Debe ser gs:// o r2://" },
         { status: 400 }
       );
     }
