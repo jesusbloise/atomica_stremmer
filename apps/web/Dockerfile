@@ -54,6 +54,7 @@ COPY --from=builder /app/next.config.js ./
 
 # 👇 NUEVO: Copiar la carpeta processor también
 COPY --from=builder /app/processor ./processor
+COPY --from=builder /app/scripts ./scripts
 
 RUN npm ci --omit=dev
 
