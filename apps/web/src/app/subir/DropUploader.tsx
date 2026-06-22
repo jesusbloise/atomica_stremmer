@@ -358,145 +358,149 @@ export default function DropUploader({
     setMsg(results.length ? "Elige una portada o sube una imagen propia." : null);
   }
 
-  const upload = async () => {
-    if (!file || uploading) return;
-    if (!category) return setMsg("Selecciona una categoría.");
-    if (requiresSub && !subcategory) return setMsg("Selecciona una subcategoría.");
+ const upload = async () => {
+  if (!file || uploading) return;
+  if (!category) return setMsg("Selecciona una categoría.");
+  if (requiresSub && !subcategory) return setMsg("Selecciona una subcategoría.");
 
-    if (titleRequired && !(meta.titulo && meta.titulo.trim())) {
-      return setMsg("Completa el Título.");
-    }
+  if (titleRequired && !(meta.titulo && meta.titulo.trim())) {
+    return setMsg("Completa el Título.");
+  }
 
-    try {
-      setUploading(true);
+  try {
+    setUploading(true);
 
-      const isLarge = file.size > LARGE_FILE_THRESHOLD_MB * 1024 * 1024;
+    const isLarge = file.size > LARGE_FILE_THRESHOLD_MB * 1024 * 1024;
 
-      if (!isLarge) {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("category", category);
-        fd.append("subcategory", requiresSub ? subcategory : "");
-        fd.append("ficha", JSON.stringify(meta));
+    if (!isLarge) {
+      setMsg("Subiendo archivo...");
 
-        const res = await fetch("/api/upload-minio", {
-          method: "POST",
-          body: fd,
-        });
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", category);
+      fd.append("subcategory", requiresSub ? subcategory : "");
+      fd.append("ficha", JSON.stringify(meta));
 
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-        const id: string | undefined =
-          data?.id || data?.upload?.id || data?.file?.id || data?.record?.id;
-
-        if (thumbnailFile) {
-          await uploadThumbnailIfNeeded(id);
-
-          setMsg("Subido correctamente");
-          setFile(null);
-          setThumbnailFile(null);
-          onUploaded?.({ id, category });
-          return;
-        }
-
-
-
-        setMsg("Subido correctamente");
-        setFile(null);
-        setThumbnailFile(null);
-        onUploaded?.({ id, category });
-        return;
-      }
-
-      setMsg("Subiendo archivo grande...");
-
-      const initRes = await fetch("/api/upload-minio", {
+      const res = await fetch("/api/upload-minio", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "direct-gcs",
-          fileName: file.name,
-          contentType: file.type || "application/octet-stream",
-          size: file.size,
-          category,
-          subcategory: requiresSub ? subcategory : "",
-          ficha: meta,
-        }),
+        body: fd,
       });
 
-      const initData = await initRes.json().catch(() => ({}));
-      if (!initRes.ok) throw new Error(initData?.error || `HTTP ${initRes.status}`);
+      const data = await res.json().catch(() => ({}));
 
-      const uploadUrl = initData?.uploadUrl as string | undefined;
-      const finalizeToken = initData?.finalizeToken as string | undefined;
-
-      if (!uploadUrl || !finalizeToken) {
-        throw new Error("No se recibió URL de subida");
-      }
-
-      setMsg("Subiendo archivo a storage...");
-
-      const putRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-        body: file,
-      });
-
-      if (!putRes.ok) {
-        throw new Error(`Error subiendo a GCS (${putRes.status})`);
-      }
-
-      setMsg("Finalizando registro del archivo...");
-
-      const finalizeRes = await fetch("/api/upload-minio", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "finalize-direct-gcs",
-          finalizeToken,
-        }),
-      });
-
-      const finalizeData = await finalizeRes.json().catch(() => ({}));
-      if (!finalizeRes.ok) {
-        throw new Error(finalizeData?.error || `HTTP ${finalizeRes.status}`);
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
       }
 
       const id: string | undefined =
-        finalizeData?.id ||
-        finalizeData?.upload?.id ||
-        finalizeData?.file?.id ||
-        finalizeData?.record?.id;
+        data?.id ||
+        data?.upload?.id ||
+        data?.file?.id ||
+        data?.record?.id;
+
       if (thumbnailFile) {
         await uploadThumbnailIfNeeded(id);
-
-        setMsg("Subido correctamente");
-        setFile(null);
-        setThumbnailFile(null);
-        onUploaded?.({ id, category });
-        return;
       }
-
-
 
       setMsg("Subido correctamente");
       setFile(null);
       setThumbnailFile(null);
+      setSelectedThumbnailPreview(null);
+      setThumbnailCandidates([]);
+      setThumbnailModalOpen(false);
+
       onUploaded?.({ id, category });
       return;
-    } catch (e: any) {
-      setMsg(`Error: ${e?.message || "falló la subida"}`);
-    } finally {
-      setUploading(false);
     }
-  };
+
+    setMsg("Preparando subida directa a R2...");
+
+    const initRes = await fetch("/api/upload-minio", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        mode: "direct-r2",
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+        size: file.size,
+        category,
+        subcategory: requiresSub ? subcategory : "",
+        ficha: meta,
+      }),
+    });
+
+    const initData = await initRes.json().catch(() => ({}));
+
+    if (!initRes.ok) {
+      throw new Error(initData?.error || `HTTP ${initRes.status}`);
+    }
+
+    const uploadUrl = initData?.uploadUrl as string | undefined;
+    const finalizeToken = initData?.finalizeToken as string | undefined;
+
+    if (!uploadUrl || !finalizeToken) {
+      throw new Error("No se recibió URL de subida R2");
+    }
+
+    setMsg("Subiendo archivo grande a R2...");
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+
+    if (!putRes.ok) {
+      throw new Error(`Error subiendo a R2 (${putRes.status})`);
+    }
+
+    setMsg("Finalizando registro del archivo...");
+
+    const finalizeRes = await fetch("/api/upload-minio", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        mode: "finalize-direct-r2",
+        finalizeToken,
+      }),
+    });
+
+    const finalizeData = await finalizeRes.json().catch(() => ({}));
+
+    if (!finalizeRes.ok) {
+      throw new Error(finalizeData?.error || `HTTP ${finalizeRes.status}`);
+    }
+
+    const id: string | undefined =
+      finalizeData?.id ||
+      finalizeData?.upload?.id ||
+      finalizeData?.file?.id ||
+      finalizeData?.record?.id;
+
+    if (thumbnailFile) {
+      await uploadThumbnailIfNeeded(id);
+    }
+
+    setMsg("Subido correctamente");
+    setFile(null);
+    setThumbnailFile(null);
+    setSelectedThumbnailPreview(null);
+    setThumbnailCandidates([]);
+    setThumbnailModalOpen(false);
+
+    onUploaded?.({ id, category });
+  } catch (e: any) {
+    setMsg(`Error: ${e?.message || "falló la subida"}`);
+  } finally {
+    setUploading(false);
+  }
+};
 
   return (
     <div className="w-full min-h-screen text-white bg-transparent">
@@ -737,7 +741,7 @@ export default function DropUploader({
             </div>
 
             <div className="text-zinc-500 text-[11px] mt-2">
-              Archivos mayores a {LARGE_FILE_THRESHOLD_MB}MB usarán subida directa a storage.
+              Los archivos se guardarán en Cloudflare R2 y los videos se enviarán a Cloudflare Stream.
             </div>
           </div>
 

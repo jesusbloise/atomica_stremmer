@@ -7,12 +7,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Item = {
   id: string;
-  url: string;
+  url?: string | null;
+  file_path?: string | null;
+  r2_path?: string | null;
   file_name?: string;
   display_name?: string | null;
   titulo?: string | null;
   tipo?: string;
   thumbnail_url?: string | null;
+  cf_stream_playback_url?: string | null;
+  using_cloudflare_stream?: boolean;
 };
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
@@ -33,47 +37,22 @@ function stripExt(s?: string | null) {
 
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
-  const s = String(u);
+  const s = String(u).trim();
 
   if (s.startsWith("/api/proxy?url=")) return s;
+  if (s.startsWith("/api/r2/proxy?url=")) return s;
+
+  if (s.startsWith("r2://")) {
+    return `/api/r2/proxy?url=${encodeURIComponent(s)}`;
+  }
 
   if (s.startsWith("gs://")) {
     return `/api/proxy?url=${encodeURIComponent(s)}`;
   }
 
-  if (s.startsWith("http://") || s.startsWith("https://")) {
-    return s;
-  }
-
   return s;
 }
 
-// const CATS = [
-//   {
-//     slug: "publicidad",
-//     label: "Publicidad",
-//     cover: "/Publicidad.avif",
-//     desc: "Piezas y campañas publicitarias.",
-//   },
-//   {
-//     slug: "entretenimiento",
-//     label: "Entretenimiento",
-//     cover: "/babybandito2.jpg",
-//     desc: "Contenido y piezas de entretenimiento.",
-//   },
-// {
-//   slug: "vxf",
-//   label: "Corporativo",
-//   cover: "/Garage.jpg",
-//   desc: "Contenido corporativo, institucional y nuevos negocios.",
-// },
-// {
-//   slug: "ia",
-//   label: "IA",
-//   cover: "/service-7.jpg",
-//   desc: "Contenido generado, asistido o procesado con inteligencia artificial.",
-// },
-// ] as const;
 
 type CategoryFromApi = {
   id: string;
@@ -105,7 +84,9 @@ const [categories, setCategories] = useState<CategoryFromApi[]>([]);
         const data: Item[] = await res.json();
 
         if (!cancel && Array.isArray(data)) {
-          const list = data.filter((v: any) => !!v?.url).slice(0, 6);
+          const list = data
+  .filter((v: any) => !!v?.id)
+  .slice(0, 6);
           setItems(list);
           setIndex(0);
         }
@@ -185,9 +166,12 @@ const [categories, setCategories] = useState<CategoryFromApi[]>([]);
     setIndex((i) => (i + 1) % items.length);
   };
 
-  const src = current ? proxiedUrl(current.url) : "";
-  const thumbnailSrc = current ? proxiedUrl(current.thumbnail_url) : "";
-  const isVideo = current?.tipo === "video" || VIDEO_EXT.test(current?.url || "");
+const streamSrc = current?.cf_stream_playback_url || current?.url || "";
+const rawSrc = current?.r2_path || current?.file_path || current?.url || "";
+const src = proxiedUrl(rawSrc);
+const thumbnailSrc = proxiedUrl(current?.thumbnail_url);
+const isCloudflareStream = streamSrc.includes("iframe.videodelivery.net");
+const isVideo = current?.tipo === "video" || VIDEO_EXT.test(rawSrc || "");
 
   const name = stripExt(
   current?.display_name ||
@@ -207,25 +191,32 @@ const [categories, setCategories] = useState<CategoryFromApi[]>([]);
     alt={name}
     className="absolute inset-0 w-full h-full object-cover"
   />
-) : isVideo ? (
-              <video
-                key={current.id}
-                ref={videoRef}
-                src={src}
-                muted
-                loop
-                playsInline
-                autoPlay
-                preload="metadata"
-                controls={false}
-                disablePictureInPicture
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-zinc-800 text-zinc-300">
-                <span className="text-sm">Sin vista previa</span>
-              </div>
-            )}
+) : isCloudflareStream ? (
+  <iframe
+    src={streamSrc}
+    className="absolute inset-0 w-full h-full"
+    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+    allowFullScreen
+  />
+) : isVideo && src ? (
+  <video
+    key={current.id}
+    ref={videoRef}
+    src={src}
+    muted
+    loop
+    playsInline
+    autoPlay
+    preload="metadata"
+    controls={false}
+    disablePictureInPicture
+    className="absolute inset-0 w-full h-full object-cover"
+  />
+) : (
+  <div className="absolute inset-0 flex items-center justify-center bg-zinc-800 text-zinc-300">
+    <span className="text-sm">Sin vista previa</span>
+  </div>
+)}
 
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/40" />
 

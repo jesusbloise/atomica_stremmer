@@ -32,17 +32,24 @@ export default function DocxViewer({ url, searchTerm = "", registerNavApi }: Pro
   const docxRef = useRef<HTMLDivElement>(null);
   const currentIdxRef = useRef<number>(0);
 
-  // URL segura (espacios y caracteres)
+// URL segura (espacios y caracteres)
 const safeUrl = useMemo(() => {
   if (!url) return "";
 
-  if (url.startsWith("/api/proxy?url=")) return url;
+  const s = String(url).trim();
 
-  if (url.startsWith("gs://")) {
-    return `/api/proxy?url=${encodeURIComponent(url)}`;
+  if (s.startsWith("/api/proxy?url=")) return s;
+  if (s.startsWith("/api/r2/proxy?url=")) return s;
+
+  if (s.startsWith("r2://")) {
+    return `/api/r2/proxy?url=${encodeURIComponent(s)}`;
   }
 
-  return url;
+  if (s.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  return s;
 }, [url]);
 
   useEffect(() => {

@@ -159,10 +159,13 @@ const isVid =
   }, [item.url, isVid]);
 
   const name = stripExt(item.name);
- const thumbnailUrl = item.thumbnail_url
-  ? item.thumbnail_url.startsWith("gs://")
-    ? `/api/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
-    : item.thumbnail_url
+
+const thumbnailUrl = item.thumbnail_url
+  ? item.thumbnail_url.startsWith("r2://")
+    ? `/api/r2/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
+    : item.thumbnail_url.startsWith("gs://")
+      ? `/api/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
+      : item.thumbnail_url
   : "";
 
   return (

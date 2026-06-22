@@ -132,9 +132,21 @@ function resolvePlayableSrc(url?: string | null) {
 }
 function previewUrl(u?: string | null) {
   if (!u) return "";
-  if (u.startsWith("/api/proxy?url=")) return u;
-  if (u.startsWith("gs://")) return `/api/proxy?url=${encodeURIComponent(u)}`;
-  return u;
+
+  const s = String(u).trim();
+
+  if (s.startsWith("/api/proxy?url=")) return s;
+  if (s.startsWith("/api/r2/proxy?url=")) return s;
+
+  if (s.startsWith("r2://")) {
+    return `/api/r2/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  if (s.startsWith("gs://")) {
+    return `/api/proxy?url=${encodeURIComponent(s)}`;
+  }
+
+  return s;
 }
 function ArchivosRelacionadosMock() {
   const relacionados = [

@@ -38,16 +38,17 @@ function stripExt(s?: string | null) {
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
 
-  const s = String(u);
+  const s = String(u).trim();
 
   if (s.startsWith("/api/proxy?url=")) return s;
+  if (s.startsWith("/api/r2/proxy?url=")) return s;
+
+  if (s.startsWith("r2://")) {
+    return `/api/r2/proxy?url=${encodeURIComponent(s)}`;
+  }
 
   if (s.startsWith("gs://")) {
     return `/api/proxy?url=${encodeURIComponent(s)}`;
-  }
-
-  if (s.startsWith("http://") || s.startsWith("https://")) {
-    return s;
   }
 
   return s;

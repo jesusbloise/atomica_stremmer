@@ -8,13 +8,14 @@ import { Storage } from "@google-cloud/storage";
 import fs from "fs/promises";
 import os from "os";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
 import {
   copyVideoToCloudflareStream,
   createR2SignedReadUrl,
 } from "@/lib/cloudflareStream";
 
-console.log("UPLOAD_ROUTE_HIT (GCS direct upload + R2 + Cloudflare Stream)");
+console.log("UPLOAD_ROUTE_HIT (R2 primary + Cloudflare Stream)");
 
 function webStreamToNodeReadable(webStream: ReadableStream<Uint8Array>): Readable {
   const reader = webStream.getReader();
@@ -178,7 +179,7 @@ type PendingDirectUpload = {
   rowId: string;
   fileName: string;
   fileKey: string;
-  gcsUri: string;
+  r2Path: string;
   size: number;
   contentType: string;
   category: CatSlug;
@@ -224,23 +225,22 @@ function runCommand(command: string, args: string[]) {
 }
 
 async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
-  if (!BUCKET || !thumbnail) return null;
+  if (!thumbnail) return null;
   if (!thumbnail.type.startsWith("image/")) return null;
 
   const originalName = sanitizeFileName(thumbnail.name || "thumbnail.jpg");
   const ext = originalName.split(".").pop()?.toLowerCase() || "jpg";
   const thumbnailKey = `thumbnails/${rowId}-${randomUUID()}.${ext}`;
-  const thumbnailUri = `gs://${BUCKET}/${thumbnailKey}`;
 
   const buffer = Buffer.from(await thumbnail.arrayBuffer());
 
-  await storage.bucket(BUCKET).file(thumbnailKey).save(buffer, {
-    metadata: {
-      contentType: thumbnail.type || "image/jpeg",
-      cacheControl: "public, max-age=31536000, immutable",
-    },
-    resumable: false,
+  const r2ThumbnailUri = await uploadBufferToR2({
+    key: thumbnailKey,
+    buffer,
+    contentType: thumbnail.type || "image/jpeg",
   });
+
+  if (!r2ThumbnailUri) return null;
 
   await pool.query(
     `
@@ -248,10 +248,10 @@ async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
     SET thumbnail_url = $1
     WHERE id = $2
     `,
-    [thumbnailUri, rowId]
+    [r2ThumbnailUri, rowId]
   );
 
-  return thumbnailUri;
+  return r2ThumbnailUri;
 }
 
 async function createOptimizedStreamingVersion(rowId: string, fileKey: string, ext: string) {
@@ -482,7 +482,7 @@ async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
 async function triggerPostProcess(
   rowId: string,
   ext: string,
-  _gcsUri: string,
+  _gcsUri: string | null,
   fileKey: string,
   r2Path?: string | null
 ) {
@@ -549,12 +549,9 @@ try {
   }
 }
 
-async function handleDirectGcsInit(req: NextRequest) {
-  if (!BUCKET) {
-    return NextResponse.json({ error: "Falta GCS_BUCKET en variables de entorno" }, { status: 500 });
-  }
-
+async function handleDirectR2Init(req: NextRequest) {
   const body = await req.json().catch(() => null);
+
   if (!body) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
@@ -566,11 +563,13 @@ async function handleDirectGcsInit(req: NextRequest) {
   }
 
   const fileName = String(body.fileName || "").trim();
+
   if (!fileName) {
     return NextResponse.json({ error: "Falta fileName" }, { status: 400 });
   }
 
   const size = Number(body.size || 0);
+
   if (!Number.isFinite(size) || size <= 0) {
     return NextResponse.json({ error: "Tamaño inválido" }, { status: 400 });
   }
@@ -588,20 +587,26 @@ async function handleDirectGcsInit(req: NextRequest) {
   const safeFileName = sanitizeFileName(fileName);
   const fileKey = `${randomUUID()}_${safeFileName}`;
   const rowId = randomUUID();
-  const gcsUri = `gs://${BUCKET}/${fileKey}`;
 
-  const [uploadUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
-    version: "v4",
-    action: "write",
-    expires: Date.now() + 1000 * 60 * 30,
-    contentType,
-  });
+  const r2Client = getR2Client();
+  const bucket = getR2BucketName();
+  const r2Path = `r2://${bucket}/${fileKey}`;
+
+  const uploadUrl = await getSignedUrl(
+    r2Client,
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: fileKey,
+      ContentType: contentType,
+    }),
+    { expiresIn: 60 * 30 }
+  );
 
   const pending: PendingDirectUpload = {
     rowId,
     fileName,
     fileKey,
-    gcsUri,
+    r2Path,
     size,
     contentType,
     category,
@@ -618,11 +623,11 @@ async function handleDirectGcsInit(req: NextRequest) {
     finalizeToken,
     rowId,
     key: fileKey,
-    url: gcsUri,
+    r2_path: r2Path,
   });
 }
 
-async function handleDirectGcsFinalize(req: NextRequest) {
+async function handleDirectR2Finalize(req: NextRequest) {
   const body = await req.json().catch(() => null);
 
   if (!body) {
@@ -643,7 +648,7 @@ async function handleDirectGcsFinalize(req: NextRequest) {
     rowId,
     fileName,
     fileKey,
-    gcsUri,
+    r2Path,
     size,
     category,
     subcategory,
@@ -653,17 +658,10 @@ async function handleDirectGcsFinalize(req: NextRequest) {
 
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   const tipo = getTipoFromExt(ext);
-  let r2Path: string | null = null;
+  const gcsUri: string | null = null;
+  const streamingPath: string | null = null;
 
   try {
-    const [gcsBuffer] = await storage.bucket(BUCKET!).file(fileKey).download();
-
-    r2Path = await uploadBufferToR2({
-      key: fileKey,
-      buffer: gcsBuffer,
-      contentType,
-    });
-
     await pool.query(
       `
       INSERT INTO uploads
@@ -678,8 +676,6 @@ async function handleDirectGcsFinalize(req: NextRequest) {
 
     await upsertFichaTecnica(rowId, ficha);
 
-    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
-
     const cfData =
       tipo === "video"
         ? await sendVideoToCloudflareStream({
@@ -688,10 +684,10 @@ async function handleDirectGcsFinalize(req: NextRequest) {
             r2Path,
           })
         : {
-            cfStreamUid: null,
+            cfStreamUid: null as string | null,
             cfStreamReady: false,
-            cfStreamStatus: null,
-            cfStreamPlaybackUrl: null,
+            cfStreamStatus: null as string | null,
+            cfStreamPlaybackUrl: null as string | null,
           };
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
@@ -702,6 +698,7 @@ async function handleDirectGcsFinalize(req: NextRequest) {
       id: rowId,
       message: `Archivo ${ext.toUpperCase()} subido correctamente`,
       url: gcsUri,
+      file_path: gcsUri,
       r2_path: r2Path,
       streaming_path: streamingPath,
       cf_stream_uid: cfData.cfStreamUid,
@@ -715,9 +712,10 @@ async function handleDirectGcsFinalize(req: NextRequest) {
       contentType,
     });
   } catch (error) {
-    console.error("Error finalize direct GCS:", error);
+    console.error("Error finalize direct R2:", error);
+
     return NextResponse.json(
-      { error: "Error al finalizar subida directa" },
+      { error: "Error al finalizar subida directa a R2" },
       { status: 500 }
     );
   }
@@ -734,20 +732,18 @@ export async function POST(req: NextRequest) {
       const body = await clone.json().catch(() => null);
       const mode = body?.mode;
 
-      if (mode === "direct-gcs") {
-        return handleDirectGcsInit(req);
-      }
+     if (mode === "direct-r2") {
+  return handleDirectR2Init(req);
+}
 
-      if (mode === "finalize-direct-gcs") {
-        return handleDirectGcsFinalize(req);
-      }
+if (mode === "finalize-direct-r2") {
+  return handleDirectR2Finalize(req);
+}
 
       return NextResponse.json({ error: "Modo no soportado" }, { status: 400 });
     }
 
-    if (!BUCKET) {
-      return NextResponse.json({ error: "Falta GCS_BUCKET en variables de entorno" }, { status: 500 });
-    }
+  
 
     const fileSize = Number(req.headers.get("x-filesize") || 0);
     if (fileSize > 2 * 1024 * 1024 * 1024) {
@@ -795,43 +791,34 @@ export async function POST(req: NextRequest) {
     const fileKey = `${randomUUID()}_${safeFileName}`;
     const rowId = randomUUID();
     const tipo = getTipoFromExt(ext);
-    const gcsUri = `gs://${BUCKET}/${fileKey}`;
+    const gcsUri: string | null = null;
 
-    const nodeStream = webStreamToNodeReadable(file.stream());
-    const gcsFile = storage.bucket(BUCKET).file(fileKey);
+let r2Path: string | null = null;
 
-    await new Promise<void>((resolve, reject) => {
-      const writeStream = gcsFile.createWriteStream({
-        resumable: false,
-        metadata: { contentType: file.type || "application/octet-stream" },
-      });
+try {
+  const buffer = Buffer.from(await file.arrayBuffer());
 
-      nodeStream
-        .on("error", reject)
-        .pipe(writeStream)
-        .on("error", reject)
-        .on("finish", () => resolve());
-    });
+  r2Path = await uploadBufferToR2({
+    key: fileKey,
+    buffer,
+    contentType: file.type || "application/octet-stream",
+  });
 
-    let r2Path: string | null = null;
+  console.log("R2_FORMDATA_UPLOAD_RESULT", {
+    rowId,
+    fileKey,
+    r2Path,
+  });
+} catch (r2Err) {
+  console.error("R2_FORMDATA_UPLOAD_FAILED", r2Err);
+}
 
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-
-      r2Path = await uploadBufferToR2({
-        key: fileKey,
-        buffer,
-        contentType: file.type || "application/octet-stream",
-      });
-
-      console.log("R2_FORMDATA_COPY_RESULT", {
-        rowId,
-        fileKey,
-        r2Path,
-      });
-    } catch (r2Err) {
-      console.error("R2_FORMDATA_COPY_FAILED", r2Err);
-    }
+if (!r2Path) {
+  return NextResponse.json(
+    { error: "No se pudo guardar el archivo en R2" },
+    { status: 500 }
+  );
+}
 
     await pool.query(
       `
@@ -845,44 +832,45 @@ export async function POST(req: NextRequest) {
       [rowId, filename, fileKey, gcsUri, file.size, "uploaded", tipo, category, subcategory, r2Path]
     );
 
-    await upsertFichaTecnica(rowId, ficha);
+ await upsertFichaTecnica(rowId, ficha);
 
-    const thumbnailUrl = await uploadCustomThumbnail(rowId, thumbnail);
+const thumbnailUrl = await uploadCustomThumbnail(rowId, thumbnail);
 
-    const streamingPath = await createOptimizedStreamingVersion(rowId, fileKey, ext);
+const streamingPath: string | null = null;
 
-    const cfData =
-      tipo === "video"
-        ? await sendVideoToCloudflareStream({
-            rowId,
-            fileName: filename,
-            r2Path,
-          })
-        : {
-            cfStreamUid: null,
-            cfStreamReady: false,
-            cfStreamStatus: null,
-            cfStreamPlaybackUrl: null,
-          };
+const cfData =
+  tipo === "video"
+    ? await sendVideoToCloudflareStream({
+        rowId,
+        fileName: filename,
+        r2Path,
+      })
+    : {
+        cfStreamUid: null as string | null,
+        cfStreamReady: false,
+        cfStreamStatus: null as string | null,
+        cfStreamPlaybackUrl: null as string | null,
+      };
 
- await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
+await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
 
-    return NextResponse.json({
-      id: rowId,
-      message: `Archivo ${ext.toUpperCase()} subido correctamente`,
-      url: gcsUri,
-      r2_path: r2Path,
-      streaming_path: streamingPath,
-      thumbnail_url: thumbnailUrl,
-      cf_stream_uid: cfData.cfStreamUid,
-      cf_stream_ready: cfData.cfStreamReady,
-      cf_stream_status: cfData.cfStreamStatus,
-      cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
-      key: fileKey,
-      tipo,
-      category,
-      subcategory,
-    });
+return NextResponse.json({
+  id: rowId,
+  message: `Archivo ${ext.toUpperCase()} subido correctamente`,
+  url: gcsUri,
+  file_path: gcsUri,
+  r2_path: r2Path,
+  streaming_path: streamingPath,
+  thumbnail_url: thumbnailUrl,
+  cf_stream_uid: cfData.cfStreamUid,
+  cf_stream_ready: cfData.cfStreamReady,
+  cf_stream_status: cfData.cfStreamStatus,
+  cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
+  key: fileKey,
+  tipo,
+  category,
+  subcategory,
+});
   } catch (error) {
     console.error("Error general:", error);
     return NextResponse.json(
