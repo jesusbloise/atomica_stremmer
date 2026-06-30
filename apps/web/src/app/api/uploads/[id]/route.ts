@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
-import { Storage } from "@google-cloud/storage";
+// import { Storage } from "@google-cloud/storage";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl as getR2SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
@@ -10,8 +10,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const storage = new Storage();
-const GCS_BUCKET = process.env.GCS_BUCKET;
+// const storage = new Storage();
+// const GCS_BUCKET = process.env.GCS_BUCKET;
 
 type RowUploadBase = {
   id: string;
@@ -111,20 +111,20 @@ function inferTipo(ext: string, contentType?: string | null): "video" | "documen
   return null;
 }
 
-function parseGsUrl(raw?: string | null) {
-  if (!raw || !raw.startsWith("gs://")) return null;
+// function parseGsUrl(raw?: string | null) {
+//   if (!raw || !raw.startsWith("gs://")) return null;
 
-  const withoutScheme = raw.slice(5);
-  const firstSlash = withoutScheme.indexOf("/");
-  if (firstSlash === -1) return null;
+//   const withoutScheme = raw.slice(5);
+//   const firstSlash = withoutScheme.indexOf("/");
+//   if (firstSlash === -1) return null;
 
-  const bucket = withoutScheme.slice(0, firstSlash);
-  const objectPath = withoutScheme.slice(firstSlash + 1);
+//   const bucket = withoutScheme.slice(0, firstSlash);
+//   const objectPath = withoutScheme.slice(firstSlash + 1);
 
-  if (!bucket || !objectPath) return null;
+//   if (!bucket || !objectPath) return null;
 
-  return { bucket, objectPath };
-}
+//   return { bucket, objectPath };
+// }
 
 function parseR2Url(raw?: string | null) {
   if (!raw || !raw.startsWith("r2://")) return null;
@@ -141,38 +141,38 @@ function parseR2Url(raw?: string | null) {
   return { bucket, objectPath };
 }
 
-async function buildDirectSignedUrl(params: {
-  filePath?: string | null;
-  fileKey?: string | null;
-  contentType?: string | null;
-  fileName?: string | null;
-}) {
-  const { filePath, fileKey, contentType, fileName } = params;
+// async function buildDirectSignedUrl(params: {
+//   filePath?: string | null;
+//   fileKey?: string | null;
+//   contentType?: string | null;
+//   fileName?: string | null;
+// }) {
+//   const { filePath, fileKey, contentType, fileName } = params;
 
-  if (filePath && /^https?:\/\//i.test(filePath)) {
-    return filePath;
-  }
+//   if (filePath && /^https?:\/\//i.test(filePath)) {
+//     return filePath;
+//   }
 
-  const parsed = parseGsUrl(filePath);
-  const bucket = parsed?.bucket || GCS_BUCKET;
-  const objectPath = parsed?.objectPath || fileKey;
+//   const parsed = parseGsUrl(filePath);
+//   const bucket = parsed?.bucket || GCS_BUCKET;
+//   const objectPath = parsed?.objectPath || fileKey;
 
-  if (!bucket || !objectPath) return null;
+//   if (!bucket || !objectPath) return null;
 
-  const file = storage.bucket(bucket).file(objectPath);
+//   const file = storage.bucket(bucket).file(objectPath);
 
-  await file.getMetadata();
+//   await file.getMetadata();
 
-  const [signedUrl] = await file.getSignedUrl({
-    version: "v4",
-    action: "read",
-    expires: Date.now() + 1000 * 60 * 60 * 6,
-    responseType: contentType || undefined,
-    responseDisposition: fileName ? `inline; filename="${fileName.replace(/"/g, "")}"` : "inline",
-  });
+//   const [signedUrl] = await file.getSignedUrl({
+//     version: "v4",
+//     action: "read",
+//     expires: Date.now() + 1000 * 60 * 60 * 6,
+//     responseType: contentType || undefined,
+//     responseDisposition: fileName ? `inline; filename="${fileName.replace(/"/g, "")}"` : "inline",
+//   });
 
-  return signedUrl;
-}
+//   return signedUrl;
+// }
 
 async function buildR2SignedUrl(params: {
   r2Path?: string | null;
@@ -201,27 +201,27 @@ async function buildR2SignedUrl(params: {
   return signedUrl;
 }
 
-async function recoverStreamingPathIfExists(rowId: string) {
-  if (!GCS_BUCKET) return null;
+// async function recoverStreamingPathIfExists(rowId: string) {
+//   if (!GCS_BUCKET) return null;
 
-  const streamingKey = `streaming/${rowId}_web.mp4`;
-  const streamingUri = `gs://${GCS_BUCKET}/${streamingKey}`;
-  const file = storage.bucket(GCS_BUCKET).file(streamingKey);
+//   const streamingKey = `streaming/${rowId}_web.mp4`;
+//   const streamingUri = `gs://${GCS_BUCKET}/${streamingKey}`;
+//   const file = storage.bucket(GCS_BUCKET).file(streamingKey);
 
-  const [exists] = await file.exists();
-  if (!exists) return null;
+//   const [exists] = await file.exists();
+//   if (!exists) return null;
 
-  try {
-    await pool.query(
-      `UPDATE uploads SET streaming_path = $1 WHERE id = $2`,
-      [streamingUri, rowId]
-    );
-  } catch (e) {
-    console.warn("No se pudo recuperar streaming_path en DB:", e);
-  }
+//   try {
+//     await pool.query(
+//       `UPDATE uploads SET streaming_path = $1 WHERE id = $2`,
+//       [streamingUri, rowId]
+//     );
+//   } catch (e) {
+//     console.warn("No se pudo recuperar streaming_path en DB:", e);
+//   }
 
-  return streamingUri;
-}
+//   return streamingUri;
+// }
 
 function mapFichaToCamel(row?: RowFicha | null) {
   if (!row) return null;
@@ -345,17 +345,15 @@ FROM uploads
       }
     }
 
-    let recoveredStreamingPath: string | null = null;
-
-    if (tipo === "video" && !row.streaming_path) {
-      recoveredStreamingPath = await recoverStreamingPathIfExists(row.id);
-    }
-
-    const finalStreamingPath = row.streaming_path || recoveredStreamingPath;
+    const finalStreamingPath = row.streaming_path || null;
 
 const preferR2 = Boolean(row.r2_path);
 
-const usingStreaming = tipo === "video" && Boolean(finalStreamingPath) && !preferR2;
+const usingStreaming =
+  tipo === "video" &&
+  Boolean(finalStreamingPath) &&
+  Boolean(finalStreamingPath?.startsWith("r2://")) &&
+  !preferR2;
 
 const playbackPath = preferR2
   ? row.r2_path
@@ -415,14 +413,21 @@ console.log("PLAYBACK_URL_SELECTED", {
   cfStreamPlaybackUrl,
   finalUrl: url,
 });
-    if (!url) {
-      url = await buildDirectSignedUrl({
-        filePath: usingStreaming ? finalStreamingPath : row.file_path,
-        fileKey: row.file_key,
-        contentType: playbackContentType,
-        fileName: row.file_name,
-      });
-    }
+  if (!url) {
+  return NextResponse.json(
+    {
+      error: "Archivo no disponible en R2 ni Cloudflare Stream",
+      details: {
+        id: row.id,
+        file_path: row.file_path,
+        r2_path: row.r2_path,
+        cf_stream_ready: cfStreamReady,
+        cf_stream_playback_url: cfStreamPlaybackUrl,
+      },
+    },
+    { status: 404 }
+  );
+}
 
     return NextResponse.json(
       {

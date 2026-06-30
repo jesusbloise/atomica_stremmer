@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
 import crypto from "crypto";
-import { Storage } from "@google-cloud/storage";
+// import { Storage } from "@google-cloud/storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
 import { cookies } from "next/headers";
 
-const storage = new Storage();
-const GCS_BUCKET = process.env.GCS_BUCKET;
+// const storage = new Storage();
+// const GCS_BUCKET = process.env.GCS_BUCKET;
 async function uploadBufferToR2(params: {
   key: string;
   buffer: Buffer;
@@ -100,13 +100,12 @@ function extFromMime(mime: string) {
 }
 
 /** Guarda el avatar y retorna la URL pública (/uploads/avatars/...) */
-async function saveAvatarToGCS(
+async function saveAvatarToR2(
   userId: string,
   file: File | null,
   dataUrl: string | null
 ) {
   if (!file && !dataUrl) return null;
-  if (!GCS_BUCKET) throw new Error("GCS_BUCKET no configurado");
 
   let buffer: Buffer;
   let mime: string;
@@ -125,29 +124,67 @@ async function saveAvatarToGCS(
   const ext = extFromMime(mime);
   const objectPath = `avatars/${userId}-${hash}.${ext}`;
 
-  await storage.bucket(GCS_BUCKET).file(objectPath).save(buffer, {
-    metadata: {
-      contentType: mime,
-      cacheControl: "public, max-age=31536000",
-    },
-    resumable: false,
+  const r2Path = await uploadBufferToR2({
+    key: objectPath,
+    buffer,
+    contentType: mime,
   });
-const gsPath = `gs://${GCS_BUCKET}/${objectPath}`;
 
-const r2Path = await uploadBufferToR2({
-  key: objectPath,
-  buffer,
-  contentType: mime,
-});
+  if (!r2Path) {
+    throw new Error("No se pudo subir el avatar a R2");
+  }
 
-const finalPath = r2Path || gsPath;
-
-if (r2Path) {
   return `/api/r2/proxy?url=${encodeURIComponent(r2Path)}&ts=${Date.now()}`;
 }
 
-return `/api/proxy?url=${encodeURIComponent(gsPath)}&ts=${Date.now()}`;
-}
+// async function saveAvatarToGCS(
+//   userId: string,
+//   file: File | null,
+//   dataUrl: string | null
+// ) {
+//   if (!file && !dataUrl) return null;
+//   if (!GCS_BUCKET) throw new Error("GCS_BUCKET no configurado");
+
+//   let buffer: Buffer;
+//   let mime: string;
+
+//   if (file) {
+//     const arr = await file.arrayBuffer();
+//     buffer = Buffer.from(arr);
+//     mime = file.type || "image/jpeg";
+//   } else {
+//     const parsed = dataUrlToBuffer(dataUrl!);
+//     buffer = parsed.buffer;
+//     mime = parsed.mime;
+//   }
+
+//   const hash = crypto.createHash("md5").update(buffer).digest("hex").slice(0, 8);
+//   const ext = extFromMime(mime);
+//   const objectPath = `avatars/${userId}-${hash}.${ext}`;
+
+//   await storage.bucket(GCS_BUCKET).file(objectPath).save(buffer, {
+//     metadata: {
+//       contentType: mime,
+//       cacheControl: "public, max-age=31536000",
+//     },
+//     resumable: false,
+//   });
+// const gsPath = `gs://${GCS_BUCKET}/${objectPath}`;
+
+// const r2Path = await uploadBufferToR2({
+//   key: objectPath,
+//   buffer,
+//   contentType: mime,
+// });
+
+// const finalPath = r2Path || gsPath;
+
+// if (r2Path) {
+//   return `/api/r2/proxy?url=${encodeURIComponent(r2Path)}&ts=${Date.now()}`;
+// }
+
+// return `/api/proxy?url=${encodeURIComponent(gsPath)}&ts=${Date.now()}`;
+// }
 
 export async function PUT(req: Request) {
   const user = await getSessionUser();
@@ -187,7 +224,7 @@ export async function PUT(req: Request) {
   const avatarDataUrl = String(form.get("avatarDataUrl") || "") || null;
 
   // Guarda localmente (en /public/uploads/avatars)
-  const savedUrl = await saveAvatarToGCS(user.id, avatarFile, avatarDataUrl);
+  const savedUrl = await saveAvatarToR2(user.id, avatarFile, avatarDataUrl);
   // Si no se envió nada, mantenemos null para no pisar lo existente
   let avatar_url: string | null = savedUrl;
 

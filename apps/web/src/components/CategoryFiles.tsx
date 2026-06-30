@@ -153,15 +153,14 @@ function VideoStaticPreview({
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
-        <video
-          src={src}
-          muted
-          playsInline
-          preload="metadata"
-          controls={false}
-          disablePictureInPicture
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+          <div className="text-center">
+            <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full border border-orange-500/40 bg-orange-500/10 text-orange-300 text-2xl font-black">
+              ▶
+            </div>
+            <p className="text-xs text-zinc-400">Vista previa de video</p>
+          </div>
+        </div>
       )}
 
       <div className="absolute inset-0 bg-black/15" />
@@ -178,28 +177,7 @@ function DocumentPreview({
   kind: "pdf" | "docx" | "doc";
   isMobile: boolean;
 }) {
-  const safeUrl = proxiedUrl(url);
-
   const label = kind === "pdf" ? "PDF" : kind === "docx" ? "WORD" : "DOC";
-
-  if (kind === "pdf" && !isMobile && safeUrl) {
-    return (
-      <div className="absolute inset-0 bg-zinc-900">
-        <iframe
-          title="Vista previa PDF"
-          src={`${safeUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-          className="absolute inset-0 w-full h-full pointer-events-none opacity-80"
-          loading="lazy"
-        />
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/30" />
-
-        <div className="absolute top-4 left-4 rounded-xl border border-red-400/40 bg-red-500/15 px-3 py-1 text-xs font-bold text-red-200">
-          PDF
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
@@ -552,52 +530,49 @@ const carouselRows = useMemo(() => {
   };
 
   return (
-  <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 text-white">
-    <section className="mb-8 border-b border-zinc-900 pb-5">
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white">
-            {title}
-          </h1>
+  <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 -mt-8 pb-6 text-white">
+    
+    {!loading && featuredItem && (
+  <section className="relative mb-6 mt-0">
+    <div className="absolute top-4 left-5 right-5 z-20 flex flex-col md:flex-row md:items-start md:justify-between gap-4 pointer-events-none">
+      <div className="pointer-events-auto">
+        <h1 className="text-3xl md:text-4xl font-bold text-white drop-shadow">
+          {title}
+        </h1>
 
-          <p className="mt-2 text-sm text-zinc-500">
-            {totalAssets} archivo{totalAssets === 1 ? "" : "s"} disponibles
-          </p>
-        </div>
-
-        {hasGroups && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {["Todo", ...groupEntries.map(([sub]) => sub)].map((sub) => {
-              const active = activeShelf === sub;
-
-              return (
-                <button
-                  key={sub}
-                  type="button"
-                  onClick={() => setActiveShelf(sub)}
-                  className={[
-                    "shrink-0 rounded-full px-4 py-2 text-sm border transition",
-                    active
-                      ? "border-orange-500 bg-orange-500 text-black font-semibold"
-                      : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white hover:border-zinc-600",
-                  ].join(" ")}
-                >
-                  {sub}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <p className="mt-1 text-sm text-zinc-300 drop-shadow">
+          {totalAssets} archivo{totalAssets === 1 ? "" : "s"} disponibles
+        </p>
       </div>
-    </section>
 
-    {!loading && featuredItem && activeShelf === "Todo" && (
-      <section className="mb-10 flex justify-center">
-        <div className="w-full max-w-[760px]">
-          <FeaturedCard item={featuredItem} />
+      {hasGroups && (
+        <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1">
+          {["Todo", ...groupEntries.map(([sub]) => sub)].map((sub) => {
+            const active = activeShelf === sub;
+
+            return (
+              <button
+                key={sub}
+                type="button"
+                onClick={() => setActiveShelf(sub)}
+                className={[
+                  "shrink-0 rounded-full px-4 py-2 text-sm border transition backdrop-blur",
+                  active
+                    ? "border-orange-500 bg-orange-500 text-black font-semibold"
+                    : "border-zinc-700 bg-black/50 text-zinc-300 hover:text-white hover:border-orange-500",
+                ].join(" ")}
+              >
+                {sub}
+              </button>
+            );
+          })}
         </div>
-      </section>
-    )}
+      )}
+    </div>
+
+    <FeaturedCard item={featuredItem} compactTop />
+  </section>
+)}
 
     {loading ? (
       <div className="text-zinc-400 py-10">Cargando…</div>
@@ -612,32 +587,32 @@ const carouselRows = useMemo(() => {
 
           return (
             <div
-              key={sub}
-              ref={(el) => {
-                sectionRefs.current[id] = el;
-              }}
-              id={`sub-${id}`}
-              className="mb-10"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl md:text-2xl font-semibold">{sub}</h2>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    {items.length} archivo{items.length === 1 ? "" : "s"}
-                  </p>
-                </div>
+  key={sub}
+  ref={(el) => {
+    sectionRefs.current[id] = el;
+  }}
+  id={`sub-${id}`}
+  className="relative mb-0"
+>
+  <div className="absolute left-12 right-12 md:left-16 md:right-16 top-3 z-40 flex items-start justify-between pointer-events-none">
+    <div className="pointer-events-auto rounded-xl bg-black/35 px-3 py-2 backdrop-blur-sm">
+      <h2 className="text-xl md:text-2xl font-semibold leading-none">{sub}</h2>
+      <p className="text-xs text-zinc-400 mt-1">
+        {items.length} archivo{items.length === 1 ? "" : "s"}
+      </p>
+    </div>
 
-                <button
-                  onClick={() => setFullViewSub(sub)}
-                  className="text-xs px-3 py-1.5 rounded-full border border-zinc-700 hover:border-orange-500 text-zinc-300 hover:text-orange-300 transition"
-                  title="Ver todos los archivos"
-                >
-                  Ver todos
-                </button>
-              </div>
+    <button
+      onClick={() => setFullViewSub(sub)}
+      className="pointer-events-auto text-xs px-3 py-1.5 rounded-full border border-zinc-700 bg-black/35 backdrop-blur-sm hover:border-orange-500 text-zinc-300 hover:text-orange-300 transition"
+      title="Ver todos los archivos"
+    >
+      Ver todos
+    </button>
+  </div>
 
-              <CategoryCarousel items={items} />
-            </div>
+  <CategoryCarousel items={items} />
+</div>
           );
         })}
 
@@ -689,7 +664,7 @@ const carouselRows = useMemo(() => {
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
         <div className="relative z-50 h-full overflow-y-auto">
           <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="relative z-20 -mb-8 px-12 md:px-16 flex items-center justify-between">
               <h2 className="text-2xl md:text-3xl font-bold">{fullViewSub}</h2>
               <button
                 onClick={() => setFullViewSub(null)}
@@ -725,7 +700,14 @@ const carouselRows = useMemo(() => {
   </div>
 );
 }
-function FeaturedCard({ item }: { item: UploadItem }) {
+
+function FeaturedCard({
+  item,
+  compactTop = false,
+}: {
+  item: UploadItem;
+  compactTop?: boolean;
+}) {
   const isMobile = useIsMobile();
 
   const rawUrl = item.url || item.file_path || "";
@@ -746,7 +728,7 @@ function FeaturedCard({ item }: { item: UploadItem }) {
 
   return (
     <motion.article className="group overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
-      <div className="relative aspect-video w-full overflow-hidden bg-zinc-900">
+      <div className="relative h-[420px] md:h-[460px] lg:h-[500px] w-full overflow-hidden bg-zinc-900">
         {isVideo ? (
           <VideoStaticPreview src={previewUrl} poster={item.thumbnail_url} />
         ) : isPdf ? (
@@ -761,19 +743,20 @@ function FeaturedCard({ item }: { item: UploadItem }) {
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/35 to-black/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
 
-        <div className="absolute left-6 right-6 bottom-6">
-          <p className="mb-2 text-xs uppercase tracking-wide text-orange-300">
+        <div className="absolute left-6 right-6 bottom-8 md:left-10 md:bottom-10">
+          <p className="mb-2 text-[10px] md:text-xs uppercase tracking-[0.18em] font-bold text-orange-300">
             Último agregado
           </p>
 
-          <h2 className="text-2xl md:text-3xl font-bold text-white drop-shadow line-clamp-2">
+          <h2 className="text-2xl md:text-4xl lg:text-5xl font-black text-white drop-shadow line-clamp-2">
             {name}
           </h2>
 
           <Link href={`/videos/${item.id}`} prefetch={false}>
-            <button className="mt-5 rounded border border-orange-400 px-5 py-2 text-sm font-semibold text-orange-300 hover:bg-orange-500/10 transition">
+            <button className="mt-5 rounded-lg border border-orange-400 bg-orange-500/10 px-5 py-2 text-sm font-semibold text-orange-300 hover:bg-orange-500 hover:text-black transition">
               Reproducir
             </button>
           </Link>
@@ -782,6 +765,7 @@ function FeaturedCard({ item }: { item: UploadItem }) {
     </motion.article>
   );
 }
+
 function CardItem({ item }: { item: UploadItem }) {
   const isMobile = useIsMobile();
 
@@ -805,7 +789,7 @@ const isDoc = ext === "doc";
 
   return (
     <motion.article
-      className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm"
+  className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm transition-transform duration-300 ease-out hover:scale-[1.18] hover:z-50 hover:shadow-2xl"
       initial={isMobile ? undefined : "rest"}
       animate={isMobile ? undefined : "rest"}
       whileHover={isMobile ? undefined : "hover"}
@@ -947,12 +931,12 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
   if (!items.length) return null;
 
   return (
-    <section className="relative group px-12 md:px-16">
+    <section className="relative group px-12 md:px-16 pt-9">
       <button
         type="button"
         onClick={() => scrollByAmount("left")}
         aria-label="Anterior"
-        className="hidden md:grid absolute left-0 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full bg-orange-500 text-black text-2xl font-bold shadow-xl hover:bg-orange-400 transition"
+        className="hidden md:grid absolute left-0 top-1/2 -translate-y-1/2 z-30 h-14 w-10 place-items-center text-white/85 text-5xl font-light hover:text-white transition"
       >
         ‹
       </button>
@@ -969,7 +953,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
           {items.map((u) => (
             <div
               key={u.id}
-             className="shrink-0 w-[70vw] sm:w-[300px] md:w-[320px] lg:w-[340px] xl:w-[360px]"
+             className="relative shrink-0 w-[70vw] sm:w-[280px] md:w-[300px] lg:w-[320px] xl:w-[340px]"
             >
               <CardItem item={u} />
             </div>
@@ -981,7 +965,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
         type="button"
         onClick={() => scrollByAmount("right")}
         aria-label="Siguiente"
-        className="hidden md:grid absolute right-0 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full bg-orange-500 text-black text-2xl font-bold shadow-xl hover:bg-orange-400 transition"
+        className="hidden md:grid absolute right-0 top-1/2 -translate-y-1/2 z-30 h-14 w-10 place-items-center text-white/85 text-5xl font-light hover:text-white transition"
       >
         ›
       </button>

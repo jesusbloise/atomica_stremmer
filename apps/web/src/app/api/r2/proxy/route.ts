@@ -17,7 +17,6 @@ function parseR2Url(raw?: string | null) {
   const objectPath = withoutScheme.slice(firstSlash + 1);
 
   if (!bucket || !objectPath) return null;
-
   return { bucket, objectPath };
 }
 
@@ -27,7 +26,6 @@ function nodeReadableToWeb(readable: Readable): ReadableStream<Uint8Array> {
       readable.on("data", (chunk) => {
         controller.enqueue(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       });
-
       readable.on("end", () => controller.close());
       readable.on("error", (err) => controller.error(err));
     },
@@ -35,6 +33,15 @@ function nodeReadableToWeb(readable: Readable): ReadableStream<Uint8Array> {
       readable.destroy();
     },
   });
+}
+
+function safeFilename(objectPath: string) {
+  const name = objectPath.split("/").pop() || "archivo";
+  try {
+    return decodeURIComponent(name).replace(/[\\"]/g, "_");
+  } catch {
+    return name.replace(/[\\"]/g, "_");
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -46,12 +53,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "URL R2 inválida" }, { status: 400 });
     }
 
+    const range = req.headers.get("range") || undefined;
     const r2Client = getR2Client();
 
     const result = await r2Client.send(
       new GetObjectCommand({
         Bucket: parsed.bucket,
         Key: parsed.objectPath,
+        Range: range,
       })
     );
 
@@ -59,18 +68,67 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Archivo sin contenido" }, { status: 404 });
     }
 
+    const filename = safeFilename(parsed.objectPath);
     const body = result.Body as Readable;
 
+    const headers = new Headers();
+    headers.set("Content-Type", result.ContentType || "application/octet-stream");
+    headers.set("Cache-Control", "public, max-age=3600");
+    headers.set("Accept-Ranges", "bytes");
+    headers.set("Content-Disposition", `inline; filename="${filename}"`);
+
+    if (result.ContentLength !== undefined) {
+      headers.set("Content-Length", String(result.ContentLength));
+    }
+
+    if (result.ContentRange) {
+      headers.set("Content-Range", result.ContentRange);
+    }
+
     return new NextResponse(nodeReadableToWeb(body), {
-      status: 200,
-      headers: {
-        "Content-Type": result.ContentType || "application/octet-stream",
-        "Cache-Control": "private, max-age=3600",
-        "Accept-Ranges": "bytes",
-      },
+      status: range ? 206 : 200,
+      headers,
     });
-  } catch (error) {
-    console.error("R2_PROXY_ERROR", error);
-    return NextResponse.json({ error: "Error leyendo archivo desde R2" }, { status: 500 });
+    } catch (error: any) {
+    console.error("R2_PROXY_ERROR", {
+      name: error?.name,
+      code: error?.Code || error?.code,
+      message: error?.message,
+      statusCode: error?.$metadata?.httpStatusCode,
+    });
+
+    const code = error?.Code || error?.code || error?.name;
+    const statusCode = error?.$metadata?.httpStatusCode;
+
+    if (
+      code === "NoSuchKey" ||
+      code === "NotFound" ||
+      statusCode === 404
+    ) {
+      return NextResponse.json(
+        { error: "Archivo no existe en R2" },
+        { status: 404 }
+      );
+    }
+
+    if (
+      code === "InvalidRange" ||
+      statusCode === 416
+    ) {
+      return NextResponse.json(
+        { error: "Rango inválido para este archivo" },
+        {
+          status: 416,
+          headers: {
+            "Accept-Ranges": "bytes",
+          },
+        }
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Error leyendo archivo desde R2" },
+      { status: 500 }
+    );
   }
 }

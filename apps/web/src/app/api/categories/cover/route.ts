@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Storage } from "@google-cloud/storage";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
-import { promises as fs } from "fs";
-import path from "path";
+import { getR2BucketName, getR2Client } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const storage = new Storage();
-const BUCKET = process.env.GCS_BUCKET;
 
 function cleanName(name: string) {
   return name
@@ -24,60 +20,38 @@ export async function POST(req: NextRequest) {
     const file = form.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "No se recibió imagen" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No se recibió imagen" }, { status: 400 });
     }
 
     if (!file.type.startsWith("image/")) {
-      return NextResponse.json(
-        { error: "El archivo debe ser una imagen" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "El archivo debe ser una imagen" }, { status: 400 });
     }
 
     const safeName = cleanName(file.name || "cover.jpg");
     const filename = `${randomUUID()}_${safeName}`;
+    const fileKey = `category-covers/${filename}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // PRODUCCIÓN / CLOUD RUN: guarda en Google Cloud Storage
-    if (BUCKET) {
-      const fileKey = `category-covers/${filename}`;
-      const gcsUri = `gs://${BUCKET}/${fileKey}`;
+    const r2Client = getR2Client();
+    const bucket = getR2BucketName();
 
-      await storage.bucket(BUCKET).file(fileKey).save(buffer, {
-        metadata: {
-          contentType: file.type || "image/jpeg",
-          cacheControl: "public, max-age=31536000",
-        },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        cover: `/api/proxy?url=${encodeURIComponent(gcsUri)}`,
-        gcsUri,
-        storage: "gcs",
-      });
-    }
-
-    // LOCAL: guarda en public/uploads/category-covers
-    const dir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      "category-covers"
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: fileKey,
+        Body: buffer,
+        ContentType: file.type || "image/jpeg",
+        CacheControl: "public, max-age=31536000",
+      })
     );
 
-    await fs.mkdir(dir, { recursive: true });
-
-    const finalPath = path.join(dir, filename);
-    await fs.writeFile(finalPath, buffer);
+    const r2Uri = `r2://${bucket}/${fileKey}`;
 
     return NextResponse.json({
       ok: true,
-      cover: `/uploads/category-covers/${filename}`,
-      storage: "local",
+      cover: `/api/r2/proxy?url=${encodeURIComponent(r2Uri)}`,
+      r2Uri,
+      storage: "r2",
     });
   } catch (e: any) {
     console.error("POST /api/categories/cover error:", {

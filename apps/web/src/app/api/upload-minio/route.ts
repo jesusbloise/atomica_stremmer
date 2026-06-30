@@ -4,7 +4,7 @@ import { randomUUID, createHash } from "crypto";
 import { spawn } from "child_process";
 import path from "path";
 import { Readable } from "stream";
-import { Storage } from "@google-cloud/storage";
+// import { Storage } from "@google-cloud/storage";
 import fs from "fs/promises";
 import os from "os";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
@@ -37,8 +37,8 @@ function sanitizeFileName(name: string) {
     .replace(/[^a-zA-Z0-9._-]/g, "");
 }
 
-const storage = new Storage();
-const BUCKET = process.env.GCS_BUCKET;
+// const storage = new Storage();
+// const BUCKET = process.env.GCS_BUCKET;
 
 async function uploadBufferToR2(params: {
   key: string;
@@ -254,81 +254,81 @@ async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
   return r2ThumbnailUri;
 }
 
-async function createOptimizedStreamingVersion(rowId: string, fileKey: string, ext: string) {
-  if (!BUCKET) return null;
-  if (!isVideoExt(ext)) return null;
+// async function createOptimizedStreamingVersion(rowId: string, fileKey: string, ext: string) {
+//   if (!BUCKET) return null;
+//   if (!isVideoExt(ext)) return null;
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `${rowId}_original.${ext}`);
-  const outputPath = path.join(tmpDir, `${rowId}_web.mp4`);
-  const streamingKey = `streaming/${rowId}_web.mp4`;
-  const streamingUri = `gs://${BUCKET}/${streamingKey}`;
+//   const tmpDir = os.tmpdir();
+//   const inputPath = path.join(tmpDir, `${rowId}_original.${ext}`);
+//   const outputPath = path.join(tmpDir, `${rowId}_web.mp4`);
+//   const streamingKey = `streaming/${rowId}_web.mp4`;
+//   const streamingUri = `gs://${BUCKET}/${streamingKey}`;
 
-  try {
-    console.log("Starting video optimization:", { rowId, fileKey });
+//   try {
+//     console.log("Starting video optimization:", { rowId, fileKey });
 
-    await storage.bucket(BUCKET).file(fileKey).download({
-      destination: inputPath,
-    });
+//     await storage.bucket(BUCKET).file(fileKey).download({
+//       destination: inputPath,
+//     });
 
-    await runCommand("ffmpeg", [
-      "-y",
-      "-i",
-      inputPath,
-      "-map",
-      "0:v:0",
-      "-map",
-      "0:a?",
-      "-vf",
-      "scale='min(1280,iw)':-2",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "23",
-      "-maxrate",
-      "3500k",
-      "-bufsize",
-      "7000k",
-      "-pix_fmt",
-      "yuv420p",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-movflags",
-      "+faststart",
-      outputPath,
-    ]);
+//     await runCommand("ffmpeg", [
+//       "-y",
+//       "-i",
+//       inputPath,
+//       "-map",
+//       "0:v:0",
+//       "-map",
+//       "0:a?",
+//       "-vf",
+//       "scale='min(1280,iw)':-2",
+//       "-c:v",
+//       "libx264",
+//       "-preset",
+//       "veryfast",
+//       "-crf",
+//       "23",
+//       "-maxrate",
+//       "3500k",
+//       "-bufsize",
+//       "7000k",
+//       "-pix_fmt",
+//       "yuv420p",
+//       "-c:a",
+//       "aac",
+//       "-b:a",
+//       "128k",
+//       "-movflags",
+//       "+faststart",
+//       outputPath,
+//     ]);
 
-    await storage.bucket(BUCKET).upload(outputPath, {
-      destination: streamingKey,
-      metadata: {
-        contentType: "video/mp4",
-        cacheControl: "public, max-age=31536000, immutable",
-      },
-    });
+//     await storage.bucket(BUCKET).upload(outputPath, {
+//       destination: streamingKey,
+//       metadata: {
+//         contentType: "video/mp4",
+//         cacheControl: "public, max-age=31536000, immutable",
+//       },
+//     });
 
-    await pool.query(
-      `
-      UPDATE uploads
-      SET streaming_path = $1
-      WHERE id = $2
-      `,
-      [streamingUri, rowId]
-    );
+//     await pool.query(
+//       `
+//       UPDATE uploads
+//       SET streaming_path = $1
+//       WHERE id = $2
+//       `,
+//       [streamingUri, rowId]
+//     );
 
-    console.log("Video optimization completed:", { rowId, streamingUri });
-    return streamingUri;
-  } catch (err) {
-    console.error("Video optimization failed:", err);
-    return null;
-  } finally {
-    await fs.unlink(inputPath).catch(() => {});
-    await fs.unlink(outputPath).catch(() => {});
-  }
-}
+//     console.log("Video optimization completed:", { rowId, streamingUri });
+//     return streamingUri;
+//   } catch (err) {
+//     console.error("Video optimization failed:", err);
+//     return null;
+//   } finally {
+//     await fs.unlink(inputPath).catch(() => {});
+//     await fs.unlink(outputPath).catch(() => {});
+//   }
+// }
 
 async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
   if (!ficha) return;
@@ -513,22 +513,30 @@ try {
       console.error("POSTPROCESS_R2_SIGNED_URL_ERROR", r2Err);
     }
   }
+if (!signedUrl) {
+  console.error("POSTPROCESS_NO_R2_SOURCE", {
+    rowId,
+    ext,
+    fileKey,
+    r2Path,
+  });
+  return;
+}
+  // if (!signedUrl) {
+  //   if (!BUCKET) {
+  //     console.error("No existe GCS_BUCKET para generar signed URL de respaldo");
+  //     return;
+  //   }
 
-  if (!signedUrl) {
-    if (!BUCKET) {
-      console.error("No existe GCS_BUCKET para generar signed URL de respaldo");
-      return;
-    }
+  //   const [gcsSignedUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
+  //     version: "v4",
+  //     action: "read",
+  //     expires: Date.now() + 1000 * 60 * 60,
+  //   });
 
-    const [gcsSignedUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
-      version: "v4",
-      action: "read",
-      expires: Date.now() + 1000 * 60 * 60,
-    });
-
-    signedUrl = gcsSignedUrl;
-    processSource = "gcs";
-  }
+  //   signedUrl = gcsSignedUrl;
+  //   processSource = "gcs";
+  // }
 
   console.log("POSTPROCESS_SOURCE_SELECTED", {
     rowId,

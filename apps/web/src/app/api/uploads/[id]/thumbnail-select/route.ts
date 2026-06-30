@@ -43,15 +43,12 @@ console.log("THUMBNAIL_SELECT_RECEIVED", {
   id,
   thumbnailUrl,
 });
-    if (
-  !thumbnailUrl ||
-  (!thumbnailUrl.startsWith("gs://") && !thumbnailUrl.startsWith("r2://"))
-) {
-      return NextResponse.json(
-        { error: "thumbnail_url inválida. Debe ser gs:// o r2://" },
-        { status: 400 }
-      );
-    }
+   if (!thumbnailUrl || !thumbnailUrl.startsWith("r2://")) {
+  return NextResponse.json(
+    { error: "thumbnail_url inválida. Debe ser r2://" },
+    { status: 400 }
+  );
+}
 
     const { rows } = await pool.query(
       `
