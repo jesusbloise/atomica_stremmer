@@ -49,23 +49,15 @@ function DocumentPreview({
   isMobile: boolean;
 }) {
   if (kind === "pdf") {
-    if (isMobile) {
-      return (
-        <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200 text-lg font-semibold tracking-widest">
-          PDF
-        </div>
-      );
-    }
-
-    return (
-      <iframe
-        title="Vista previa PDF"
-        src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        loading="lazy"
-      />
-    );
-  }
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
+      <div className="text-center">
+        <div className="text-3xl font-bold tracking-widest">PDF</div>
+        <div className="mt-2 text-xs text-zinc-400">Documento</div>
+      </div>
+    </div>
+  );
+}
 
   if (kind === "docx") {
     return (
@@ -200,22 +192,13 @@ const thumbnailUrl = item.thumbnail_url
   className="absolute inset-0 h-full w-full object-cover"
 />
 ) : isVid ? (
-            <video
-              ref={videoRef}
-              src={item.url}
-              muted
-              loop
-              playsInline
-              autoPlay
-              preload="metadata"
-              controls={false}
-              disablePictureInPicture
-              onLoadedData={(e) => {
-                e.currentTarget.play().catch(() => {});
-              }}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : isPdf ? (
+  <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
+    <div className="text-center">
+      <div className="text-3xl font-bold tracking-widest">VIDEO</div>
+      <div className="mt-2 text-xs text-zinc-400">Sin portada</div>
+    </div>
+  </div>
+) : isPdf ? (
             <DocumentPreview url={item.url} kind="pdf" isMobile={isMobile} />
           ) : isDocx ? (
             <DocumentPreview url={item.url} kind="docx" isMobile={isMobile} />

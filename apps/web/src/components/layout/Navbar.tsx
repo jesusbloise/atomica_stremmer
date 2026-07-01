@@ -213,18 +213,22 @@ useEffect(() => {
         {/* Tabs */}
         <div className="order-3 sm:order-2 flex items-center gap-2 ml-3 overflow-x-auto whitespace-nowrap">
           {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => router.push(`/?tab=${t.id}`)}
-              className={`px-3 py-1.5 rounded-md border text-xs ${
-                searchParams.get("tab") === t.id
-                  ? "border-orange-500 text-orange-400 bg-zinc-800/60"
-                  : "border-zinc-700 text-zinc-200 hover:bg-zinc-800/60"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+  <button
+    key={t.id}
+    onClick={() => {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set("tab", t.id);
+      router.push(`/explorar?${p.toString()}`);
+    }}
+    className={`px-3 py-1.5 rounded-md border text-xs ${
+      searchParams.get("tab") === t.id
+        ? "border-orange-500 text-orange-400 bg-zinc-800/60"
+        : "border-zinc-700 text-zinc-200 hover:bg-zinc-800/60"
+    }`}
+  >
+    {t.label}
+  </button>
+))}
         </div>
 
         {/* Buscador */}

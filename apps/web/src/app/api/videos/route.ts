@@ -15,6 +15,7 @@ type RowVideo = {
   size_in_bytes: number | null;
   uploaded_at: string | null;
   tipo: string | null;
+  views?: number | null;
   category?: string | null;
   subcategory?: string | null;
   thumbnail_url?: string | null;
@@ -78,6 +79,7 @@ export async function GET(req: Request) {
         u.size_in_bytes,
         u.uploaded_at,
         u.tipo,
+        COALESCE(u.views, 0) AS views,
         u.category,
         u.subcategory,
         u.thumbnail_url,
