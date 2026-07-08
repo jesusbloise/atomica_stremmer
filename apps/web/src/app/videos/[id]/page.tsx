@@ -15,15 +15,3 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 }
 
 
-
-// // Página de detalle de video/documento.
-// // - Recibe el ID desde la URL dinámica.
-// // - Debe AWAIT a params (Next.js sync-dynamic-apis).
-// import VideoDetailPage from "@/components/VideoDetailPage";
-
-// export default async function Page(
-//   props: { params: Promise<{ id: string }> }
-// ) {
-//   const { id } = await props.params; // 👈 importante: await
-//   return <VideoDetailPage id={id} />;
-// }

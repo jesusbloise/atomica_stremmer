@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* ====================== Tipos ====================== */
 export type FichaTecnicaData = {
@@ -98,6 +98,7 @@ export default function FichaTecnica({
   // edición
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FichaTecnicaData>({});
+  const formRef = useRef<FichaTecnicaData>({});
   const [saving, setSaving] = useState(false);
 
   // overlay de perfil
@@ -205,31 +206,41 @@ fecha: f.fecha ?? null,
   };
 
   /* ====================== Helpers edición ====================== */
-  const startEdit = () => {
-    const base = data ? { ...data } : {};
-    setForm({ ...base, tipo: Array.isArray(base.tipo) ? base.tipo : [] });
-    setEditing(true);
-  };
+const startEdit = () => {
+  const base = data ? { ...data } : {};
+  const next = { ...base, tipo: Array.isArray(base.tipo) ? base.tipo : [] };
+  formRef.current = next;
+  setForm(next);
+  setEditing(true);
+};
 
   const cancelEdit = () => {
-    const base = data ? { ...data } : {};
-    setForm({ ...base, tipo: Array.isArray(base.tipo) ? base.tipo : [] });
-    setEditing(false);
-  };
+  const base = data ? { ...data } : {};
+  const next = { ...base, tipo: Array.isArray(base.tipo) ? base.tipo : [] };
+  formRef.current = next;
+  setForm(next);
+  setEditing(false);
+};
 
   const setField = (k: keyof FichaTecnicaData, v: any) => {
-    setForm((prev) => ({ ...(prev ?? {}), [k]: v }));
-  };
+  setForm((prev) => {
+    const next = { ...(prev ?? {}), [k]: v };
+    formRef.current = next;
+    return next;
+  });
+};
 
-  const toggleTipo = (opt: (typeof TIPO_OPTIONS)[number]) => {
-    setForm((prev) => {
-      const cur = new Set(prev.tipo ?? []);
-      if (cur.has(opt)) cur.delete(opt);
-      else cur.add(opt);
-      return { ...prev, tipo: Array.from(cur) };
-    });
-  };
+const toggleTipo = (opt: (typeof TIPO_OPTIONS)[number]) => {
+  setForm((prev) => {
+    const cur = new Set(prev.tipo ?? []);
+    if (cur.has(opt)) cur.delete(opt);
+    else cur.add(opt);
 
+    const next = { ...prev, tipo: Array.from(cur) };
+    formRef.current = next;
+    return next;
+  });
+};
   const toNullIfEmpty = (v: any) => {
     if (v === undefined || v === null) return null;
     if (typeof v === "string" && v.trim() === "") return null;
@@ -239,30 +250,33 @@ fecha: f.fecha ?? null,
   const save = async () => {
     setSaving(true);
     try {
-      const payload = {
-        titulo: toNullIfEmpty(form.titulo),
 
-        marca: toNullIfEmpty(form.marca),
-        agencia: toNullIfEmpty(form.agencia),
-        productora: toNullIfEmpty(form.productora),
-        contacto: toNullIfEmpty(form.contacto),
+      const currentForm = formRef.current;
 
-        oficina: toNullIfEmpty(form.oficina),
-        tipo: Array.isArray(form.tipo) ? form.tipo : [],
+const payload = {
+  titulo: toNullIfEmpty(currentForm.titulo),
 
-        estudio: toNullIfEmpty(form.estudio),
-        director: toNullIfEmpty(form.director),
-        productor: toNullIfEmpty(form.productor),
+  marca: toNullIfEmpty(currentForm.marca),
+  agencia: toNullIfEmpty(currentForm.agencia),
+  productora: toNullIfEmpty(currentForm.productora),
+  contacto: toNullIfEmpty(currentForm.contacto),
 
-        produccion: toNullIfEmpty(form.produccion),
-        corporativo: toNullIfEmpty(form.corporativo),
-        nuevosNegocios: toNullIfEmpty(form.nuevosNegocios),
-        otros: toNullIfEmpty(form.otros),
-duracion: toNullIfEmpty(form.duracion),
-formato: toNullIfEmpty(form.formato),
-version: toNullIfEmpty(form.version),
-fecha: toNullIfEmpty(form.fecha),
-      };
+  oficina: toNullIfEmpty(currentForm.oficina),
+  tipo: Array.isArray(currentForm.tipo) ? currentForm.tipo : [],
+
+  estudio: toNullIfEmpty(currentForm.estudio),
+  director: toNullIfEmpty(currentForm.director),
+  productor: toNullIfEmpty(currentForm.productor),
+
+  produccion: toNullIfEmpty(currentForm.produccion),
+  corporativo: toNullIfEmpty(currentForm.corporativo),
+  nuevosNegocios: toNullIfEmpty(currentForm.nuevosNegocios),
+  otros: toNullIfEmpty(currentForm.otros),
+  duracion: toNullIfEmpty(currentForm.duracion),
+  formato: toNullIfEmpty(currentForm.formato),
+  version: toNullIfEmpty(currentForm.version),
+  fecha: toNullIfEmpty(currentForm.fecha),
+};
 
       const res = await fetch(`/api/fichas/${uploadId}`, {
         method: "PUT",
@@ -309,7 +323,7 @@ fecha: toNullIfEmpty(form.fecha),
         setData(mapped);
       } else {
         setHasFicha(true);
-        setData({ ...form, tipo: Array.isArray(form.tipo) ? form.tipo : [] });
+        setData({ ...currentForm, tipo: Array.isArray(currentForm.tipo) ? currentForm.tipo : [] });
       }
 
       setEditing(false);

@@ -127,7 +127,16 @@ export async function PUT(
   const { uploadId } = await ctx.params;
 
   try {
-    const body = (await req.json().catch(() => ({}))) as Payload;
+    let body: Payload;
+
+try {
+  body = (await req.json()) as Payload;
+} catch {
+  return NextResponse.json(
+    { error: "JSON inválido. No se guardó la ficha." },
+    { status: 400 }
+  );
+}
 
     const payload = {
       titulo: normString(body.titulo),

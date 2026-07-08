@@ -4,9 +4,21 @@ import PdfViewer from "./PdfViewer";
 import DocxViewer from "./DocxViewer";
 import TextViewer, { isTextExt } from "./TextViewer";
 
-const getExt = (nameOrUrl = "") =>
-  (nameOrUrl.split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+// const getExt = (nameOrUrl = "") =>
+//   (nameOrUrl.split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+const getExt = (nameOrUrl = "") => {
+  const raw = String(nameOrUrl || "");
 
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {}
+
+  const clean = decoded.split("#")[0];
+  const match = clean.match(/\.([a-z0-9]+)(?:$|[?&])/i);
+
+  return match?.[1]?.toLowerCase() || "";
+};
 export default function FileViewer(props: {
   url: string;
   name?: string;

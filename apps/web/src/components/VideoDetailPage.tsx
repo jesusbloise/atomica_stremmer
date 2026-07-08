@@ -243,7 +243,8 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [cloudflareStreamUrl, setCloudflareStreamUrl] = useState<string | null>(null);
-const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
+  const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
+  const [cloudflareReady, setCloudflareReady] = useState(false);
   const [tipo, setTipo] = useState<"video" | "documento" | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [documentFileName, setDocumentFileName] = useState("");
@@ -263,8 +264,8 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
   const [thumbnailUploading, setThumbnailUploading] = useState(false);
   const [thumbnailMessage, setThumbnailMessage] = useState("");
   const [thumbnailCandidates, setThumbnailCandidates] = useState<
-  { url: string; gsUri: string; r2Uri?: string | null; timeSec: number }[]
->([]);
+    { url: string; gsUri: string; r2Uri?: string | null; timeSec: number }[]
+  >([]);
   const [thumbnailLoadingCandidates, setThumbnailLoadingCandidates] = useState(false);
   const [thumbnailSelecting, setThumbnailSelecting] = useState(false);
   const [thumbnailModalOpen, setThumbnailModalOpen] = useState(false);
@@ -279,6 +280,8 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cloudflareIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const cloudflarePlayerRef = useRef<any>(null);
   const seekingLockRef = useRef(false);
   const lastJumpRef = useRef<number | null>(null);
   const retriedRef = useRef(false);
@@ -312,6 +315,32 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
     return reloadNonce > 0 ? `${resolvedVideoUrl}${sep}r=${reloadNonce}` : resolvedVideoUrl;
   }, [resolvedVideoUrl, reloadNonce]);
 
+
+  const documentViewerFileName = useMemo(() => {
+    const name = documentFileName || "";
+
+    let decodedUrl = "";
+    try {
+      decodedUrl = decodeURIComponent(String(documentUrl || ""));
+    } catch {
+      decodedUrl = String(documentUrl || "");
+    }
+
+    return name || decodedUrl || "documento";
+  }, [documentFileName, documentUrl]);
+
+  const isWordDocument = useMemo(() => {
+    const raw = `${documentFileName || ""} ${documentUrl || ""}`;
+
+    let decoded = raw;
+    try {
+      decoded = decodeURIComponent(raw);
+    } catch { }
+
+    const lower = decoded.toLowerCase();
+
+    return lower.includes(".docx") || lower.includes(".doc");
+  }, [documentFileName, documentUrl]);
   const tableData: Subtitulo[] = useMemo(() => {
     return (subtitulos || []).map((r: any) => {
       const start =
@@ -384,7 +413,12 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
         if (cancel) return;
 
         const t = (upload?.tipo as "video" | "documento") || null;
-        const fname = upload?.file_name || upload?.name || "";
+        const fname =
+          upload?.titulo ||
+          upload?.display_name ||
+          upload?.file_name ||
+          upload?.name ||
+          "";
 
         setTipo(t);
         setDocumentFileName(fname);
@@ -398,14 +432,14 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
         setMoveSubcategory(upload?.subcategory || "");
 
         if (t === "video") {
-  const cfUrl = upload?.cf_stream_playback_url as string | undefined;
-  const useCf = Boolean(upload?.using_cloudflare_stream && cfUrl);
+          const cfUrl = upload?.cf_stream_playback_url as string | undefined;
+          const useCf = Boolean(upload?.using_cloudflare_stream && cfUrl);
 
-  setUsingCloudflareStream(useCf);
-  setCloudflareStreamUrl(useCf ? cfUrl! : null);
+          setUsingCloudflareStream(useCf);
+          setCloudflareStreamUrl(useCf ? cfUrl! : null);
 
-  const url = upload?.url as string | undefined;
-  if (url) setVideoUrl(url);
+          const url = upload?.url as string | undefined;
+          if (url) setVideoUrl(url);
 
           try {
             const rawSubs = await fetchJSON<any>(`/api/subtitulos/${id}`);
@@ -482,7 +516,57 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
     retriedRef.current = false;
   }, [videoSrcWithReload, tipo]);
 
+  useEffect(() => {
+    if (!usingCloudflareStream || !cloudflareStreamUrl) return;
+    if (!cloudflareIframeRef.current) return;
+
+    const setupPlayer = () => {
+      const Stream = (window as any).Stream;
+      if (!Stream || !cloudflareIframeRef.current) return;
+
+      cloudflarePlayerRef.current = Stream(cloudflareIframeRef.current);
+setCloudflareReady(true);
+
+console.log("CLOUDFLARE_READY", {
+  ready: !!cloudflarePlayerRef.current,
+});
+    };
+
+    if ((window as any).Stream) {
+      setupPlayer();
+      return;
+    }
+
+    const existing = document.querySelector(
+      'script[src="https://embed.cloudflarestream.com/embed/sdk.latest.js"]'
+    );
+
+    if (existing) {
+      existing.addEventListener("load", setupPlayer, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://embed.cloudflarestream.com/embed/sdk.latest.js";
+    script.async = true;
+    script.onload = setupPlayer;
+
+    document.body.appendChild(script);
+  }, [usingCloudflareStream, cloudflareStreamUrl]);
+
   const jumpTo = useCallback((tsSeconds: number) => {
+    if (usingCloudflareStream && cloudflarePlayerRef.current) {
+      const target = Math.max(0, tsSeconds - 0.3);
+
+      try {
+        cloudflarePlayerRef.current.currentTime = target;
+        cloudflarePlayerRef.current.play();
+      } catch (err) {
+        console.error("Cloudflare seek error:", err);
+      }
+
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
 
@@ -522,12 +606,14 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
       v.removeEventListener("seeked", onSeeked);
       seekingLockRef.current = false;
     }
-  }, []);
+  }, [usingCloudflareStream]);
 
   useEffect(() => {
     if (tipo !== "video") return;
-    if (!videoRef.current) return;
     if (!matchIndices.length) return;
+
+    if (!usingCloudflareStream && !videoRef.current) return;
+    if (usingCloudflareStream && !cloudflareReady) return;
 
     const rowIndex = matchIndices[currentMatchIndex] ?? matchIndices[0];
     let sec: number | null = getStartSecFor ? getStartSecFor(rowIndex) : null;
@@ -549,7 +635,16 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
     if (sec == null || Number.isNaN(sec)) return;
 
     jumpTo(sec);
-  }, [tipo, matchIndices, currentMatchIndex, getStartSecFor, tableData, jumpTo]);
+  }, [
+  tipo,
+  matchIndices,
+  currentMatchIndex,
+  getStartSecFor,
+  tableData,
+  jumpTo,
+  cloudflareReady,
+  usingCloudflareStream,
+]);
 
   useEffect(() => {
     let alive = true;
@@ -592,6 +687,9 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
     setVideoBuffering(false);
     setReloadNonce((n) => n + 1);
   }, []);
+
+  const isSearchingVideo = tipo === "video" && searchTerm.trim().length > 0;
+
   const selectedMoveCategory = useMemo(() => {
     return categories.find((cat) => cat.slug === moveCategory) || null;
   }, [categories, moveCategory]);
@@ -828,7 +926,7 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
               </div>
 
               <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
-                {(videoLoading || videoBuffering) && !videoError && (
+                {(videoLoading || videoBuffering) && !videoError && !isSearchingVideo && (
                   <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
                     <div className="flex flex-col items-center gap-2">
                       <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
@@ -853,61 +951,62 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
                     </div>
                   </div>
                 )}
-{usingCloudflareStream && cloudflareStreamUrl ? (
-  <iframe
-    src={cloudflareStreamUrl}
-    className="rounded-md shadow max-w-full max-h-[520px] w-full aspect-video bg-black"
-    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-    allowFullScreen
-    onLoad={() => {
-      setVideoLoading(false);
-      setVideoBuffering(false);
-      setVideoError(null);
-    }}
-  />
-) : (
-                <video
-                  ref={videoRef}
-                  src={videoSrcWithReload ?? undefined}
-                  controls
-                  playsInline
-                  controlsList="nodownload"
-                  className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
-                  preload="metadata"
-                  onLoadStart={() => {
-                    setVideoLoading(true);
-                    setVideoError(null);
-                  }}
-                  onLoadedMetadata={() => setVideoLoading(false)}
-                  onCanPlay={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onCanPlayThrough={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onWaiting={() => setVideoBuffering(true)}
-                  onPlaying={() => {
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                  }}
-                  onStalled={() => setVideoBuffering(true)}
-                  onError={() => {
-                    if (!retriedRef.current) {
-                      retriedRef.current = true;
-                      setReloadNonce((n) => n + 1);
-                      return;
-                    }
+                {usingCloudflareStream && cloudflareStreamUrl ? (
+                  <iframe
+                    ref={cloudflareIframeRef}
+                    src={cloudflareStreamUrl}
+                    className="rounded-md shadow max-w-full max-h-[520px] w-full aspect-video bg-black"
+                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                    allowFullScreen
+                    onLoad={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                      setVideoError(null);
+                    }}
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={videoSrcWithReload ?? undefined}
+                    controls
+                    playsInline
+                    controlsList="nodownload"
+                    className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
+                    preload="auto"
+                    onLoadStart={() => {
+                      setVideoLoading(true);
+                      setVideoError(null);
+                    }}
+                    onLoadedMetadata={() => setVideoLoading(false)}
+                    onCanPlay={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onCanPlayThrough={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onWaiting={() => setVideoBuffering(true)}
+                    onPlaying={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onStalled={() => setVideoBuffering(true)}
+                    onError={() => {
+                      if (!retriedRef.current) {
+                        retriedRef.current = true;
+                        setReloadNonce((n) => n + 1);
+                        return;
+                      }
 
-                    setVideoLoading(false);
-                    setVideoBuffering(false);
-                    setVideoError(
-                      "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
-                    );
-                  }}
-                  onPlay={handlePlay}
-                />
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                      setVideoError(
+                        "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
+                      );
+                    }}
+                    onPlay={handlePlay}
+                  />
                 )}
               </div>
 
@@ -926,14 +1025,37 @@ const [usingCloudflareStream, setUsingCloudflareStream] = useState(false);
                 {documentFileName || "Documento sin nombre"}
               </div>
 
-              <DocumentViewer
-                url={documentUrl}
-                fileName={documentFileName || documentUrl}
-                searchTerm={searchTerm}
-                registerNavApi={(api) => {
-                  viewerApiRef.current = { ...viewerApiRef.current, ...api };
-                }}
-              />
+              {isWordDocument ? (
+                <DocumentViewer
+                  url={documentUrl}
+                  fileName={documentUrl}
+                  searchTerm={searchTerm}
+                  registerNavApi={(api) => {
+                    viewerApiRef.current = { ...viewerApiRef.current, ...api };
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="w-full rounded-lg overflow-hidden border border-zinc-800 bg-white">
+                    <iframe
+                      src={documentUrl}
+                      title={documentFileName || "Documento PDF"}
+                      className="w-full h-[75vh] bg-white"
+                    />
+                  </div>
+
+                  <div className="mt-2 text-right">
+                    <a
+                      href={documentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-orange-300 underline"
+                    >
+                      Abrir PDF en pestaña
+                    </a>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

@@ -72,7 +72,19 @@ export async function GET(req: NextRequest) {
     const body = result.Body as Readable;
 
     const headers = new Headers();
-    headers.set("Content-Type", result.ContentType || "application/octet-stream");
+    const lowerName = filename.toLowerCase();
+
+const forcedContentType =
+  lowerName.endsWith(".pdf")
+    ? "application/pdf"
+    : lowerName.endsWith(".docx")
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : lowerName.endsWith(".doc")
+        ? "application/msword"
+        : result.ContentType || "application/octet-stream";
+
+headers.set("Content-Type", forcedContentType);
+headers.set("X-Content-Type-Options", "nosniff");
     headers.set("Cache-Control", "public, max-age=3600");
     headers.set("Accept-Ranges", "bytes");
     headers.set("Content-Disposition", `inline; filename="${filename}"`);

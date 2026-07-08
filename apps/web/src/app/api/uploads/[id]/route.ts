@@ -141,38 +141,7 @@ function parseR2Url(raw?: string | null) {
   return { bucket, objectPath };
 }
 
-// async function buildDirectSignedUrl(params: {
-//   filePath?: string | null;
-//   fileKey?: string | null;
-//   contentType?: string | null;
-//   fileName?: string | null;
-// }) {
-//   const { filePath, fileKey, contentType, fileName } = params;
 
-//   if (filePath && /^https?:\/\//i.test(filePath)) {
-//     return filePath;
-//   }
-
-//   const parsed = parseGsUrl(filePath);
-//   const bucket = parsed?.bucket || GCS_BUCKET;
-//   const objectPath = parsed?.objectPath || fileKey;
-
-//   if (!bucket || !objectPath) return null;
-
-//   const file = storage.bucket(bucket).file(objectPath);
-
-//   await file.getMetadata();
-
-//   const [signedUrl] = await file.getSignedUrl({
-//     version: "v4",
-//     action: "read",
-//     expires: Date.now() + 1000 * 60 * 60 * 6,
-//     responseType: contentType || undefined,
-//     responseDisposition: fileName ? `inline; filename="${fileName.replace(/"/g, "")}"` : "inline",
-//   });
-
-//   return signedUrl;
-// }
 
 async function buildR2SignedUrl(params: {
   r2Path?: string | null;
@@ -201,27 +170,7 @@ async function buildR2SignedUrl(params: {
   return signedUrl;
 }
 
-// async function recoverStreamingPathIfExists(rowId: string) {
-//   if (!GCS_BUCKET) return null;
 
-//   const streamingKey = `streaming/${rowId}_web.mp4`;
-//   const streamingUri = `gs://${GCS_BUCKET}/${streamingKey}`;
-//   const file = storage.bucket(GCS_BUCKET).file(streamingKey);
-
-//   const [exists] = await file.exists();
-//   if (!exists) return null;
-
-//   try {
-//     await pool.query(
-//       `UPDATE uploads SET streaming_path = $1 WHERE id = $2`,
-//       [streamingUri, rowId]
-//     );
-//   } catch (e) {
-//     console.warn("No se pudo recuperar streaming_path en DB:", e);
-//   }
-
-//   return streamingUri;
-// }
 
 function mapFichaToCamel(row?: RowFicha | null) {
   if (!row) return null;
@@ -431,10 +380,12 @@ console.log("PLAYBACK_URL_SELECTED", {
 
     return NextResponse.json(
       {
-        upload: {
-          id: row.id,
-          tipo,
-          file_name: row.file_name,
+       upload: {
+  id: row.id,
+  tipo,
+  titulo: fichaRow?.titulo ?? null,
+  display_name: fichaRow?.titulo || row.file_name,
+  file_name: row.file_name,
           ext,
           content_type: playbackContentType,
           url,

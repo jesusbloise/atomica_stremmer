@@ -7,9 +7,21 @@ import TextViewer, { isTextExt } from "./TextViewer";
 const PdfViewer = dynamic(() => import("./PdfViewer"), { ssr: false });
 const DocxViewer = dynamic(() => import("./DocxViewer"), { ssr: false });
 
-const getExt = (nameOrUrl = "") =>
-  (nameOrUrl.split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+// const getExt = (nameOrUrl = "") =>
+//   (nameOrUrl.split("?")[0].split("#")[0].split(".").pop() || "").toLowerCase();
+const getExt = (nameOrUrl = "") => {
+  const raw = String(nameOrUrl || "");
 
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {}
+
+  const clean = decoded.split("#")[0];
+  const match = clean.match(/\.([a-z0-9]+)(?:$|[?&])/i);
+
+  return match?.[1]?.toLowerCase() || "";
+};
 export type DocumentViewerHandle = {
   findAll: (query: string) => number;
   goToMatch: (index: number) => void;

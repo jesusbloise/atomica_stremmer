@@ -377,9 +377,8 @@ export default function CategoryFiles({ slug }: { slug: string }) {
   const featuredItem = rows[0] || null;
 
 const carouselRows = useMemo(() => {
-  if (!featuredItem) return rows;
-  return rows.filter((item) => item.id !== featuredItem.id);
-}, [rows, featuredItem]);
+  return rows;
+}, [rows]);
 
   const groups: Group[] =
     activeCategory?.subcategories
