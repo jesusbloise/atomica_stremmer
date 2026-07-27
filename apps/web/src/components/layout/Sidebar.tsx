@@ -55,7 +55,10 @@ const canManageSystem = isSuperAdmin;
       <Item href="/explorar">Todos los archivos</Item>
 
       {!loadingRole && canUpload && (
-  <Item href="/subir">Subir archivos</Item>
+  <>
+    <Item href="/subir">Subir archivos</Item>
+    <Item href="/admin/control-cargas">Control de cargas</Item>
+  </>
 )}
 
 {!loadingRole && canManageSystem && (

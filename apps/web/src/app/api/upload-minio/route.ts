@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/db";
+import jwt from "jsonwebtoken";
 import { randomUUID, createHash } from "crypto";
 import { spawn } from "child_process";
 import path from "path";
@@ -16,6 +17,53 @@ import {
 } from "@/lib/cloudflareStream";
 
 console.log("UPLOAD_ROUTE_HIT (R2 primary + Cloudflare Stream)");
+
+const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+
+type AuthenticatedUser = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+};
+
+function getAuthenticatedUser(req: NextRequest): AuthenticatedUser | null {
+  try {
+    const cookie = (req.headers.get("cookie") || "")
+      .split(";")
+      .map((value) => value.trim())
+      .find((value) => value.startsWith("auth="));
+
+    const rawToken = cookie?.split("=")?.[1];
+
+    if (!rawToken) {
+      return null;
+    }
+
+    const token = decodeURIComponent(rawToken);
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+
+    const id =
+      payload.id ??
+      payload.sub ??
+      payload.userId ??
+      null;
+
+    if (!id) {
+      return null;
+    }
+
+    return {
+      id: String(id),
+      name: payload.name ?? null,
+      email: payload.email ?? null,
+      role: String(payload.role ?? "").trim().toUpperCase(),
+    };
+  } catch (error) {
+    console.error("UPLOAD_AUTH_ERROR", error);
+    return null;
+  }
+}
 
 function webStreamToNodeReadable(webStream: ReadableStream<Uint8Array>): Readable {
   const reader = webStream.getReader();
@@ -173,6 +221,12 @@ type FichaInput = {
   corporativo?: string;
   nuevosNegocios?: string;
   nuevos_negocios?: string;
+
+  otros?: string;
+  duracion?: string;
+  formato?: string;
+  version?: string;
+  fecha?: string;
 };
 
 type PendingDirectUpload = {
@@ -185,6 +239,7 @@ type PendingDirectUpload = {
   category: CatSlug;
   subcategory: string | null;
   ficha: FichaInput | null;
+  createdById: string;
 };
 
 const pendingUploads = new Map<string, PendingDirectUpload>();
@@ -254,81 +309,6 @@ async function uploadCustomThumbnail(rowId: string, thumbnail: File | null) {
   return r2ThumbnailUri;
 }
 
-// async function createOptimizedStreamingVersion(rowId: string, fileKey: string, ext: string) {
-//   if (!BUCKET) return null;
-//   if (!isVideoExt(ext)) return null;
-
-//   const tmpDir = os.tmpdir();
-//   const inputPath = path.join(tmpDir, `${rowId}_original.${ext}`);
-//   const outputPath = path.join(tmpDir, `${rowId}_web.mp4`);
-//   const streamingKey = `streaming/${rowId}_web.mp4`;
-//   const streamingUri = `gs://${BUCKET}/${streamingKey}`;
-
-//   try {
-//     console.log("Starting video optimization:", { rowId, fileKey });
-
-//     await storage.bucket(BUCKET).file(fileKey).download({
-//       destination: inputPath,
-//     });
-
-//     await runCommand("ffmpeg", [
-//       "-y",
-//       "-i",
-//       inputPath,
-//       "-map",
-//       "0:v:0",
-//       "-map",
-//       "0:a?",
-//       "-vf",
-//       "scale='min(1280,iw)':-2",
-//       "-c:v",
-//       "libx264",
-//       "-preset",
-//       "veryfast",
-//       "-crf",
-//       "23",
-//       "-maxrate",
-//       "3500k",
-//       "-bufsize",
-//       "7000k",
-//       "-pix_fmt",
-//       "yuv420p",
-//       "-c:a",
-//       "aac",
-//       "-b:a",
-//       "128k",
-//       "-movflags",
-//       "+faststart",
-//       outputPath,
-//     ]);
-
-//     await storage.bucket(BUCKET).upload(outputPath, {
-//       destination: streamingKey,
-//       metadata: {
-//         contentType: "video/mp4",
-//         cacheControl: "public, max-age=31536000, immutable",
-//       },
-//     });
-
-//     await pool.query(
-//       `
-//       UPDATE uploads
-//       SET streaming_path = $1
-//       WHERE id = $2
-//       `,
-//       [streamingUri, rowId]
-//     );
-
-//     console.log("Video optimization completed:", { rowId, streamingUri });
-//     return streamingUri;
-//   } catch (err) {
-//     console.error("Video optimization failed:", err);
-//     return null;
-//   } finally {
-//     await fs.unlink(inputPath).catch(() => {});
-//     await fs.unlink(outputPath).catch(() => {});
-//   }
-// }
 
 async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
   if (!ficha) return;
@@ -362,63 +342,84 @@ async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
     produccion: normString(ficha.produccion),
     corporativo: normString(ficha.corporativo),
     nuevos_negocios: normString(ficha.nuevosNegocios ?? ficha.nuevos_negocios),
+    otros: normString(ficha.otros),
+duracion: normString(ficha.duracion),
+formato: normString(ficha.formato),
+version: normString(ficha.version),
+fecha: normString(ficha.fecha),
   };
 
   try {
     await pool.query(
-      `
-      INSERT INTO ficha_tecnica (
-        upload_id,
-        titulo,
-        marca, agencia, productora, contacto,
-        oficina,
-        tipo,
-        estudio, director, productor,
-        produccion, corporativo,
-        nuevos_negocios
-      )
-      VALUES (
-        $1,
-        $2,
-        $3, $4, $5, $6,
-        $7,
-        $8::text[],
-        $9, $10, $11,
-        $12, $13,
-        $14
-      )
-      ON CONFLICT (upload_id) DO UPDATE SET
-        titulo = EXCLUDED.titulo,
-        marca = EXCLUDED.marca,
-        agencia = EXCLUDED.agencia,
-        productora = EXCLUDED.productora,
-        contacto = EXCLUDED.contacto,
-        oficina = EXCLUDED.oficina,
-        tipo = EXCLUDED.tipo,
-        estudio = EXCLUDED.estudio,
-        director = EXCLUDED.director,
-        productor = EXCLUDED.productor,
-        produccion = EXCLUDED.produccion,
-        corporativo = EXCLUDED.corporativo,
-        nuevos_negocios = EXCLUDED.nuevos_negocios
-      `,
-      [
-        rowId,
-        payload.titulo,
-        payload.marca,
-        payload.agencia,
-        payload.productora,
-        payload.contacto,
-        payload.oficina,
-        payload.tipo,
-        payload.estudio,
-        payload.director,
-        payload.productor,
-        payload.produccion,
-        payload.corporativo,
-        payload.nuevos_negocios,
-      ]
-    );
+  `
+  INSERT INTO ficha_tecnica (
+    upload_id,
+    titulo,
+    marca, agencia, productora, contacto,
+    oficina,
+    tipo,
+    estudio, director, productor,
+    produccion, corporativo,
+    nuevos_negocios,
+    otros,
+    duracion,
+    formato,
+    version,
+    fecha
+  )
+  VALUES (
+    $1,
+    $2,
+    $3, $4, $5, $6,
+    $7,
+    $8::text[],
+    $9, $10, $11,
+    $12, $13,
+    $14,
+    $15, $16, $17, $18, $19
+  )
+  ON CONFLICT (upload_id) DO UPDATE SET
+    titulo = EXCLUDED.titulo,
+    marca = EXCLUDED.marca,
+    agencia = EXCLUDED.agencia,
+    productora = EXCLUDED.productora,
+    contacto = EXCLUDED.contacto,
+    oficina = EXCLUDED.oficina,
+    tipo = EXCLUDED.tipo,
+    estudio = EXCLUDED.estudio,
+    director = EXCLUDED.director,
+    productor = EXCLUDED.productor,
+    produccion = EXCLUDED.produccion,
+    corporativo = EXCLUDED.corporativo,
+    nuevos_negocios = EXCLUDED.nuevos_negocios,
+    otros = EXCLUDED.otros,
+    duracion = EXCLUDED.duracion,
+    formato = EXCLUDED.formato,
+    version = EXCLUDED.version,
+    fecha = EXCLUDED.fecha
+  `,
+  [
+    rowId,
+    payload.titulo,
+    payload.marca,
+    payload.agencia,
+    payload.productora,
+    payload.contacto,
+    payload.oficina,
+    payload.tipo,
+    payload.estudio,
+    payload.director,
+    payload.productor,
+    payload.produccion,
+    payload.corporativo,
+    payload.nuevos_negocios,
+    payload.otros,
+    payload.duracion,
+    payload.formato,
+    payload.version,
+    payload.fecha,
+  ]
+);
   } catch (err: any) {
     if (err?.code !== "42703") throw err;
 
@@ -558,6 +559,14 @@ if (!signedUrl) {
 }
 
 async function handleDirectR2Init(req: NextRequest) {
+    const authenticatedUser = getAuthenticatedUser(req);
+
+  if (!authenticatedUser) {
+    return NextResponse.json(
+      { error: "Debes iniciar sesión para subir archivos" },
+      { status: 401 }
+    );
+  }
   const body = await req.json().catch(() => null);
 
   if (!body) {
@@ -620,6 +629,7 @@ async function handleDirectR2Init(req: NextRequest) {
     category,
     subcategory,
     ficha,
+    createdById: authenticatedUser.id,
   };
 
   const finalizeToken = createFinalizeToken(pending);
@@ -662,6 +672,7 @@ async function handleDirectR2Finalize(req: NextRequest) {
     subcategory,
     ficha,
     contentType,
+    createdById,
   } = pending;
 
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
@@ -671,17 +682,52 @@ async function handleDirectR2Finalize(req: NextRequest) {
 
   try {
     await pool.query(
-      `
-      INSERT INTO uploads
-        (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
-         tipo, category, subcategory, r2_path)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, NOW(),
-         $7, $8, $9, $10)
-      `,
-      [rowId, fileName, fileKey, gcsUri, size, "uploaded", tipo, category, subcategory, r2Path]
-    );
-
+  `
+  INSERT INTO uploads
+    (
+      id,
+      file_name,
+      file_key,
+      file_path,
+      size_in_bytes,
+      status,
+      uploaded_at,
+      tipo,
+      category,
+      subcategory,
+      r2_path,
+      created_by_id
+    )
+  VALUES
+    (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      NOW(),
+      $7,
+      $8,
+      $9,
+      $10,
+      $11
+    )
+  `,
+  [
+    rowId,
+    fileName,
+    fileKey,
+    gcsUri,
+    size,
+    "uploaded",
+    tipo,
+    category,
+    subcategory,
+    r2Path,
+    createdById,
+  ]
+);
     await upsertFichaTecnica(rowId, ficha);
 
     const cfData =
@@ -733,6 +779,15 @@ export async function POST(req: NextRequest) {
   console.log("UPLOAD_POST", new Date().toISOString());
 
   try {
+        const authenticatedUser = getAuthenticatedUser(req);
+
+    if (!authenticatedUser) {
+      return NextResponse.json(
+        { error: "Debes iniciar sesión para subir archivos" },
+        { status: 401 }
+      );
+    }
+
     const requestContentType = req.headers.get("content-type") || "";
 
     if (requestContentType.includes("application/json")) {
@@ -828,17 +883,53 @@ if (!r2Path) {
   );
 }
 
-    await pool.query(
-      `
-      INSERT INTO uploads
-        (id, file_name, file_key, file_path, size_in_bytes, status, uploaded_at,
-         tipo, category, subcategory, r2_path)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, NOW(),
-         $7, $8, $9, $10)
-      `,
-      [rowId, filename, fileKey, gcsUri, file.size, "uploaded", tipo, category, subcategory, r2Path]
-    );
+   await pool.query(
+  `
+  INSERT INTO uploads
+    (
+      id,
+      file_name,
+      file_key,
+      file_path,
+      size_in_bytes,
+      status,
+      uploaded_at,
+      tipo,
+      category,
+      subcategory,
+      r2_path,
+      created_by_id
+    )
+  VALUES
+    (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      NOW(),
+      $7,
+      $8,
+      $9,
+      $10,
+      $11
+    )
+  `,
+  [
+    rowId,
+    filename,
+    fileKey,
+    gcsUri,
+    file.size,
+    "uploaded",
+    tipo,
+    category,
+    subcategory,
+    r2Path,
+    authenticatedUser.id,
+  ]
+);
 
  await upsertFichaTecnica(rowId, ficha);
 

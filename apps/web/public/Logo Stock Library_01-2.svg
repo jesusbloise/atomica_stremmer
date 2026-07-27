@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 502.31 270.18">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+      }
+
+      .cls-1, .cls-2 {
+        stroke: #fff;
+        stroke-miterlimit: 10;
+        stroke-width: 5.52px;
+      }
+
+      .cls-3 {
+        font-family: Poppins-Bold, Poppins;
+        font-size: 81.8px;
+        font-weight: 700;
+      }
+
+      .cls-3, .cls-4, .cls-5 {
+        fill: #fff;
+      }
+
+      .cls-5 {
+        font-family: Poppins-SemiBold, Poppins;
+        font-size: 63.17px;
+        font-weight: 600;
+      }
+
+      .cls-2 {
+        fill: #ff5d31;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1-2" data-name="Layer 1">
+    <g>
+      <circle class="cls-2" cx="87.34" cy="165.74" r="84.57"/>
+      <text class="cls-3" transform="translate(41.43 195.97)"><tspan x="0" y="0">SL</tspan></text>
+      <text class="cls-5" transform="translate(198.98 146.53)"><tspan x="0" y="0">STOCK</tspan></text>
+      <text class="cls-5" transform="translate(198.98 232.72)"><tspan x="0" y="0">LIBRARY</tspan></text>
+      <path class="cls-1" d="M87.34,81.16h381.93c16.72,0,30.28,13.56,30.28,30.28v108.59c0,16.72-13.56,30.28-30.28,30.28H87.34"/>
+      <line class="cls-1" x1="171.91" y1="165.74" x2="499.54" y2="165.74"/>
+      <g>
+        <rect class="cls-4" x="364.18" y=".82" width="10.14" height="40.89"/>
+        <polyline class="cls-4" points="202.19 41.72 213.16 41.72 224 12.63 235.01 41.72 245.9 41.72 229.55 .82 218.63 .82"/>
+        <polyline class="cls-4" points="415.42 41.72 426.39 41.72 437.23 12.63 448.24 41.72 459.13 41.72 442.78 .82 431.86 .82"/>
+        <polygon class="cls-4" points="238.94 .82 238.94 9.58 247.53 9.58 247.53 41.72 247.85 41.72 257.67 41.72 257.67 9.58 266.26 9.58 266.26 .82 238.94 .82"/>
+        <path class="cls-4" d="M285.37,0C273.62,0,264.1,9.52,264.1,21.27s9.52,21.27,21.27,21.27,21.27-9.52,21.27-21.27S297.11,0,285.37,0ZM285.37,33.23c-6.53,0-11.83-5.29-11.83-11.83s5.29-11.83,11.83-11.83,11.83,5.29,11.83,11.83-5.29,11.83-11.83,11.83Z"/>
+        <path class="cls-4" d="M409.51,27.08c-2.01,3.67-5.9,6.16-10.38,6.16-6.53,0-11.83-5.29-11.83-11.83s5.29-11.83,11.83-11.83c4.48,0,8.37,2.49,10.38,6.16l8.35-4.56c-3.59-6.66-10.63-11.18-18.73-11.18-11.75,0-21.27,9.52-21.27,21.27s9.52,21.27,21.27,21.27c8.01,0,14.98-4.43,18.61-10.96l-8.23-4.49Z"/>
+        <path class="cls-4" d="M305.51.82v7.63h2.01s.06,0,.06,0c1.33,0,2.52,1.07,2.52,2.51v30.77h10.14V9.58h9.37v32.13h10.15V9.58h9.36v32.13h10.14V.82s-53.74,0-53.74,0Z"/>
+      </g>
+    </g>
+  </g>
+</svg>

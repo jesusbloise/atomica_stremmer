@@ -68,9 +68,8 @@ async function patchUser(
 const ROLE_LABELS: Record<User["role"], string> = {
   SUPER_ADMIN: "Super admin",
   ADMIN: "Admin",
-  USUARIO: "Usuario",
+  USUARIO: "Visita",
 };
-
 /* ---------- Componente ---------- */
 export default function UsersTable() {
   const qc = useQueryClient();

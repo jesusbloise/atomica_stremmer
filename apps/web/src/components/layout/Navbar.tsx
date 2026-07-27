@@ -199,16 +199,20 @@ useEffect(() => {
     <header className="sticky top-0 z-40 border-b border-zinc-800 bg-black/80 backdrop-blur">
       <div className="w-full max-w-[1600px] mx-auto flex flex-wrap items-center gap-3 px-3 md:px-6 py-2.5">
         {/* Logo */}
-        <Link href="/organizar" className="order-1 shrink-0">
-          <Image
-            src="/ATOMICA-Logo-02.png"
-            alt="ATOMICA"
-            width={280}
-            height={56}
-            className="h-12 w-auto md:h-8"
-            priority
-          />
-        </Link>
+       {/* Logo */}
+<Link
+  href="/organizar"
+  className="order-1 flex h-16 shrink-0 items-center overflow-visible"
+>
+  <Image
+    src="/Logo Stock Library_01-2.png"
+    alt="ATOMICA"
+    width={560}
+    height={112}
+    className="h-14 w-auto object-contain md:h-16"
+    priority
+  />
+</Link>
 
         {/* Tabs */}
         <div className="order-3 sm:order-2 flex items-center gap-2 ml-3 overflow-x-auto whitespace-nowrap">
@@ -361,10 +365,15 @@ useEffect(() => {
                     role="menuitem"
                     className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-800"
                     onClick={async () => {
-                      setAvatarOpen(false);
-                      await fetch("/api/logout", { method: "POST" });
-                      location.reload();
-                    }}
+  setAvatarOpen(false);
+
+  window.sessionStorage.removeItem(
+    "pending-uploads-banner-dismissed"
+  );
+
+  await fetch("/api/logout", { method: "POST" });
+  location.reload();
+}}
                   >
                     Salir
                   </button>

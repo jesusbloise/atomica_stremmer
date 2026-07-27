@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import CreatableCombobox from "@/components/CreatableCombobox";
 
 /* ====================== Tipos ====================== */
 export type FichaTecnicaData = {
@@ -31,7 +32,17 @@ export type FichaTecnicaData = {
   version?: string | null;
   fecha?: string | null;
 };
-
+type FichaTecnicaOptions = {
+  marca: string[];
+  agencia: string[];
+  productora: string[];
+  duracion: string[];
+  formato: string[];
+  version: string[];
+  produccion: string[];
+  corporativo: string[];
+  nuevosNegocios: string[];
+};
 type ProfileLite = {
   user_id: string;
   name: string;
@@ -73,7 +84,17 @@ const TIPO_OPTIONS = [
   "Dailies",
   "Master & Deliveries",
 ] as const;
-
+const EMPTY_FICHA_OPTIONS: FichaTecnicaOptions = {
+  marca: ["N/A"],
+  agencia: ["N/A"],
+  productora: ["N/A"],
+  duracion: ["N/A"],
+  formato: ["N/A"],
+  version: ["N/A"],
+  produccion: ["N/A"],
+  corporativo: ["N/A"],
+  nuevosNegocios: ["N/A"],
+};
 /* ====================== Componente principal ====================== */
 export default function FichaTecnica({
   uploadId,
@@ -100,6 +121,10 @@ export default function FichaTecnica({
   const [form, setForm] = useState<FichaTecnicaData>({});
   const formRef = useRef<FichaTecnicaData>({});
   const [saving, setSaving] = useState(false);
+  const [fichaOptions, setFichaOptions] =
+  useState<FichaTecnicaOptions>(EMPTY_FICHA_OPTIONS);
+
+const [loadingFichaOptions, setLoadingFichaOptions] = useState(false);
 
   // overlay de perfil
   const [overlayOpen, setOverlayOpen] = useState(false);
@@ -110,6 +135,66 @@ export default function FichaTecnica({
     | { kind: "view"; user_id: string }
   >({ kind: "idle" });
 
+  useEffect(() => {
+  let alive = true;
+
+  async function loadFichaOptions() {
+    try {
+      setLoadingFichaOptions(true);
+
+      const response = await fetch("/api/fichas/opciones", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("No se pudieron cargar las opciones");
+      }
+
+      const result = await response.json();
+
+      if (!alive) return;
+
+      setFichaOptions({
+        marca: Array.isArray(result.marca) ? result.marca : ["N/A"],
+        agencia: Array.isArray(result.agencia) ? result.agencia : ["N/A"],
+        productora: Array.isArray(result.productora)
+          ? result.productora
+          : ["N/A"],
+        duracion: Array.isArray(result.duracion)
+          ? result.duracion
+          : ["N/A"],
+        formato: Array.isArray(result.formato) ? result.formato : ["N/A"],
+        version: Array.isArray(result.version) ? result.version : ["N/A"],
+        produccion: Array.isArray(result.produccion)
+          ? result.produccion
+          : ["N/A"],
+        corporativo: Array.isArray(result.corporativo)
+          ? result.corporativo
+          : ["N/A"],
+        nuevosNegocios: Array.isArray(result.nuevosNegocios)
+          ? result.nuevosNegocios
+          : ["N/A"],
+      });
+    } catch (error) {
+      console.error("Error cargando opciones de ficha:", error);
+
+      if (alive) {
+        setFichaOptions(EMPTY_FICHA_OPTIONS);
+      }
+    } finally {
+      if (alive) {
+        setLoadingFichaOptions(false);
+      }
+    }
+  }
+
+  void loadFichaOptions();
+
+  return () => {
+    alive = false;
+  };
+}, []);
   // cargar sesión
   useEffect(() => {
     (async () => {
@@ -396,7 +481,7 @@ const payload = {
           <Item label="Duración" value={data.duracion} />
 <Item label="Formato" value={data.formato} />
 <Item label="Versión" value={data.version} />
-<Item label="Fecha" value={data.fecha} />
+<Item label="Fecha" value={formatDateCL(data.fecha)} />
 
           <Item label="Producción" value={data.produccion} />
           <Item label="Corporativo" value={data.corporativo} />
@@ -422,18 +507,114 @@ const payload = {
       <Section title="Información del archivo">
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2">
           <InputItem label="Título" value={form.titulo} onChange={(v) => setField("titulo", v)} />
-          <InputItem label="Marca" value={form.marca} onChange={(v) => setField("marca", v)} />
-          <InputItem label="Agencia" value={form.agencia} onChange={(v) => setField("agencia", v)} />
-          <InputItem label="Productora" value={form.productora} onChange={(v) => setField("productora", v)} />
+          <CreatableCombobox
+  label="Marca"
+  value={form.marca}
+  options={fichaOptions.marca}
+  onChange={(value) => setField("marca", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir marca..."
+  }
+/>
+
+<CreatableCombobox
+  label="Agencia"
+  value={form.agencia}
+  options={fichaOptions.agencia}
+  onChange={(value) => setField("agencia", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir agencia..."
+  }
+/>
+
+<CreatableCombobox
+  label="Productora"
+  value={form.productora}
+  options={fichaOptions.productora}
+  onChange={(value) => setField("productora", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir productora..."
+  }
+/>
           <InputItem label="Contacto" value={form.contacto} onChange={(v) => setField("contacto", v)} />
-          <InputItem label="Duración" value={form.duracion} onChange={(v) => setField("duracion", v)} placeholder="Ej: 00:30 / 1:20" />
-<InputItem label="Formato" value={form.formato} onChange={(v) => setField("formato", v)} placeholder="Ej: 16:9 / 9:16 / 4:5" />
-<InputItem label="Versión" value={form.version} onChange={(v) => setField("version", v)} placeholder="Ej: V1 / Final / Master" />
+         <CreatableCombobox
+  label="Duración"
+  value={form.duracion}
+  options={fichaOptions.duracion}
+  onChange={(value) => setField("duracion", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Ej: 00:30 / 1:20"
+  }
+/>
+
+<CreatableCombobox
+  label="Formato"
+  value={form.formato}
+  options={fichaOptions.formato}
+  onChange={(value) => setField("formato", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Ej: 16:9 / 9:16 / 4:5"
+  }
+/>
+
+<CreatableCombobox
+  label="Versión"
+  value={form.version}
+  options={fichaOptions.version}
+  onChange={(value) => setField("version", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Ej: V1 / Final / Master"
+  }
+/>
 <InputItem label="Fecha" value={form.fecha} onChange={(v) => setField("fecha", v)} type="date" />
 
-          <InputItem label="Producción" value={form.produccion} onChange={(v) => setField("produccion", v)} />
-          <InputItem label="Corporativo" value={form.corporativo} onChange={(v) => setField("corporativo", v)} />
-          <InputItem label="Nuevos Negocios" value={form.nuevosNegocios} onChange={(v) => setField("nuevosNegocios", v)} />
+         <CreatableCombobox
+  label="Producción"
+  value={form.produccion}
+  options={fichaOptions.produccion}
+  onChange={(value) => setField("produccion", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir producción..."
+  }
+/>
+
+<CreatableCombobox
+  label="Corporativo"
+  value={form.corporativo}
+  options={fichaOptions.corporativo}
+  onChange={(value) => setField("corporativo", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir corporativo..."
+  }
+/>
+
+<CreatableCombobox
+  label="Nuevos Negocios"
+  value={form.nuevosNegocios}
+  options={fichaOptions.nuevosNegocios}
+  onChange={(value) => setField("nuevosNegocios", value)}
+  placeholder={
+    loadingFichaOptions
+      ? "Cargando opciones..."
+      : "Seleccionar o escribir nuevos negocios..."
+  }
+/>
 
           <SelectItem
             label="Oficina"
@@ -833,6 +1014,17 @@ function ProfileDetail({ user_id }: { user_id: string }) {
 }
 
 /* ====================== Helpers ====================== */
+
+function formatDateCL(value?: string | null) {
+  if (!value) return "—";
+
+  const s = String(value).slice(0, 10);
+  const [yyyy, mm, dd] = s.split("-");
+
+  if (!yyyy || !mm || !dd) return s;
+
+  return `${dd}-${mm}-${yyyy}`;
+}
 function formatTipo(tipo?: string[] | null) {
   if (!tipo || !Array.isArray(tipo) || tipo.length === 0) return "—";
   return tipo.join(", ");

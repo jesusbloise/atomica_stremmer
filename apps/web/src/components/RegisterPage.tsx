@@ -3,7 +3,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import logoUDD from "@/../public/ATOMICA-Logo-02.png"; // si prefieres <img>, cambia esto
+import logoUDD from "@/../public/Logo Stock Library_01-2.png"; // si prefieres <img>, cambia esto
 
 export default function RegisterPage() {
   const router = useRouter();

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import SidebarDrawer from "./SidebarDrawer";
 // import { sidebarSubscribe } from "./sidebarBus";
 import Sidebar, { SidebarContent } from "./Sidebar";
+import PendingUploadsBanner from "./PendingUploadsBanner";
 
 type Props = {
   header?: React.ReactNode;
@@ -40,7 +41,10 @@ export default function AppShell({
 
       {/* Contenido centrado sin columna de sidebar */}
       <div className={`w-full max-w-[1600px] mx-auto px-4 md:px-6 pt-4 md:pt-6 ${containerClassName ?? ""}`}>
-        <main>{children}</main>
+        <main>
+          <PendingUploadsBanner />
+          {children}
+        </main>
       </div>
 
       {/* Drawer móvil: usa SOLO el contenido del menú */}

@@ -218,33 +218,34 @@ const isVideo = current?.tipo === "video" || VIDEO_EXT.test(rawSrc || "");
   </div>
 )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/40" />
+          <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-10 sm:px-6 sm:pb-12 md:px-10 md:pb-14">
+  <div className="max-w-xl">
+    <p className="text-left text-lg font-semibold text-white drop-shadow-md sm:text-2xl md:text-3xl">
+      {name}
+    </p>
 
-            <div className="absolute inset-0 flex items-center justify-center px-4">
-              <div className="px-4 py-3 rounded-lg bg-black/40 border border-white/15 backdrop-blur-sm text-center">
-                <p className="text-white text-base sm:text-lg md:text-2xl font-semibold">
-                  {name}
-                </p>
-
-                <div className="mt-3">
-                  <Link href={selectionMode ? "#" : href} aria-disabled={selectionMode}>
-                    <motion.button
-                      disabled={selectionMode}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className={`text-xs px-3 py-1.5 rounded transition border ${
-                        selectionMode
-                          ? "text-zinc-500 border-zinc-700"
-                          : "text-orange-400 hover:text-orange-500 border-orange-400 hover:border-orange-500"
-                      }`}
-                      aria-label={`Ver más sobre ${name}`}
-                    >
-                      Ver más
-                    </motion.button>
-                  </Link>
-                </div>
-              </div>
-            </div>
+    <div className="mt-3 flex justify-start">
+      <Link
+        href={selectionMode ? "#" : href}
+        aria-disabled={selectionMode}
+      >
+        <motion.button
+          disabled={selectionMode}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className={`rounded-lg border px-4 py-2 text-sm font-medium backdrop-blur-sm transition ${
+            selectionMode
+              ? "border-zinc-700 bg-black/40 text-zinc-500"
+              : "border-orange-400 bg-black/45 text-orange-400 hover:border-orange-500 hover:bg-black/65 hover:text-orange-500"
+          }`}
+          aria-label={`Ver más sobre ${name}`}
+        >
+          Ver más
+        </motion.button>
+      </Link>
+    </div>
+  </div>
+</div>
           </div>
 
           {items.length > 1 && (

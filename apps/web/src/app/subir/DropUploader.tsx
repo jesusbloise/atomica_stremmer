@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import CreatableCombobox from "@/components/CreatableCombobox";
 
 type Category = {
   id: string;
@@ -38,7 +39,17 @@ type UploadMeta = {
   version?: string | null;
   fecha?: string | null;
 };
-
+type FichaTecnicaOptions = {
+  marca: string[];
+  agencia: string[];
+  productora: string[];
+  duracion: string[];
+  formato: string[];
+  version: string[];
+  produccion: string[];
+  corporativo: string[];
+  nuevosNegocios: string[];
+};
 type LocalThumbnailCandidate = {
   previewUrl: string;
   file: File;
@@ -78,7 +89,28 @@ const TIPO_OPTIONS = [
   "Master & Deliveries",
 ] as const;
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
-
+const EMPTY_FICHA_OPTIONS: FichaTecnicaOptions = {
+  marca: ["N/A"],
+  agencia: ["N/A"],
+  productora: ["N/A"],
+  duracion: ["N/A"],
+  formato: ["N/A"],
+  version: ["N/A"],
+  produccion: ["N/A"],
+  corporativo: ["N/A"],
+  nuevosNegocios: ["N/A"],
+};
+const AUTOCOMPLETE_FIELDS = new Set<keyof UploadMeta>([
+  "marca",
+  "agencia",
+  "productora",
+  "duracion",
+  "formato",
+  "version",
+  "produccion",
+  "corporativo",
+  "nuevosNegocios",
+]);
 const TEXT_FIELDS: Array<{ key: keyof UploadMeta; label: string; placeholder?: string }> = [
   { key: "titulo", label: "Título", placeholder: "Ej: Campaña Verano 2026 - Master" },
   { key: "marca", label: "Marca" },
@@ -89,7 +121,7 @@ const TEXT_FIELDS: Array<{ key: keyof UploadMeta; label: string; placeholder?: s
   { key: "duracion", label: "Duración", placeholder: "Ej: 00:30 / 1:20 / 2 min" },
   { key: "formato", label: "Formato", placeholder: "Ej: 16:9 / 9:16 / 4:5 / 1:1" },
   { key: "version", label: "Versión", placeholder: "Ej: V1 / V2 / Master / Final" },
-  { key: "fecha", label: "Fecha", placeholder: "Ej: 2026-06-09" },
+ { key: "fecha", label: "Fecha", placeholder: "Ej: 09-06-2026" },
 
   { key: "produccion", label: "Producción" },
   { key: "corporativo", label: "Corporativo" },
@@ -97,7 +129,27 @@ const TEXT_FIELDS: Array<{ key: keyof UploadMeta; label: string; placeholder?: s
 ];
 
 const LARGE_FILE_THRESHOLD_MB = 30;
+
 const DEFAULT_CAT = "publicidad";
+
+function normalizeFechaForSave(value?: string | null) {
+  if (!value) return null;
+
+  const s = String(value).trim();
+
+  // Si viene como DD-MM-YYYY, lo guarda como YYYY-MM-DD
+  const dmy = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dmy) {
+    const [, dd, mm, yyyy] = dmy;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Si ya viene como YYYY-MM-DD, lo deja igual
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) return s;
+
+  return s;
+}
 
 export default function DropUploader({
   onUploaded,
@@ -112,6 +164,10 @@ export default function DropUploader({
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [fichaOptions, setFichaOptions] =
+  useState<FichaTecnicaOptions>(EMPTY_FICHA_OPTIONS);
+
+const [loadingFichaOptions, setLoadingFichaOptions] = useState(true);
 
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -140,6 +196,70 @@ export default function DropUploader({
     tipo: [],
   });
 
+  useEffect(() => {
+  let alive = true;
+
+  async function loadFichaOptions() {
+    try {
+      setLoadingFichaOptions(true);
+
+      const response = await fetch("/api/fichas/opciones", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("No se pudieron cargar las opciones de ficha");
+      }
+
+      const result = await response.json();
+
+      if (!alive) return;
+
+      setFichaOptions({
+        marca: Array.isArray(result.marca) ? result.marca : ["N/A"],
+        agencia: Array.isArray(result.agencia) ? result.agencia : ["N/A"],
+        productora: Array.isArray(result.productora)
+          ? result.productora
+          : ["N/A"],
+        duracion: Array.isArray(result.duracion)
+          ? result.duracion
+          : ["N/A"],
+        formato: Array.isArray(result.formato)
+          ? result.formato
+          : ["N/A"],
+        version: Array.isArray(result.version)
+          ? result.version
+          : ["N/A"],
+        produccion: Array.isArray(result.produccion)
+          ? result.produccion
+          : ["N/A"],
+        corporativo: Array.isArray(result.corporativo)
+          ? result.corporativo
+          : ["N/A"],
+        nuevosNegocios: Array.isArray(result.nuevosNegocios)
+          ? result.nuevosNegocios
+          : ["N/A"],
+      });
+    } catch (error) {
+      console.error("Error cargando opciones para la subida:", error);
+
+      if (alive) {
+        setFichaOptions(EMPTY_FICHA_OPTIONS);
+      }
+    } finally {
+      if (alive) {
+        setLoadingFichaOptions(false);
+      }
+    }
+  }
+
+  void loadFichaOptions();
+
+  return () => {
+    alive = false;
+  };
+}, []);
   useEffect(() => {
     let alive = true;
 
@@ -219,6 +339,40 @@ export default function DropUploader({
 
   const setMetaField = (k: keyof UploadMeta, v: any) =>
     setMeta((p) => ({ ...(p ?? {}), [k]: v }));
+
+  function getOptionsForField(key: keyof UploadMeta): string[] {
+  switch (key) {
+    case "marca":
+      return fichaOptions.marca;
+
+    case "agencia":
+      return fichaOptions.agencia;
+
+    case "productora":
+      return fichaOptions.productora;
+
+    case "duracion":
+      return fichaOptions.duracion;
+
+    case "formato":
+      return fichaOptions.formato;
+
+    case "version":
+      return fichaOptions.version;
+
+    case "produccion":
+      return fichaOptions.produccion;
+
+    case "corporativo":
+      return fichaOptions.corporativo;
+
+    case "nuevosNegocios":
+      return fichaOptions.nuevosNegocios;
+
+    default:
+      return [];
+  }
+}
 
   const toggleTipo = (opt: (typeof TIPO_OPTIONS)[number]) => {
     setMeta((prev) => {
@@ -368,9 +522,14 @@ export default function DropUploader({
   }
 
   try {
-    setUploading(true);
+  setUploading(true);
 
-    const isLarge = file.size > LARGE_FILE_THRESHOLD_MB * 1024 * 1024;
+  const metaForUpload = {
+    ...meta,
+    fecha: normalizeFechaForSave(meta.fecha),
+  };
+
+  const isLarge = file.size > LARGE_FILE_THRESHOLD_MB * 1024 * 1024;
 
     if (!isLarge) {
       setMsg("Subiendo archivo...");
@@ -379,7 +538,7 @@ export default function DropUploader({
       fd.append("file", file);
       fd.append("category", category);
       fd.append("subcategory", requiresSub ? subcategory : "");
-      fd.append("ficha", JSON.stringify(meta));
+      fd.append("ficha", JSON.stringify(metaForUpload));
 
       const res = await fetch("/api/upload-minio", {
         method: "POST",
@@ -427,7 +586,7 @@ export default function DropUploader({
         size: file.size,
         category,
         subcategory: requiresSub ? subcategory : "",
-        ficha: meta,
+        ficha: metaForUpload,
       }),
     });
 
@@ -571,24 +730,54 @@ export default function DropUploader({
           </p>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {TEXT_FIELDS.map(({ key, label, placeholder }) => (
-              <div key={String(key)} className="flex flex-col">
-                <label className="block text-[11px] text-zinc-400 mb-1">
-                  {label}
-                  {key === "titulo" && titleRequired && (
-                    <span className="text-orange-400 ml-1">*</span>
-                  )}
-                </label>
+          {TEXT_FIELDS.map(({ key, label, placeholder }) => {
+  const usesAutocomplete = AUTOCOMPLETE_FIELDS.has(key);
 
-                <input
-                  type="text"
-                  value={(meta[key] as any) ?? ""}
-                  onChange={(e) => setMetaField(key, e.target.value)}
-                  placeholder={placeholder}
-                  className="w-full px-3 py-2 rounded border border-zinc-700/80 bg-transparent text-sm placeholder:text-zinc-500"
-                />
-              </div>
-            ))}
+  if (usesAutocomplete) {
+    return (
+      <CreatableCombobox
+        key={String(key)}
+        label={label}
+        value={
+          typeof meta[key] === "string"
+            ? (meta[key] as string)
+            : ""
+        }
+        options={getOptionsForField(key)}
+        onChange={(value) => setMetaField(key, value)}
+        placeholder={
+          loadingFichaOptions
+            ? "Cargando opciones..."
+            : placeholder || `Seleccionar o escribir ${label.toLowerCase()}...`
+        }
+      />
+    );
+  }
+
+  return (
+    <div key={String(key)} className="flex flex-col">
+      <label className="mb-1 block text-[11px] text-zinc-400">
+        {label}
+
+        {key === "titulo" && titleRequired && (
+          <span className="ml-1 text-orange-400">*</span>
+        )}
+      </label>
+
+      <input
+        type={key === "fecha" ? "date" : "text"}
+        value={
+          typeof meta[key] === "string"
+            ? (meta[key] as string)
+            : ""
+        }
+        onChange={(event) => setMetaField(key, event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded border border-zinc-700/80 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-orange-500/70"
+      />
+    </div>
+  );
+})}
 
             <div className="flex flex-col">
               <label className="block text-[11px] text-zinc-400 mb-1">
@@ -776,6 +965,11 @@ export default function DropUploader({
               setThumbnailCandidates([]);
               setThumbnailModalOpen(false);
               setMsg(null);
+              setMeta({
+  titulo: "",
+  oficina: "",
+  tipo: [],
+});
             }}
             className="px-4 py-2 rounded border border-zinc-700/80 hover:border-zinc-500 text-sm"
           >
