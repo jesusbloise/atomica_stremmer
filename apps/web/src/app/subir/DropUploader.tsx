@@ -185,7 +185,7 @@ function normalizeFechaForSave(value?: string | null) {
 export default function DropUploader({
   onUploaded,
   accept = ".mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.jpg,.jpeg,.png,.gif,.webp,.avif,.pdf,.doc,.docx,.txt",
-  maxSizeMB = 15360,
+  maxSizeMB = 30720,
 }: {
   onUploaded?: (payload: { id?: string; category: string }) => void;
   accept?: string;
@@ -1777,7 +1777,7 @@ try {
             </div>
 
             <div className="text-zinc-400 text-xs sm:text-sm mt-2">
-              Video/Documento hasta 15 GB
+              Video/Documento hasta 30 GB
             </div>
 
             <div className="text-zinc-500 text-[11px] mt-2">

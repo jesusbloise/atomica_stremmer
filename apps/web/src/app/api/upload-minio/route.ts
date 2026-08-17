@@ -1410,13 +1410,13 @@ async function handleMultipartR2Init(req: NextRequest) {
   }
 
   const MAX_MULTIPART_SIZE_BYTES =
-    15 * 1024 * 1024 * 1024;
+    30 * 1024 * 1024 * 1024;
 
   if (size > MAX_MULTIPART_SIZE_BYTES) {
     return NextResponse.json(
       {
         error:
-          "El archivo supera el máximo permitido de 15 GB",
+          "El archivo supera el máximo permitido de 30 GB",
       },
       { status: 413 }
     );
@@ -1511,7 +1511,7 @@ async function handleMultipartR2Init(req: NextRequest) {
 
   /*
    * 64 MB por parte:
-   * una película de 15 GB produce unas 240 partes.
+   * una película de 30 GB produce unas 480 partes.
    */
   const partSize =
     64 * 1024 * 1024;
