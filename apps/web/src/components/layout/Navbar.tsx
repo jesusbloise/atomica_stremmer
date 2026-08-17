@@ -4,7 +4,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, Filter, ChevronDown } from "lucide-react";
+import {
+  Search,
+  Filter,
+  ChevronDown,
+  Bell,
+  ShieldCheck,
+  LockKeyhole,
+} from "lucide-react";
 import { navEmitFilter, navEmitSearch, navEmitToggleSelect } from "./navBus";
 import type { FilterKey } from "@/components/UploadVideo/types";
 
@@ -17,7 +24,25 @@ type Me =
       email?: string | null;
       avatarUrl?: string | null; // pudiera venir, pero preferimos profiles.avatar_url
     };
+type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  upload_id?: string | null;
+  action_url?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  read_at?: string | null;
+  banner_dismissed_at?: string | null;
+  resolved_at?: string | null;
+};
 
+type NotificationsResponse = {
+  unread: number;
+  total: number;
+  notifications: NotificationItem[];
+};
 const tabs = [
   { id: "ultimos", label: "Últimos agregados" },
   { id: "mas-vistos", label: "Más vistos" },
@@ -42,6 +67,17 @@ export default function Navbar() {
 
   const [session, setSession] = useState<Me>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>("/next.svg"); // ← avatar real mostrado
+  const [notificationsOpen, setNotificationsOpen] =
+  useState(false);
+
+const [notifications, setNotifications] =
+  useState<NotificationItem[]>([]);
+
+const [notificationsUnread, setNotificationsUnread] =
+  useState(0);
+
+const [notificationsLoading, setNotificationsLoading] =
+  useState(false);
   const isStudent = session?.role === "ESTUDIANTE";
 
   // cargar sesión + avatar de profiles (preferido)
@@ -71,11 +107,46 @@ export default function Navbar() {
       setAvatarUrl("/next.svg");
     }
   }
+async function loadNotifications() {
+  try {
+    setNotificationsLoading(true);
 
+    const response = await fetch("/api/notifications", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data: NotificationsResponse =
+      await response.json();
+
+    setNotifications(
+      Array.isArray(data.notifications)
+        ? data.notifications
+        : []
+    );
+
+    setNotificationsUnread(
+      Number(data.unread || 0)
+    );
+  } catch (error) {
+    console.error(
+      "Error cargando notificaciones:",
+      error
+    );
+  } finally {
+    setNotificationsLoading(false);
+  }
+}
   // Carga inicial
-  useEffect(() => {
-    loadSessionAndAvatar();
-  }, []);
+useEffect(() => {
+  loadSessionAndAvatar();
+  loadNotifications();
+}, []);
 
   // Refrescar al volver a la pestaña / foco (por si se cambió el avatar en otra vista)
   useEffect(() => {
@@ -175,16 +246,34 @@ useEffect(() => {
   };
 
   // --- Avatar dropdown: close on outside / esc
-  const avatarRef = useRef<HTMLDivElement | null>(null);
+  const avatarRef =
+  useRef<HTMLDivElement | null>(null);
+
+const notificationsRef =
+  useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!avatarRef.current) return;
-      if (!avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
-    };
+  const onDocClick = (e: MouseEvent) => {
+  const target = e.target as Node;
+
+  if (
+    avatarRef.current &&
+    !avatarRef.current.contains(target)
+  ) {
+    setAvatarOpen(false);
+  }
+
+  if (
+    notificationsRef.current &&
+    !notificationsRef.current.contains(target)
+  ) {
+    setNotificationsOpen(false);
+  }
+};
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setAvatarOpen(false);
         setMenuOpen(false);
+        setNotificationsOpen(false);
       }
     };
     document.addEventListener("click", onDocClick);
@@ -315,15 +404,182 @@ useEffect(() => {
               >
                 Entrar
               </Link>
-              <Link
-                href="/register"
-                className="px-3 py-1.5 rounded-md border border-zinc-700 text-sm text-zinc-200 hover:bg-zinc-800/60"
-              >
-                Registrarme
-              </Link>
+             
             </div>
           )}
 
+{/* Notificaciones */}
+{session && (
+  <div
+    className="relative"
+    ref={notificationsRef}
+  >
+    <button
+      type="button"
+      onClick={() => {
+        setNotificationsOpen((value) => !value);
+        setAvatarOpen(false);
+        setMenuOpen(false);
+
+        if (!notificationsOpen) {
+          loadNotifications();
+        }
+      }}
+      className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-zinc-300 transition hover:bg-zinc-800/60 hover:text-white"
+      aria-label="Notificaciones"
+      title="Notificaciones"
+      aria-haspopup="menu"
+      aria-expanded={notificationsOpen}
+    >
+      <Bell className="h-5 w-5" />
+
+      {notificationsUnread > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex min-w-4 h-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold leading-none text-white">
+          {notificationsUnread > 9
+            ? "9+"
+            : notificationsUnread}
+        </span>
+      )}
+    </button>
+
+    {notificationsOpen && (
+      <div className="absolute right-0 z-50 mt-2 w-[min(92vw,380px)] overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-white">
+              Notificaciones
+            </p>
+
+            <p className="text-xs text-zinc-400">
+              {notificationsUnread === 0
+                ? "No tienes notificaciones nuevas"
+                : notificationsUnread === 1
+                ? "Tienes 1 notificación nueva"
+                : `Tienes ${notificationsUnread} notificaciones nuevas`}
+            </p>
+          </div>
+
+          <Bell className="h-4 w-4 text-zinc-500" />
+        </div>
+
+        <div className="max-h-[420px] overflow-y-auto">
+          {notificationsLoading ? (
+            <div className="px-4 py-8 text-center text-sm text-zinc-400">
+              Cargando notificaciones...
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <Bell className="mx-auto mb-2 h-6 w-6 text-zinc-600" />
+
+              <p className="text-sm text-zinc-400">
+                No tienes notificaciones pendientes.
+              </p>
+            </div>
+          ) : (
+            notifications.slice(0, 8).map((item) => {
+              const unread = !item.read_at;
+
+              const Icon =
+                item.type === "TWO_FACTOR_PENDING"
+                  ? ShieldCheck
+                  : item.type ===
+                    "RESTRICTED_UPLOAD_SHARED"
+                  ? LockKeyhole
+                  : Bell;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      if (unread) {
+                        await fetch(
+                          `/api/notifications/${item.id}/read`,
+                          {
+                            method: "POST",
+                            credentials: "include",
+                          }
+                        );
+                      }
+
+                      setNotificationsOpen(false);
+
+                      if (item.action_url) {
+                        router.push(item.action_url);
+                      }
+
+                      loadNotifications();
+                    } catch (error) {
+                      console.error(
+                        "Error abriendo notificación:",
+                        error
+                      );
+                    }
+                  }}
+                  className={[
+                    "flex w-full items-start gap-3 border-b border-zinc-800/80 px-4 py-3 text-left transition hover:bg-zinc-800/70",
+                    unread
+                      ? "bg-orange-500/[0.04]"
+                      : "",
+                  ].join(" ")}
+                >
+                  <div
+                    className={[
+                      "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                      item.type ===
+                      "TWO_FACTOR_PENDING"
+                        ? "bg-amber-500/10 text-amber-300"
+                        : item.type ===
+                          "RESTRICTED_UPLOAD_SHARED"
+                        ? "bg-orange-500/10 text-orange-300"
+                        : "bg-zinc-800 text-zinc-300",
+                    ].join(" ")}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                      <p
+                        className={[
+                          "min-w-0 flex-1 truncate text-sm",
+                          unread
+                            ? "font-semibold text-white"
+                            : "font-medium text-zinc-300",
+                        ].join(" ")}
+                      >
+                        {item.title}
+                      </p>
+
+                      {unread && (
+                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-400" />
+                      )}
+                    </div>
+
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-400">
+                      {item.message}
+                    </p>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <Link
+          href="/notificaciones"
+          onClick={() =>
+            setNotificationsOpen(false)
+          }
+          className="block border-t border-zinc-800 px-4 py-3 text-center text-sm font-medium text-orange-300 transition hover:bg-zinc-800/60 hover:text-orange-200"
+        >
+          Ver todas las notificaciones
+        </Link>
+      </div>
+    )}
+  </div>
+)}
           {/* Avatar */}
           {session && (
             <div className="relative" ref={avatarRef}>
@@ -332,6 +588,7 @@ useEffect(() => {
                 onClick={() => {
                   setAvatarOpen((v) => !v);
                   setMenuOpen(false);
+                  setNotificationsOpen(false);
                 }}
                 aria-haspopup="menu"
                 aria-expanded={avatarOpen}

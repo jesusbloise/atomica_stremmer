@@ -20,18 +20,84 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user }) {
-      if (!user?.email) return false;
-      const client = await pool.connect();
-      try {
-        await client.query(
-          `INSERT INTO users (name, email, password_hash, role, is_active)
-           VALUES ($1, $2, '', 'ESTUDIANTE', true)
-           ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, users.name)`,
-          [(user.name ?? null)?.toString().slice(0,120) || null, user.email.toLowerCase()]
-        );
-      } finally { client.release(); }
-      return true;
-    },
+  if (!user?.email) {
+    return false;
+  }
+
+  const email = user.email
+    .trim()
+    .toLowerCase();
+
+  const client = await pool.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      is_active: boolean;
+    }>(
+      `
+      SELECT
+        id,
+        is_active
+      FROM users
+      WHERE LOWER(email) = $1
+      LIMIT 1
+      `,
+      [email]
+    );
+
+    const existingUser =
+      result.rows[0];
+
+    /*
+     * Google solamente puede autenticar
+     * usuarios que YA existen en Atomica
+     * y cuya cuenta está activa.
+     */
+    if (
+      !existingUser ||
+      !existingUser.is_active
+    ) {
+      console.warn(
+        `Google login rechazado para cuenta no autorizada: ${email}`
+      );
+
+      return false;
+    }
+
+    /*
+     * Opcionalmente actualizamos el nombre
+     * que Google nos entrega, pero NO
+     * creamos cuentas nuevas.
+     */
+    if (user.name) {
+      await client.query(
+        `
+        UPDATE users
+        SET name = COALESCE($1, name)
+        WHERE id = $2
+        `,
+        [
+          user.name
+            .toString()
+            .slice(0, 120),
+          existingUser.id,
+        ]
+      );
+    }
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Error validando usuario Google:",
+      error
+    );
+
+    return false;
+  } finally {
+    client.release();
+  }
+},
   },
   pages: { signIn: "/login" },
 };

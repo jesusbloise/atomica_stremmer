@@ -44,6 +44,12 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Precargar el modelo Whisper dentro de la imagen.
+# Así Cloud Run no tiene que descargarlo al procesar cada video.
+ENV WHISPER_DOWNLOAD_ROOT=/opt/whisper-models
+
+RUN mkdir -p /opt/whisper-models && \
+    python3 -c "import whisper; whisper.load_model('small', download_root='/opt/whisper-models')"
 
 
 # Copiar artefactos del build

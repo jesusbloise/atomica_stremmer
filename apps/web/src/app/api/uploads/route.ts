@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import jwt from "jsonwebtoken";
 import pool from "@/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const JWT_SECRET =
+  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+
+type JwtPayload = {
+  id?: string;
+  sub?: string;
+  userId?: string;
+  role?: string;
+};
+
+type AuthUser = {
+  id: string;
+  role: string;
+};
 
 type RowUpload = {
   id: string;
@@ -22,10 +38,55 @@ type RowUpload = {
   cf_stream_status?: string | null;
   cf_stream_ready?: boolean | null;
   cf_stream_playback_url?: string | null;
+  visibility?: "PUBLIC" | "RESTRICTED" | null;
+  requires_approval?: boolean | null;
+  approval_status?: string | null;
+  created_by_id?: string | null;
 };
 
+function getAuthenticatedUser(req: NextRequest): AuthUser | null {
+  try {
+    const raw = req.cookies.get("auth")?.value;
+
+    if (!raw) {
+      return null;
+    }
+
+    const token = decodeURIComponent(raw);
+
+    const payload = jwt.verify(
+      token,
+      JWT_SECRET
+    ) as JwtPayload;
+
+    const id =
+      payload.id ??
+      payload.sub ??
+      payload.userId ??
+      null;
+
+    if (!id) {
+      return null;
+    }
+
+    const role = String(payload.role ?? "")
+      .trim()
+      .toUpperCase();
+
+    return {
+      id: String(id),
+      role,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildReadableUrl(row: RowUpload) {
-  if (row.cf_stream_ready && row.cf_stream_playback_url) {
+  if (
+    row.cf_stream_ready &&
+    row.cf_stream_playback_url
+  ) {
     return row.cf_stream_playback_url;
   }
 
@@ -41,14 +102,49 @@ function buildReadableUrl(row: RowUpload) {
 }
 
 export async function GET(req: NextRequest) {
+  const currentUser = getAuthenticatedUser(req);
+
+  if (!currentUser) {
+    return NextResponse.json(
+      { error: "No autorizado" },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
 
-  const category = searchParams.get("category")?.trim().toLowerCase() || null;
-  const subcategory = searchParams.get("subcategory")?.trim() || null;
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") || 500), 1), 1000);
+  const category =
+    searchParams
+      .get("category")
+      ?.trim()
+      .toLowerCase() || null;
+
+  const subcategory =
+    searchParams
+      .get("subcategory")
+      ?.trim() || null;
+
+  const requestedLimit = Number(
+    searchParams.get("limit") || 500
+  );
+
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(
+        Math.max(requestedLimit, 1),
+        1000
+      )
+    : 500;
 
   try {
-    const where: string[] = [`(u.is_deleted IS NOT TRUE)`];
+    const where: string[] = [
+      `(u.is_deleted IS NOT TRUE)`,
+    ];
+
     const params: Array<string | number> = [];
     let i = 1;
 
@@ -70,12 +166,60 @@ export async function GET(req: NextRequest) {
       )
     `);
 
+    const userIdParameter = i++;
+    params.push(currentUser.id);
+
+    const userRoleParameter = i++;
+    params.push(currentUser.role);
+
+    where.push(`
+      (
+        COALESCE(u.visibility, 'PUBLIC') = 'PUBLIC'
+
+        OR $${userRoleParameter}::text = 'SUPER_ADMIN'
+
+        OR u.created_by_id::text =
+          $${userIdParameter}::text
+
+        OR EXISTS (
+  SELECT 1
+  FROM upload_permissions permission
+  WHERE
+    permission.upload_id = u.id::text
+    AND permission.target_type = 'USER'
+    AND permission.target_id =
+      $${userIdParameter}::text
+)
+
+OR EXISTS (
+  SELECT 1
+  FROM upload_permissions permission
+  INNER JOIN user_group_members gm
+    ON gm.group_id::text =
+      permission.target_id
+  WHERE
+    permission.upload_id = u.id::text
+    AND permission.target_type = 'GROUP'
+    AND gm.user_id::text =
+      $${userIdParameter}::text
+)
+      )
+    `);
+
+    const limitParameter = i++;
+    params.push(limit);
+
     const sql = `
       SELECT
         u.id,
         u.file_name,
         ft.titulo,
-        COALESCE(NULLIF(ft.titulo, ''), u.file_name) AS display_name,
+
+        COALESCE(
+          NULLIF(ft.titulo, ''),
+          u.file_name
+        ) AS display_name,
+
         u.file_key,
         u.file_path,
         u.r2_path,
@@ -88,33 +232,75 @@ export async function GET(req: NextRequest) {
         u.cf_stream_uid,
         u.cf_stream_status,
         u.cf_stream_ready,
-        u.cf_stream_playback_url
+        u.cf_stream_playback_url,
+
+        COALESCE(
+          u.visibility,
+          'PUBLIC'
+        ) AS visibility,
+
+        COALESCE(
+          u.requires_approval,
+          FALSE
+        ) AS requires_approval,
+
+        u.approval_status,
+        u.created_by_id
+
       FROM uploads u
+
       LEFT JOIN ficha_tecnica ft
         ON ft.upload_id::text = u.id::text
+
       WHERE ${where.join(" AND ")}
-      ORDER BY u.uploaded_at DESC
-      LIMIT $${i}
+
+      ORDER BY
+        u.uploaded_at DESC NULLS LAST
+
+      LIMIT $${limitParameter}
     `;
 
-    params.push(limit);
-
-    const { rows } = await pool.query<RowUpload>(sql, params);
+    const { rows } =
+      await pool.query<RowUpload>(
+        sql,
+        params
+      );
 
     const enriched = rows.map((row) => ({
       ...row,
+
       url: buildReadableUrl(row),
-      using_cloudflare_stream: Boolean(row.cf_stream_ready && row.cf_stream_playback_url),
+
+      using_cloudflare_stream: Boolean(
+        row.cf_stream_ready &&
+          row.cf_stream_playback_url
+      ),
+
       using_r2: Boolean(row.r2_path),
     }));
 
-    return NextResponse.json(enriched);
+    return NextResponse.json(enriched, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
   } catch (e) {
-    console.error("GET /api/uploads error:", e);
+    console.error(
+      "GET /api/uploads error:",
+      e
+    );
+
     return NextResponse.json(
-      { error: "No se pudieron cargar los archivos" },
-      { status: 500 }
+      {
+        error:
+          "No se pudieron cargar los archivos",
+      },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
     );
   }
 }
-

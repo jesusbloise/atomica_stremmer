@@ -9,6 +9,8 @@ import Link from "next/link";
 import Image from "next/image";
 import FichaTecnica from "@/components/FichaTecnica";
 import RelatedDiscoveryRail from "@/components/RelatedDiscoveryRail";
+import SharedShowcaseCarousel from "@/components/SharedShowcaseCarousel";
+import UploadPermissionsPanel from "@/components/UploadPermissionsPanel";
 
 const TablaSubtitulos = dynamic(() => import("@/components/TablaSubtitulos"), {
   ssr: false,
@@ -240,6 +242,15 @@ function ArchivosRelacionadosMock() {
 export default function VideoDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+ const shareToken =
+  searchParams.get("share")?.trim() || "";
+
+const sourceId =
+  searchParams.get("source")?.trim() || "";
+
+const isSharedView =
+  Boolean(shareToken);
+
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [cloudflareStreamUrl, setCloudflareStreamUrl] = useState<string | null>(null);
@@ -278,6 +289,17 @@ export default function VideoDetailPage({ id }: { id: string }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+
+  // const [showSharedFicha, setShowSharedFicha] = useState(false);
+  // const [showSharedTranscript, setShowSharedTranscript] = useState(false);
+
+  const [visibility, setVisibility] = useState<"PUBLIC" | "RESTRICTED">(
+    "PUBLIC"
+  );
+
+  const [canManagePrivacy, setCanManagePrivacy] = useState(false);
+  const [changingPrivacy, setChangingPrivacy] = useState(false);
+  const [privacyMessage, setPrivacyMessage] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cloudflareIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -400,19 +422,37 @@ export default function VideoDetailPage({ id }: { id: string }) {
 
   useEffect(() => {
     if (!id) return;
-    if (loadedIdRef.current === id) return;
 
-    loadedIdRef.current = id;
+    const loadKey = `${id}:${shareToken}`;
+
+    if (loadedIdRef.current === loadKey) return;
+
+    loadedIdRef.current = loadKey;
     processStartedRef.current = false;
 
     let cancel = false;
 
     async function loadDetail() {
       try {
-        const { upload } = await fetchJSON<{ upload: any }>(`/api/uploads/${id}`);
+        const uploadDetailUrl = shareToken
+  ? `/api/uploads/${id}?share=${encodeURIComponent(
+      shareToken
+    )}${
+      sourceId
+        ? `&source=${encodeURIComponent(sourceId)}`
+        : ""
+    }`
+  : `/api/uploads/${id}`;
+
+        const { upload } = await fetchJSON<{ upload: any }>(
+          uploadDetailUrl
+        );
+
         if (cancel) return;
 
-        const t = (upload?.tipo as "video" | "documento") || null;
+        const t =
+          (upload?.tipo as "video" | "documento") || null;
+
         const fname =
           upload?.titulo ||
           upload?.display_name ||
@@ -426,76 +466,154 @@ export default function VideoDetailPage({ id }: { id: string }) {
         if (upload?.views !== undefined) {
           setViews(upload.views);
         }
+
         setCurrentCategory(upload?.category || "");
         setCurrentSubcategory(upload?.subcategory || "");
         setMoveCategory(upload?.category || "");
         setMoveSubcategory(upload?.subcategory || "");
 
+        setVisibility(
+          upload?.visibility === "RESTRICTED"
+            ? "RESTRICTED"
+            : "PUBLIC"
+        );
+
+        setCanManagePrivacy(
+          upload?.can_manage_privacy === true
+        );
+
         if (t === "video") {
-          const cfUrl = upload?.cf_stream_playback_url as string | undefined;
-          const useCf = Boolean(upload?.using_cloudflare_stream && cfUrl);
+          const cfUrl =
+            upload?.cf_stream_playback_url as
+            | string
+            | undefined;
+
+          const useCf = Boolean(
+            upload?.using_cloudflare_stream &&
+            cfUrl
+          );
 
           setUsingCloudflareStream(useCf);
-          setCloudflareStreamUrl(useCf ? cfUrl! : null);
+          setCloudflareStreamUrl(
+            useCf ? cfUrl! : null
+          );
 
-          const url = upload?.url as string | undefined;
-          if (url) setVideoUrl(url);
+          const url =
+            upload?.url as string | undefined;
 
-          try {
-            const rawSubs = await fetchJSON<any>(`/api/subtitulos/${id}`);
-            const subs = normalizeSubtitlesResponse(rawSubs);
+          if (url) {
+            setVideoUrl(url);
+          }
 
-            if (cancel) return;
+          /*
+           * En vista compartida no cargamos,
+           * procesamos ni consultamos subtítulos.
+           */
+          if (!shareToken) {
+            try {
+              const rawSubs =
+                await fetchJSON<any>(
+                  `/api/subtitulos/${id}`
+                );
 
-            if (Array.isArray(subs) && subs.length > 0) {
-              setSubtitulos(subs);
-              stopPolling();
-            } else {
-              if (!processStartedRef.current) {
-                processStartedRef.current = true;
+              const subs =
+                normalizeSubtitlesResponse(
+                  rawSubs
+                );
 
-                fetch(`/api/procesar-subtitulos/${id}`, {
-                  method: "POST",
-                  cache: "no-store",
-                }).catch(() => { });
+              if (cancel) return;
+
+              if (
+                Array.isArray(subs) &&
+                subs.length > 0
+              ) {
+                setSubtitulos(subs);
+                stopPolling();
+              } else {
+                if (
+                  !processStartedRef.current
+                ) {
+                  processStartedRef.current =
+                    true;
+
+                  fetch(
+                    `/api/procesar-subtitulos/${id}`,
+                    {
+                      method: "POST",
+                      cache: "no-store",
+                    }
+                  ).catch(() => { });
+                }
+
+                startPolling();
+              }
+            } catch {
+              if (cancel) return;
+
+              if (
+                !processStartedRef.current
+              ) {
+                processStartedRef.current =
+                  true;
+
+                fetch(
+                  `/api/procesar-subtitulos/${id}`,
+                  {
+                    method: "POST",
+                    cache: "no-store",
+                  }
+                ).catch(() => { });
               }
 
               startPolling();
             }
-          } catch {
-            if (cancel) return;
-
-            if (!processStartedRef.current) {
-              processStartedRef.current = true;
-
-              fetch(`/api/procesar-subtitulos/${id}`, {
-                method: "POST",
-                cache: "no-store",
-              }).catch(() => { });
-            }
-
-            startPolling();
+          } else {
+            setSubtitulos([]);
+            stopPolling();
           }
         }
 
         if (t === "documento") {
-          const url = upload?.url as string | undefined;
-          if (url) setDocumentUrl(url);
+          const url =
+            upload?.url as string | undefined;
 
-          try {
-            const doc = await fetchJSON<{ documento?: { texto?: string } }>(
-              `/api/documento/${id}`
-            );
+          if (url) {
+            setDocumentUrl(url);
+          }
 
-            if (!cancel) {
-              setDocumentoTexto(doc?.documento?.texto || "");
+          /*
+           * En vista compartida no cargamos
+           * el texto completo del documento.
+           */
+          if (!shareToken) {
+            try {
+              const doc = await fetchJSON<{
+                documento?: {
+                  texto?: string;
+                };
+              }>(
+                `/api/documento/${id}`
+              );
+
+              if (!cancel) {
+                setDocumentoTexto(
+                  doc?.documento?.texto || ""
+                );
+              }
+            } catch {
+              if (!cancel) {
+                setDocumentoTexto("");
+              }
             }
-          } catch {
-            if (!cancel) setDocumentoTexto("");
+          } else {
+            setDocumentoTexto("");
           }
         }
-      } catch (e) {
-        console.error("Carga de detalle falló:", e);
+      } catch (error) {
+        console.error(
+          "Carga de detalle falló:",
+          error
+        );
       }
     }
 
@@ -505,7 +623,14 @@ export default function VideoDetailPage({ id }: { id: string }) {
       cancel = true;
       stopPolling();
     };
-  }, [id, setSubtitulos, startPolling, stopPolling]);
+  }, [
+    id,
+  shareToken,
+  sourceId,
+  setSubtitulos,
+  startPolling,
+  stopPolling,
+  ]);
 
   useEffect(() => {
     if (!videoSrcWithReload || tipo !== "video") return;
@@ -525,11 +650,11 @@ export default function VideoDetailPage({ id }: { id: string }) {
       if (!Stream || !cloudflareIframeRef.current) return;
 
       cloudflarePlayerRef.current = Stream(cloudflareIframeRef.current);
-setCloudflareReady(true);
+      setCloudflareReady(true);
 
-console.log("CLOUDFLARE_READY", {
-  ready: !!cloudflarePlayerRef.current,
-});
+      console.log("CLOUDFLARE_READY", {
+        ready: !!cloudflarePlayerRef.current,
+      });
     };
 
     if ((window as any).Stream) {
@@ -636,15 +761,15 @@ console.log("CLOUDFLARE_READY", {
 
     jumpTo(sec);
   }, [
-  tipo,
-  matchIndices,
-  currentMatchIndex,
-  getStartSecFor,
-  tableData,
-  jumpTo,
-  cloudflareReady,
-  usingCloudflareStream,
-]);
+    tipo,
+    matchIndices,
+    currentMatchIndex,
+    getStartSecFor,
+    tableData,
+    jumpTo,
+    cloudflareReady,
+    usingCloudflareStream,
+  ]);
 
   useEffect(() => {
     let alive = true;
@@ -730,6 +855,64 @@ console.log("CLOUDFLARE_READY", {
       setMoveMessage(err?.message || "No se pudo mover el archivo");
     } finally {
       setMovingFile(false);
+    }
+  };
+  const handleChangePrivacy = async () => {
+    const nextVisibility =
+      visibility === "PUBLIC"
+        ? "RESTRICTED"
+        : "PUBLIC";
+
+    const actionText =
+      nextVisibility === "PUBLIC"
+        ? "hacer público este archivo"
+        : "hacer restringido este archivo";
+
+    const confirmed = window.confirm(
+      `¿Estás seguro de que deseas ${actionText}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setChangingPrivacy(true);
+      setPrivacyMessage("");
+
+      const response = await fetch(`/api/uploads/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          visibility: nextVisibility,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+          "No se pudo cambiar la privacidad"
+        );
+      }
+
+      setVisibility(nextVisibility);
+
+      setPrivacyMessage(
+        nextVisibility === "PUBLIC"
+          ? "El archivo ahora es público."
+          : "El archivo ahora es restringido."
+      );
+
+      router.refresh();
+    } catch (error: any) {
+      setPrivacyMessage(
+        error?.message ||
+        "No se pudo cambiar la privacidad"
+      );
+    } finally {
+      setChangingPrivacy(false);
     }
   };
   const handleThumbnailUpload = async (file: File | null) => {
@@ -837,8 +1020,20 @@ console.log("CLOUDFLARE_READY", {
   };
   return (
     <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
-      <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+     <div
+  className={
+    isSharedView
+      ? "w-full"
+      : "grid w-full grid-cols-1 gap-6 lg:grid-cols-3"
+  }
+>
+  <div
+    className={
+      isSharedView
+        ? "mx-auto w-full max-w-[1400px]"
+        : "lg:col-span-2"
+    }
+  >
           <div className="mb-4 flex justify-start">
             <button
               onClick={() => router.back()}
@@ -848,23 +1043,131 @@ console.log("CLOUDFLARE_READY", {
             </button>
           </div>
 
-          {isAdmin && (
+          {isAdmin &&
+  !isSharedView &&
+  visibility === "PUBLIC" && (
             <div className="mb-3 flex justify-end">
               <button
                 type="button"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(id);
-                    setCopiedId(true);
-                    setTimeout(() => setCopiedId(false), 1800);
-                  } catch {
+                    setCopiedId(false);
+
+                    const response = await fetch(
+                      `/api/uploads/${id}/share-link`,
+                      {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          expiresInHours: 72,
+                        }),
+                      }
+                    );
+
+                    const result = await response
+                      .json()
+                      .catch(() => ({}));
+
+                    if (!response.ok) {
+                      throw new Error(
+                        result?.error ||
+                        "No se pudo generar el enlace compartido"
+                      );
+                    }
+
+                 const shareUrl = String(result.shareUrl || "").trim();
+
+if (!shareUrl) {
+  throw new Error("El servidor no devolvió un enlace para compartir");
+}
+
+let sharedNatively = false;
+
+// En móviles/iPhone intentamos primero el menú nativo de compartir.
+if (
+  typeof navigator !== "undefined" &&
+  typeof navigator.share === "function"
+) {
+  try {
+    await navigator.share({
+      title: "Archivo compartido",
+      url: shareUrl,
+    });
+
+    sharedNatively = true;
+  } catch (shareError: any) {
+    // AbortError significa que el usuario simplemente cerró
+    // el menú de compartir. No lo tratamos como error real.
+    if (shareError?.name === "AbortError") {
+      return;
+    }
+
+    console.warn(
+      "No se pudo usar el menú nativo de compartir:",
+      shareError
+    );
+  }
+}
+
+// Si no existe navigator.share o falló, usamos portapapeles.
+if (!sharedNatively) {
+  try {
+    if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      await navigator.clipboard.writeText(shareUrl);
+    } else {
+      throw new Error("Clipboard API no disponible");
+    }
+  } catch {
+    // Fallback para Safari/iOS u otros navegadores
+    const textarea = document.createElement("textarea");
+
+    textarea.value = shareUrl;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+
+    document.body.appendChild(textarea);
+
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const copied = document.execCommand("copy");
+
+    document.body.removeChild(textarea);
+
+    if (!copied) {
+      throw new Error(
+        "No se pudo copiar el enlace al portapapeles"
+      );
+    }
+  }
+}
+
+setCopiedId(true);
+
+setTimeout(() => {
+  setCopiedId(false);
+}, 1800);
+                  } catch (error) {
+                    console.error(
+                      "Error generando enlace compartido:",
+                      error
+                    );
+
                     setCopiedId(false);
                   }
                 }}
                 className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-                title={id}
+                title="Copiar enlace compartido"
               >
-                {copiedId ? "ID copiado" : "Copiar ID del archivo"}
+                {copiedId ? "Enlace copiado" : "Compartir archivo"}
               </button>
             </div>
           )}
@@ -872,6 +1175,25 @@ console.log("CLOUDFLARE_READY", {
           {isAdmin && (
             <>
               <div className="mb-4 flex flex-wrap justify-end gap-2">
+                {canManagePrivacy && (
+                  <button
+                    type="button"
+                    onClick={handleChangePrivacy}
+                    disabled={changingPrivacy}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs transition disabled:opacity-50",
+                      visibility === "RESTRICTED"
+                        ? "border-green-500/70 bg-green-500/10 text-green-300 hover:bg-green-500/20"
+                        : "border-zinc-700 bg-zinc-950/70 text-zinc-300 hover:border-orange-500/70 hover:text-orange-300",
+                    ].join(" ")}
+                  >
+                    {changingPrivacy
+                      ? "Cambiando..."
+                      : visibility === "RESTRICTED"
+                        ? "Hacer público"
+                        : "Hacer restringido"}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={thumbnailLoadingCandidates}
@@ -911,6 +1233,11 @@ console.log("CLOUDFLARE_READY", {
               {thumbnailMessage && (
                 <p className="mb-4 text-right text-xs text-orange-300">
                   {thumbnailMessage}
+                </p>
+              )}
+              {privacyMessage && (
+                <p className="mb-4 text-right text-xs text-orange-300">
+                  {privacyMessage}
                 </p>
               )}
             </>
@@ -1059,60 +1386,64 @@ console.log("CLOUDFLARE_READY", {
             </div>
           )}
 
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <input
-              type="text"
-              placeholder=" Buscar palabra o frase..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentMatchIndex(0);
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
+          {!isSharedView && (
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <input
+                type="text"
+                placeholder=" Buscar palabra o frase..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentMatchIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
 
-                e.preventDefault();
-                const dir = e.shiftKey ? -1 : 1;
+                  e.preventDefault();
+                  const dir = e.shiftKey ? -1 : 1;
 
-                if (tipo === "documento" && viewerApiRef.current?.step) {
-                  const nextFromViewer = viewerApiRef.current.step(dir);
+                  if (tipo === "documento" && viewerApiRef.current?.step) {
+                    const nextFromViewer = viewerApiRef.current.step(dir);
 
-                  if (Number.isFinite(nextFromViewer) && matchIndices.length) {
-                    const synced =
-                      ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
-                      matchIndices.length;
+                    if (Number.isFinite(nextFromViewer) && matchIndices.length) {
+                      const synced =
+                        ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
+                        matchIndices.length;
 
-                    setCurrentMatchIndex(synced);
+                      setCurrentMatchIndex(synced);
+                    }
+
+                    return;
                   }
 
-                  return;
-                }
+                  if (!matchIndices.length) return;
 
-                if (!matchIndices.length) return;
+                  const next =
+                    (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
 
-                const next =
-                  (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
+                  setCurrentMatchIndex(next);
+                }}
+                className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
+              />
 
-                setCurrentMatchIndex(next);
-              }}
-              className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
-            />
+              <div className="text-xs text-zinc-400">
+                {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
+              </div>
 
-            <div className="text-xs text-zinc-400">
-              {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
+                <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
+              </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
-              <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
-            </div>
-          </div>
-
-          {polling && subtitulos.length === 0 && tipo === "video" && (
-            <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
           )}
+          {!isSharedView &&
+            polling &&
+            subtitulos.length === 0 &&
+            tipo === "video" && (
+              <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
+            )}
 
-          {tipo === "video" && (
+          {tipo === "video" && !isSharedView && (
             <TablaSubtitulos
               data={tableData}
               searchTerm={searchTerm}
@@ -1122,7 +1453,6 @@ console.log("CLOUDFLARE_READY", {
               setCurrentMatchIndex={setCurrentMatchIndex}
             />
           )}
-
           {tipo === "documento" && (
             <TablaDocumento
               texto={documentoTexto}
@@ -1136,51 +1466,73 @@ console.log("CLOUDFLARE_READY", {
           )}
         </div>
 
-        <div className="space-y-6">
-          <FichaTecnica uploadId={id} />
-          {/* <ArchivosRelacionadosMock /> */}
-        </div>
+      {!isSharedView && (
+  <div className="space-y-6">
+    <FichaTecnica uploadId={id} />
+
+    <UploadPermissionsPanel uploadId={id} />
+
+    {/* <ArchivosRelacionadosMock /> */}
+  </div>
+)}
       </div>
 
-      <div className="mt-12 w-full">
-        <RelatedDiscoveryRail uploadId={id} />
-      </div>
+     {isSharedView ? (
+  <div className="mx-auto w-full max-w-[1400px]">
+    <SharedShowcaseCarousel
+      sourceId={
+        searchParams.get("source")?.trim() || id
+      }
+      shareToken={shareToken}
+    />
+  </div>
+) : (
+  <div className="mt-12 w-full">
+    <RelatedDiscoveryRail uploadId={id} />
+  </div>
+)}
+      {!isSharedView && (
+        <div className="mt-12 w-full">
+          <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
+            Explorar categorías
+          </h2>
 
-      <div className="mt-12 w-full">
-        <h2 className="text-center text-2xl md:text-3xl font-bold mb-6">
-          Explorar categorías
-        </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {categories.map((cat, i) => (
+              <Link
+                key={cat.slug}
+                href={`/organizar/${cat.slug}`}
+                className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
+              >
+                <article className="h-full">
+                  <div className="relative aspect-[4/3] bg-black overflow-hidden">
+                    <Image
+                      src={cat.cover || "/Publicidad.avif"}
+                      alt={cat.label}
+                      fill
+                      className="object-cover group-hover:scale-105 transition duration-500"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      priority={i === 0}
+                    />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {categories.map((cat, i) => (
-            <Link
-              key={cat.slug}
-              href={`/organizar/${cat.slug}`}
-              className="group block overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 hover:border-orange-400/70 transition"
-            >
-              <article className="h-full">
-                <div className="relative aspect-[4/3] bg-black overflow-hidden">
-                  <Image
-                    src={cat.cover || "/Publicidad.avif"}
-                    alt={cat.label}
-                    fill
-                    className="object-cover group-hover:scale-105 transition duration-500"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    priority={i === 0}
-                  />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      <h3 className="text-lg font-bold text-white">
+                        {cat.label}
+                      </h3>
 
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <h3 className="text-lg font-bold text-white">{cat.label}</h3>
-                    <p className="text-sm text-zinc-300 mt-1">{cat.description}</p>
+                      <p className="text-sm text-zinc-300 mt-1">
+                        {cat.description}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </article>
-            </Link>
-          ))}
+                </article>
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {moveOpen && isSuperAdmin && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm">

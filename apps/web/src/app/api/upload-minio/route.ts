@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/db";
 import jwt from "jsonwebtoken";
-import { randomUUID, createHash } from "crypto";
+import {
+  randomUUID,
+  createHmac,
+  timingSafeEqual,
+} from "crypto";
 import { spawn } from "child_process";
 import path from "path";
 import { Readable } from "stream";
 // import { Storage } from "@google-cloud/storage";
 import fs from "fs/promises";
 import os from "os";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  PutObjectCommand,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
 import {
@@ -137,10 +147,10 @@ async function sendVideoToCloudflareStream(params: {
   try {
     const signedR2Url = await createR2SignedReadUrl(r2Path);
 
-const cf = await copyVideoToCloudflareStream({
-  videoUrl: signedR2Url,
-  name: fileName,
-});
+    const cf = await copyVideoToCloudflareStream({
+      videoUrl: signedR2Url,
+      name: fileName,
+    });
 
     cfStreamUid = cf.uid;
     cfStreamReady = cf.ready;
@@ -178,7 +188,7 @@ const cf = await copyVideoToCloudflareStream({
         `,
         [cfStreamStatus, rowId]
       )
-      .catch(() => {});
+      .catch(() => { });
   }
 
   return {
@@ -190,6 +200,158 @@ const cf = await copyVideoToCloudflareStream({
 }
 
 type CatSlug = string;
+type UploadVisibility = "PUBLIC" | "RESTRICTED";
+
+type UploadAccessLevel = "VIEWER" | "APPROVER" | "EDITOR";
+
+type AssignedUploadUser = {
+  userId: string;
+  accessLevel: UploadAccessLevel;
+};
+
+type AssignedUploadGroup = {
+  groupId: string;
+  accessLevel: UploadAccessLevel;
+};
+
+type UploadPrivacyInput = {
+  visibility: UploadVisibility;
+  requiresApproval: boolean;
+  approvalStatus: "NOT_REQUIRED" | "PENDING";
+  assignedUsers: AssignedUploadUser[];
+  assignedGroups: AssignedUploadGroup[];
+};
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function normalizeAccessLevel(value: unknown): UploadAccessLevel {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+
+  if (
+    normalized === "APPROVER" ||
+    normalized === "EDITOR" ||
+    normalized === "VIEWER"
+  ) {
+    return normalized;
+  }
+
+  return "VIEWER";
+}
+
+function parseAssignedUsers(value: unknown): AssignedUploadUser[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const uniqueUsers = new Map<string, AssignedUploadUser>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const rawItem = item as {
+      userId?: unknown;
+      accessLevel?: unknown;
+    };
+
+    const userId = String(rawItem.userId || "").trim();
+
+    if (!isUuid(userId)) {
+      continue;
+    }
+
+    uniqueUsers.set(userId, {
+      userId,
+      accessLevel: normalizeAccessLevel(rawItem.accessLevel),
+    });
+  }
+
+  return Array.from(uniqueUsers.values());
+}
+
+function parseAssignedGroups(
+  value: unknown
+): AssignedUploadGroup[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const uniqueGroups =
+    new Map<string, AssignedUploadGroup>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const rawItem = item as {
+      groupId?: unknown;
+      accessLevel?: unknown;
+    };
+
+    const groupId = String(
+      rawItem.groupId || ""
+    ).trim();
+
+    if (!isUuid(groupId)) {
+      continue;
+    }
+
+    uniqueGroups.set(groupId, {
+      groupId,
+      accessLevel: normalizeAccessLevel(
+        rawItem.accessLevel
+      ),
+    });
+  }
+
+  return Array.from(
+    uniqueGroups.values()
+  );
+}
+
+function parseUploadPrivacy(input: {
+  visibility?: unknown;
+  requiresApproval?: unknown;
+  assignedUsers?: unknown;
+  assignedGroups?: unknown;
+}): UploadPrivacyInput {
+  const visibility: UploadVisibility =
+    String(input.visibility || "")
+      .trim()
+      .toUpperCase() === "RESTRICTED"
+      ? "RESTRICTED"
+      : "PUBLIC";
+
+  const requiresApproval =
+    input.requiresApproval === true ||
+    String(input.requiresApproval || "")
+      .trim()
+      .toLowerCase() === "true";
+
+  return {
+    visibility,
+    requiresApproval,
+    approvalStatus: requiresApproval ? "PENDING" : "NOT_REQUIRED",
+    assignedUsers:
+      visibility === "RESTRICTED"
+        ? parseAssignedUsers(input.assignedUsers)
+        : [],
+        assignedGroups:
+  visibility === "RESTRICTED"
+    ? parseAssignedGroups(
+        input.assignedGroups
+      )
+    : [],
+  };
+}
 
 async function isValidCat(c: string) {
   const { rows } = await pool.query(
@@ -240,15 +402,562 @@ type PendingDirectUpload = {
   subcategory: string | null;
   ficha: FichaInput | null;
   createdById: string;
+  visibility: UploadVisibility;
+  requiresApproval: boolean;
+  approvalStatus: "NOT_REQUIRED" | "PENDING";
+  assignedUsers: AssignedUploadUser[];
+  assignedGroups: AssignedUploadGroup[];
 };
 
-const pendingUploads = new Map<string, PendingDirectUpload>();
 
-function createFinalizeToken(payload: PendingDirectUpload) {
-  const raw = JSON.stringify(payload) + "|" + Date.now() + "|" + randomUUID();
-  return createHash("sha256").update(raw).digest("hex");
+type CreateUploadWithPrivacyInput = {
+  rowId: string;
+  fileName: string;
+  fileKey: string;
+  filePath: string | null;
+  size: number;
+  tipo: string;
+  category: CatSlug;
+  subcategory: string | null;
+  r2Path: string;
+  createdById: string;
+  visibility: UploadVisibility;
+  requiresApproval: boolean;
+  approvalStatus: "NOT_REQUIRED" | "PENDING";
+  assignedUsers: AssignedUploadUser[];
+  assignedGroups: AssignedUploadGroup[];
+};
+
+async function createUploadWithPrivacy(
+  input: CreateUploadWithPrivacyInput
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      INSERT INTO uploads
+        (
+          id,
+          file_name,
+          file_key,
+          file_path,
+          size_in_bytes,
+          status,
+          uploaded_at,
+          tipo,
+          category,
+          subcategory,
+          r2_path,
+          created_by_id,
+          visibility,
+          requires_approval,
+          approval_status
+        )
+      VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          NOW(),
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13,
+          $14
+        )
+      `,
+      [
+        input.rowId,
+        input.fileName,
+        input.fileKey,
+        input.filePath,
+        input.size,
+        "uploaded",
+        input.tipo,
+        input.category,
+        input.subcategory,
+        input.r2Path,
+        input.createdById,
+        input.visibility,
+        input.requiresApproval,
+        input.approvalStatus,
+      ]
+    );
+
+    if (
+      input.visibility === "RESTRICTED" &&
+      input.assignedUsers.length > 0
+    ) {
+      const assignedUserIds = input.assignedUsers.map(
+        (assignedUser) => assignedUser.userId
+      );
+
+      const existingUsersResult = await client.query(
+        `
+        SELECT id::text AS id
+        FROM users
+        WHERE id = ANY($1::uuid[])
+        `,
+        [assignedUserIds]
+      );
+
+      const existingUserIds = new Set<string>(
+        existingUsersResult.rows.map((row) => String(row.id))
+      );
+
+      const missingUserIds = assignedUserIds.filter(
+        (userId) => !existingUserIds.has(userId)
+      );
+
+      if (missingUserIds.length > 0) {
+        throw new Error(
+          `Usuarios asignados inexistentes: ${missingUserIds.join(", ")}`
+        );
+      }
+
+      for (const assignedUser of input.assignedUsers) {
+        await client.query(
+          `
+          INSERT INTO upload_access_users
+            (
+              upload_id,
+              user_id,
+              access_level,
+              approval_decision,
+              assigned_by_id,
+              created_at,
+              updated_at
+            )
+          VALUES
+            (
+              $1,
+              $2,
+              $3,
+              'PENDING',
+              $4,
+              NOW(),
+              NOW()
+            )
+          ON CONFLICT (upload_id, user_id)
+          DO UPDATE SET
+            access_level = EXCLUDED.access_level,
+            assigned_by_id = EXCLUDED.assigned_by_id,
+            updated_at = NOW()
+          `,
+          [
+            input.rowId,
+            assignedUser.userId,
+            assignedUser.accessLevel,
+            input.createdById,
+          ]
+        );
+      }
+    }
+
+    /*
+ * Permisos unificados de usuarios.
+ * Mantenemos upload_access_users temporalmente
+ * para compatibilidad con las consultas antiguas.
+ */
+if (
+  input.visibility === "RESTRICTED" &&
+  input.assignedUsers.length > 0
+) {
+  for (
+    const assignedUser of
+    input.assignedUsers
+  ) {
+    await client.query(
+      `
+      INSERT INTO upload_permissions
+        (
+          upload_id,
+          target_type,
+          target_id,
+          access_level,
+          assigned_by_id,
+          created_at,
+          updated_at
+        )
+      VALUES
+        (
+          $1,
+          'USER',
+          $2,
+          $3,
+          $4,
+          NOW(),
+          NOW()
+        )
+      ON CONFLICT
+        (upload_id, target_type, target_id)
+      DO UPDATE SET
+        access_level =
+          EXCLUDED.access_level,
+        assigned_by_id =
+          EXCLUDED.assigned_by_id,
+        updated_at = NOW()
+      `,
+      [
+        input.rowId,
+        assignedUser.userId,
+        assignedUser.accessLevel,
+        input.createdById,
+      ]
+    );
+  }
 }
 
+/*
+ * Permisos por grupo.
+ */
+if (
+  input.visibility === "RESTRICTED" &&
+  input.assignedGroups.length > 0
+) {
+  const assignedGroupIds =
+    input.assignedGroups.map(
+      (group) => group.groupId
+    );
+
+  const existingGroupsResult =
+    await client.query(
+      `
+      SELECT id::text AS id
+      FROM user_groups
+      WHERE
+        id::text = ANY($1::text[])
+        AND is_active IS TRUE
+      `,
+      [assignedGroupIds]
+    );
+
+  const existingGroupIds =
+    new Set<string>(
+      existingGroupsResult.rows.map(
+        (row) => String(row.id)
+      )
+    );
+
+  const missingGroupIds =
+    assignedGroupIds.filter(
+      (groupId) =>
+        !existingGroupIds.has(groupId)
+    );
+
+  if (missingGroupIds.length > 0) {
+    throw new Error(
+      `Grupos asignados inexistentes o inactivos: ${missingGroupIds.join(
+        ", "
+      )}`
+    );
+  }
+
+  for (
+    const assignedGroup of
+    input.assignedGroups
+  ) {
+    await client.query(
+      `
+      INSERT INTO upload_permissions
+        (
+          upload_id,
+          target_type,
+          target_id,
+          access_level,
+          assigned_by_id,
+          created_at,
+          updated_at
+        )
+      VALUES
+        (
+          $1,
+          'GROUP',
+          $2,
+          $3,
+          $4,
+          NOW(),
+          NOW()
+        )
+      ON CONFLICT
+        (upload_id, target_type, target_id)
+      DO UPDATE SET
+        access_level =
+          EXCLUDED.access_level,
+        assigned_by_id =
+          EXCLUDED.assigned_by_id,
+        updated_at = NOW()
+      `,
+      [
+        input.rowId,
+        assignedGroup.groupId,
+        assignedGroup.accessLevel,
+        input.createdById,
+      ]
+    );
+  }
+}
+
+/*
+ * Notificaciones para usuarios que reciben
+ * acceso a un archivo restringido.
+ *
+ * Unificamos:
+ * - usuarios asignados directamente
+ * - miembros de grupos asignados
+ *
+ * UNION evita duplicados si una persona
+ * recibe acceso por más de una vía.
+ */
+if (input.visibility === "RESTRICTED") {
+  await client.query(
+    `
+    WITH recipients AS (
+      SELECT
+        permission.target_id::uuid AS user_id
+
+      FROM upload_permissions permission
+
+      INNER JOIN users target_user
+        ON target_user.id::text =
+          permission.target_id
+
+      WHERE
+        permission.upload_id =
+          $1::text
+
+        AND
+          permission.target_type =
+            'USER'
+
+        AND
+          target_user.is_active IS TRUE
+
+      UNION
+
+      SELECT
+        group_member.user_id
+
+      FROM upload_permissions permission
+
+      INNER JOIN user_group_members group_member
+        ON group_member.group_id::text =
+          permission.target_id
+
+      INNER JOIN users target_user
+        ON target_user.id =
+          group_member.user_id
+
+      WHERE
+        permission.upload_id =
+          $1::text
+
+        AND
+          permission.target_type =
+            'GROUP'
+
+        AND
+          target_user.is_active IS TRUE
+    )
+
+    INSERT INTO notifications
+      (
+        user_id,
+        type,
+        title,
+        message,
+        upload_id,
+        action_url,
+        metadata,
+        created_at
+      )
+
+    SELECT
+      recipients.user_id,
+
+      'RESTRICTED_UPLOAD_SHARED',
+
+      'Nuevo archivo compartido contigo',
+
+      $2::text ||
+        ' fue compartido contigo de forma restringida.',
+
+      $1::uuid,
+
+      '/videos/' || $1::text,
+
+      jsonb_build_object(
+        'fileName',
+        $2::text,
+        'sharedByUserId',
+        $3::text
+      ),
+
+      NOW()
+
+    FROM recipients
+
+    WHERE
+      recipients.user_id::text <>
+        $3::text
+
+      AND NOT EXISTS (
+        SELECT 1
+
+        FROM notifications existing_notification
+
+        WHERE
+          existing_notification.user_id =
+            recipients.user_id
+
+          AND
+            existing_notification.upload_id =
+              $1::uuid
+
+          AND
+            existing_notification.type =
+              'RESTRICTED_UPLOAD_SHARED'
+
+          AND
+            existing_notification.resolved_at
+              IS NULL
+      )
+    `,
+    [
+      input.rowId,
+      input.fileName,
+      input.createdById,
+    ]
+  );
+}
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+type FinalizeTokenPayload = PendingDirectUpload & {
+  issuedAt: number;
+  expiresAt: number;
+};
+
+const FINALIZE_TOKEN_SECRET =
+  process.env.NEXTAUTH_SECRET ||
+  process.env.JWT_SECRET ||
+  "dev-finalize-secret-cambiar";
+
+function toBase64Url(value: string) {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function fromBase64Url(value: string) {
+  return Buffer.from(value, "base64url").toString("utf8");
+}
+
+function signFinalizePayload(encodedPayload: string) {
+  return createHmac("sha256", FINALIZE_TOKEN_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+}
+
+function createFinalizeToken(
+  payload: PendingDirectUpload
+) {
+  const now = Date.now();
+
+  const tokenPayload: FinalizeTokenPayload = {
+    ...payload,
+    issuedAt: now,
+    expiresAt: now + 24 * 60 * 60 * 1000,
+  };
+
+  const encodedPayload = toBase64Url(
+    JSON.stringify(tokenPayload)
+  );
+
+  const signature =
+    signFinalizePayload(encodedPayload);
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyFinalizeToken(
+  token: string
+): PendingDirectUpload | null {
+  try {
+    const [encodedPayload, receivedSignature] =
+      token.split(".");
+
+    if (
+      !encodedPayload ||
+      !receivedSignature
+    ) {
+      return null;
+    }
+
+    const expectedSignature =
+      signFinalizePayload(encodedPayload);
+
+    const receivedBuffer = Buffer.from(
+      receivedSignature,
+      "utf8"
+    );
+
+    const expectedBuffer = Buffer.from(
+      expectedSignature,
+      "utf8"
+    );
+
+    if (
+      receivedBuffer.length !==
+      expectedBuffer.length
+    ) {
+      return null;
+    }
+
+    if (
+      !timingSafeEqual(
+        receivedBuffer,
+        expectedBuffer
+      )
+    ) {
+      return null;
+    }
+
+    const parsed = JSON.parse(
+      fromBase64Url(encodedPayload)
+    ) as FinalizeTokenPayload;
+
+    if (
+      !parsed?.expiresAt ||
+      Date.now() > parsed.expiresAt
+    ) {
+      return null;
+    }
+
+    const {
+      issuedAt: _issuedAt,
+      expiresAt: _expiresAt,
+      ...pending
+    } = parsed;
+
+    return pending;
+  } catch {
+    return null;
+  }
+}
 function getTipoFromExt(ext: string) {
   return ["mp4", "mov", "mkv", "webm", "m4v"].includes(ext)
     ? "video"
@@ -343,15 +1052,15 @@ async function upsertFichaTecnica(rowId: string, ficha: FichaInput | null) {
     corporativo: normString(ficha.corporativo),
     nuevos_negocios: normString(ficha.nuevosNegocios ?? ficha.nuevos_negocios),
     otros: normString(ficha.otros),
-duracion: normString(ficha.duracion),
-formato: normString(ficha.formato),
-version: normString(ficha.version),
-fecha: normString(ficha.fecha),
+    duracion: normString(ficha.duracion),
+    formato: normString(ficha.formato),
+    version: normString(ficha.version),
+    fecha: normString(ficha.fecha),
   };
 
   try {
     await pool.query(
-  `
+      `
   INSERT INTO ficha_tecnica (
     upload_id,
     titulo,
@@ -398,28 +1107,28 @@ fecha: normString(ficha.fecha),
     version = EXCLUDED.version,
     fecha = EXCLUDED.fecha
   `,
-  [
-    rowId,
-    payload.titulo,
-    payload.marca,
-    payload.agencia,
-    payload.productora,
-    payload.contacto,
-    payload.oficina,
-    payload.tipo,
-    payload.estudio,
-    payload.director,
-    payload.productor,
-    payload.produccion,
-    payload.corporativo,
-    payload.nuevos_negocios,
-    payload.otros,
-    payload.duracion,
-    payload.formato,
-    payload.version,
-    payload.fecha,
-  ]
-);
+      [
+        rowId,
+        payload.titulo,
+        payload.marca,
+        payload.agencia,
+        payload.productora,
+        payload.contacto,
+        payload.oficina,
+        payload.tipo,
+        payload.estudio,
+        payload.director,
+        payload.productor,
+        payload.produccion,
+        payload.corporativo,
+        payload.nuevos_negocios,
+        payload.otros,
+        payload.duracion,
+        payload.formato,
+        payload.version,
+        payload.fecha,
+      ]
+    );
   } catch (err: any) {
     if (err?.code !== "42703") throw err;
 
@@ -502,50 +1211,35 @@ async function triggerPostProcess(
 
   if (!scriptPath) return;
 
-try {
-  let signedUrl: string | null = null;
-  let processSource: "r2" | "gcs" | null = null;
+  try {
+    let signedUrl: string | null = null;
+    let processSource: "r2" | "gcs" | null = null;
 
-  if (r2Path) {
-    try {
-      signedUrl = await createR2SignedReadUrl(r2Path);
-      processSource = "r2";
-    } catch (r2Err) {
-      console.error("POSTPROCESS_R2_SIGNED_URL_ERROR", r2Err);
+    if (r2Path) {
+      try {
+        signedUrl = await createR2SignedReadUrl(r2Path);
+        processSource = "r2";
+      } catch (r2Err) {
+        console.error("POSTPROCESS_R2_SIGNED_URL_ERROR", r2Err);
+      }
     }
-  }
-if (!signedUrl) {
-  console.error("POSTPROCESS_NO_R2_SOURCE", {
-    rowId,
-    ext,
-    fileKey,
-    r2Path,
-  });
-  return;
-}
-  // if (!signedUrl) {
-  //   if (!BUCKET) {
-  //     console.error("No existe GCS_BUCKET para generar signed URL de respaldo");
-  //     return;
-  //   }
+    if (!signedUrl) {
+      console.error("POSTPROCESS_NO_R2_SOURCE", {
+        rowId,
+        ext,
+        fileKey,
+        r2Path,
+      });
+      return;
+    }
+  
+    console.log("POSTPROCESS_SOURCE_SELECTED", {
+      rowId,
+      ext,
+      processSource,
+    });
 
-  //   const [gcsSignedUrl] = await storage.bucket(BUCKET).file(fileKey).getSignedUrl({
-  //     version: "v4",
-  //     action: "read",
-  //     expires: Date.now() + 1000 * 60 * 60,
-  //   });
-
-  //   signedUrl = gcsSignedUrl;
-  //   processSource = "gcs";
-  // }
-
-  console.log("POSTPROCESS_SOURCE_SELECTED", {
-    rowId,
-    ext,
-    processSource,
-  });
-
-  const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
+    const proceso = spawn(python, [scriptPath, rowId, signedUrl], {
       cwd: process.cwd(),
       shell: false,
     });
@@ -559,7 +1253,7 @@ if (!signedUrl) {
 }
 
 async function handleDirectR2Init(req: NextRequest) {
-    const authenticatedUser = getAuthenticatedUser(req);
+  const authenticatedUser = getAuthenticatedUser(req);
 
   if (!authenticatedUser) {
     return NextResponse.json(
@@ -601,6 +1295,13 @@ async function handleDirectR2Init(req: NextRequest) {
 
   const ficha = (body.ficha as FichaInput | null) || null;
 
+ const privacy = parseUploadPrivacy({
+  visibility: body.visibility,
+  requiresApproval: body.requiresApproval,
+  assignedUsers: body.assignedUsers,
+  assignedGroups: body.assignedGroups,
+});
+
   const safeFileName = sanitizeFileName(fileName);
   const fileKey = `${randomUUID()}_${safeFileName}`;
   const rowId = randomUUID();
@@ -630,10 +1331,15 @@ async function handleDirectR2Init(req: NextRequest) {
     subcategory,
     ficha,
     createdById: authenticatedUser.id,
+    visibility: privacy.visibility,
+    requiresApproval: privacy.requiresApproval,
+    approvalStatus: privacy.approvalStatus,
+    assignedUsers: privacy.assignedUsers,
+    assignedGroups: privacy.assignedGroups,
   };
 
   const finalizeToken = createFinalizeToken(pending);
-  pendingUploads.set(finalizeToken, pending);
+ 
 
   return NextResponse.json({
     ok: true,
@@ -645,6 +1351,589 @@ async function handleDirectR2Init(req: NextRequest) {
   });
 }
 
+async function handleMultipartR2Init(req: NextRequest) {
+  const authenticatedUser = getAuthenticatedUser(req);
+
+  if (!authenticatedUser) {
+    return NextResponse.json(
+      {
+        error:
+          "Debes iniciar sesión para subir archivos",
+      },
+      { status: 401 }
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+
+  if (!body) {
+    return NextResponse.json(
+      { error: "Body inválido" },
+      { status: 400 }
+    );
+  }
+
+  const rawCat = String(
+    body.category || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!(await isValidCat(rawCat))) {
+    return NextResponse.json(
+      { error: "Categoría inválida" },
+      { status: 400 }
+    );
+  }
+
+  const fileName = String(
+    body.fileName || ""
+  ).trim();
+
+  if (!fileName) {
+    return NextResponse.json(
+      { error: "Falta fileName" },
+      { status: 400 }
+    );
+  }
+
+  const size = Number(body.size || 0);
+
+  if (
+    !Number.isFinite(size) ||
+    size <= 0
+  ) {
+    return NextResponse.json(
+      { error: "Tamaño inválido" },
+      { status: 400 }
+    );
+  }
+
+  const MAX_MULTIPART_SIZE_BYTES =
+    15 * 1024 * 1024 * 1024;
+
+  if (size > MAX_MULTIPART_SIZE_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "El archivo supera el máximo permitido de 15 GB",
+      },
+      { status: 413 }
+    );
+  }
+
+  const contentType = String(
+    body.contentType ||
+      "application/octet-stream"
+  );
+
+  const category: CatSlug = rawCat;
+
+  const subcategory =
+    body.subcategory &&
+    String(body.subcategory).trim()
+      ? String(body.subcategory).trim()
+      : null;
+
+  const ficha =
+    (body.ficha as FichaInput | null) ||
+    null;
+
+  const privacy = parseUploadPrivacy({
+    visibility: body.visibility,
+    requiresApproval:
+      body.requiresApproval,
+    assignedUsers: body.assignedUsers,
+    assignedGroups: body.assignedGroups,
+  });
+
+  const safeFileName =
+    sanitizeFileName(fileName);
+
+  const fileKey =
+    `${randomUUID()}_${safeFileName}`;
+
+  const rowId = randomUUID();
+
+  const r2Client = getR2Client();
+  const bucket = getR2BucketName();
+
+  const r2Path =
+    `r2://${bucket}/${fileKey}`;
+
+  const multipartResult =
+    await r2Client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: bucket,
+        Key: fileKey,
+        ContentType: contentType,
+      })
+    );
+
+  const uploadId =
+    multipartResult.UploadId;
+
+  if (!uploadId) {
+    return NextResponse.json(
+      {
+        error:
+          "R2 no devolvió el identificador multipart",
+      },
+      { status: 500 }
+    );
+  }
+
+  const pending: PendingDirectUpload = {
+    rowId,
+    fileName,
+    fileKey,
+    r2Path,
+    size,
+    contentType,
+    category,
+    subcategory,
+    ficha,
+    createdById:
+      authenticatedUser.id,
+    visibility: privacy.visibility,
+    requiresApproval:
+      privacy.requiresApproval,
+    approvalStatus:
+      privacy.approvalStatus,
+    assignedUsers:
+      privacy.assignedUsers,
+    assignedGroups:
+      privacy.assignedGroups,
+  };
+
+  const finalizeToken =
+    createFinalizeToken(pending);
+
+  /*
+   * 64 MB por parte:
+   * una película de 15 GB produce unas 240 partes.
+   */
+  const partSize =
+    64 * 1024 * 1024;
+
+  const totalParts =
+    Math.ceil(size / partSize);
+
+  return NextResponse.json({
+    ok: true,
+    mode: "multipart-r2",
+    uploadId,
+    finalizeToken,
+    rowId,
+    key: fileKey,
+    r2_path: r2Path,
+    partSize,
+    totalParts,
+  });
+}
+
+async function handleMultipartR2SignPart(
+  req: NextRequest
+) {
+  const authenticatedUser =
+    getAuthenticatedUser(req);
+
+  if (!authenticatedUser) {
+    return NextResponse.json(
+      {
+        error:
+          "Debes iniciar sesión para subir archivos",
+      },
+      { status: 401 }
+    );
+  }
+
+  const body = await req
+    .json()
+    .catch(() => null);
+
+  if (!body) {
+    return NextResponse.json(
+      { error: "Body inválido" },
+      { status: 400 }
+    );
+  }
+
+  const uploadId = String(
+    body.uploadId || ""
+  ).trim();
+
+  const finalizeToken = String(
+    body.finalizeToken || ""
+  ).trim();
+
+  const partNumber = Number(
+    body.partNumber
+  );
+
+  if (!uploadId) {
+    return NextResponse.json(
+      {
+        error:
+          "Falta el identificador multipart",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (
+    !Number.isInteger(partNumber) ||
+    partNumber < 1 ||
+    partNumber > 10_000
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Número de fragmento inválido",
+      },
+      { status: 400 }
+    );
+  }
+
+  const pending =
+    verifyFinalizeToken(finalizeToken);
+
+  if (!pending) {
+    return NextResponse.json(
+      {
+        error:
+          "Token de subida inválido o expirado",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (
+    String(pending.createdById) !==
+    String(authenticatedUser.id)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "No tienes permiso para esta subida",
+      },
+      { status: 403 }
+    );
+  }
+
+  const r2Client = getR2Client();
+  const bucket = getR2BucketName();
+
+  const uploadUrl = await getSignedUrl(
+    r2Client,
+    new UploadPartCommand({
+      Bucket: bucket,
+      Key: pending.fileKey,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    }),
+    {
+      expiresIn: 60 * 60,
+    }
+  );
+
+  return NextResponse.json({
+    ok: true,
+    uploadUrl,
+    uploadId,
+    partNumber,
+  });
+}
+async function handleMultipartR2Complete(
+  req: NextRequest
+) {
+  const authenticatedUser =
+    getAuthenticatedUser(req);
+
+  if (!authenticatedUser) {
+    return NextResponse.json(
+      {
+        error:
+          "Debes iniciar sesión para subir archivos",
+      },
+      { status: 401 }
+    );
+  }
+
+  const body = await req
+    .json()
+    .catch(() => null);
+
+  if (!body) {
+    return NextResponse.json(
+      { error: "Body inválido" },
+      { status: 400 }
+    );
+  }
+
+  const uploadId = String(
+    body.uploadId || ""
+  ).trim();
+
+  const finalizeToken = String(
+    body.finalizeToken || ""
+  ).trim();
+
+  const rawParts = Array.isArray(body.parts)
+    ? body.parts
+    : [];
+
+  if (!uploadId) {
+    return NextResponse.json(
+      {
+        error:
+          "Falta el identificador multipart",
+      },
+      { status: 400 }
+    );
+  }
+
+  const pending =
+    verifyFinalizeToken(finalizeToken);
+
+  if (!pending) {
+    return NextResponse.json(
+      {
+        error:
+          "Token de subida inválido o expirado",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (
+    String(pending.createdById) !==
+    String(authenticatedUser.id)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "No tienes permiso para completar esta subida",
+      },
+      { status: 403 }
+    );
+  }
+
+  type CompletedMultipartPart = {
+  PartNumber: number;
+  ETag: string;
+};
+
+ const parts: CompletedMultipartPart[] = rawParts
+  .map((part: any): CompletedMultipartPart => ({
+    PartNumber: Number(
+      part?.partNumber ??
+        part?.PartNumber
+    ),
+    ETag: String(
+      part?.etag ??
+        part?.ETag ??
+        ""
+    ).trim(),
+  }))
+  .filter(
+    (
+      part: CompletedMultipartPart
+    ) =>
+      Number.isInteger(
+        part.PartNumber
+      ) &&
+      part.PartNumber >= 1 &&
+      part.PartNumber <= 10_000 &&
+      Boolean(part.ETag)
+  )
+  .sort(
+    (
+      a: CompletedMultipartPart,
+      b: CompletedMultipartPart
+    ) =>
+      a.PartNumber -
+      b.PartNumber
+  );
+  if (!parts.length) {
+    return NextResponse.json(
+      {
+        error:
+          "No se recibieron fragmentos válidos",
+      },
+      { status: 400 }
+    );
+  }
+
+ const uniquePartNumbers =
+  new Set<number>(
+    parts.map(
+      (
+        part: CompletedMultipartPart
+      ) => part.PartNumber
+    )
+  );
+
+  if (
+    uniquePartNumbers.size !==
+    parts.length
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Hay fragmentos repetidos",
+      },
+      { status: 400 }
+    );
+  }
+
+  const r2Client = getR2Client();
+  const bucket = getR2BucketName();
+
+  try {
+    const completed =
+      await r2Client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: pending.fileKey,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts,
+          },
+        })
+      );
+
+    return NextResponse.json({
+      ok: true,
+      uploadId,
+      key: pending.fileKey,
+      r2_path: pending.r2Path,
+      etag:
+        completed.ETag || null,
+      location:
+        completed.Location || null,
+      finalizeToken,
+    });
+  } catch (error) {
+    console.error(
+      "MULTIPART_R2_COMPLETE_ERROR",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "R2 no pudo completar la subida multipart",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleMultipartR2Abort(
+  req: NextRequest
+) {
+  const authenticatedUser =
+    getAuthenticatedUser(req);
+
+  if (!authenticatedUser) {
+    return NextResponse.json(
+      {
+        error:
+          "Debes iniciar sesión para cancelar la subida",
+      },
+      { status: 401 }
+    );
+  }
+
+  const body = await req
+    .json()
+    .catch(() => null);
+
+  if (!body) {
+    return NextResponse.json(
+      { error: "Body inválido" },
+      { status: 400 }
+    );
+  }
+
+  const uploadId = String(
+    body.uploadId || ""
+  ).trim();
+
+  const finalizeToken = String(
+    body.finalizeToken || ""
+  ).trim();
+
+  if (!uploadId) {
+    return NextResponse.json(
+      {
+        error:
+          "Falta el identificador multipart",
+      },
+      { status: 400 }
+    );
+  }
+
+  const pending =
+    verifyFinalizeToken(finalizeToken);
+
+  if (!pending) {
+    return NextResponse.json(
+      {
+        error:
+          "Token de subida inválido o expirado",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (
+    String(pending.createdById) !==
+    String(authenticatedUser.id)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "No tienes permiso para cancelar esta subida",
+      },
+      { status: 403 }
+    );
+  }
+
+  const r2Client = getR2Client();
+  const bucket = getR2BucketName();
+
+  try {
+    await r2Client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: bucket,
+        Key: pending.fileKey,
+        UploadId: uploadId,
+      })
+    );
+
+    return NextResponse.json({
+      ok: true,
+      aborted: true,
+      uploadId,
+      key: pending.fileKey,
+    });
+  } catch (error) {
+    console.error(
+      "MULTIPART_R2_ABORT_ERROR",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "No se pudo cancelar la subida multipart",
+      },
+      { status: 500 }
+    );
+  }
+}
 async function handleDirectR2Finalize(req: NextRequest) {
   const body = await req.json().catch(() => null);
 
@@ -652,8 +1941,11 @@ async function handleDirectR2Finalize(req: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  const finalizeToken = String(body.finalizeToken || "");
-  const pending = pendingUploads.get(finalizeToken);
+ const finalizeToken =
+  String(body.finalizeToken || "");
+
+const pending =
+  verifyFinalizeToken(finalizeToken);
 
   if (!pending) {
     return NextResponse.json(
@@ -661,110 +1953,87 @@ async function handleDirectR2Finalize(req: NextRequest) {
       { status: 400 }
     );
   }
-
-  const {
-    rowId,
-    fileName,
-    fileKey,
-    r2Path,
-    size,
-    category,
-    subcategory,
-    ficha,
-    contentType,
-    createdById,
-  } = pending;
-
+ const {
+  rowId,
+  fileName,
+  fileKey,
+  r2Path,
+  size,
+  category,
+  subcategory,
+  ficha,
+  contentType,
+  createdById,
+  visibility,
+  requiresApproval,
+  approvalStatus,
+  assignedUsers,
+  assignedGroups,
+} = pending;
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   const tipo = getTipoFromExt(ext);
   const gcsUri: string | null = null;
   const streamingPath: string | null = null;
 
   try {
-    await pool.query(
-  `
-  INSERT INTO uploads
-    (
-      id,
-      file_name,
-      file_key,
-      file_path,
-      size_in_bytes,
-      status,
-      uploaded_at,
+    await createUploadWithPrivacy({
+      rowId,
+      fileName,
+      fileKey,
+      filePath: gcsUri,
+      size,
       tipo,
       category,
       subcategory,
-      r2_path,
-      created_by_id
-    )
-  VALUES
-    (
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
-      NOW(),
-      $7,
-      $8,
-      $9,
-      $10,
-      $11
-    )
-  `,
-  [
-    rowId,
-    fileName,
-    fileKey,
-    gcsUri,
-    size,
-    "uploaded",
-    tipo,
-    category,
-    subcategory,
-    r2Path,
-    createdById,
-  ]
-);
+      r2Path,
+      createdById,
+      visibility,
+      requiresApproval,
+      approvalStatus,
+      assignedUsers,
+      assignedGroups,
+    });
     await upsertFichaTecnica(rowId, ficha);
 
     const cfData =
       tipo === "video"
         ? await sendVideoToCloudflareStream({
-            rowId,
-            fileName,
-            r2Path,
-          })
+          rowId,
+          fileName,
+          r2Path,
+        })
         : {
-            cfStreamUid: null as string | null,
-            cfStreamReady: false,
-            cfStreamStatus: null as string | null,
-            cfStreamPlaybackUrl: null as string | null,
-          };
+          cfStreamUid: null as string | null,
+          cfStreamReady: false,
+          cfStreamStatus: null as string | null,
+          cfStreamPlaybackUrl: null as string | null,
+        };
 
     await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
 
-    pendingUploads.delete(finalizeToken);
+    
 
-    return NextResponse.json({
-      id: rowId,
-      message: `Archivo ${ext.toUpperCase()} subido correctamente`,
-      url: gcsUri,
-      file_path: gcsUri,
-      r2_path: r2Path,
-      streaming_path: streamingPath,
-      cf_stream_uid: cfData.cfStreamUid,
-      cf_stream_ready: cfData.cfStreamReady,
-      cf_stream_status: cfData.cfStreamStatus,
-      cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
-      key: fileKey,
-      tipo,
-      category,
-      subcategory,
-      contentType,
-    });
+   return NextResponse.json({
+  id: rowId,
+  message: `Archivo ${ext.toUpperCase()} subido correctamente`,
+  url: gcsUri,
+  file_path: gcsUri,
+  r2_path: r2Path,
+  streaming_path: streamingPath,
+  cf_stream_uid: cfData.cfStreamUid,
+  cf_stream_ready: cfData.cfStreamReady,
+  cf_stream_status: cfData.cfStreamStatus,
+  cf_stream_playback_url: cfData.cfStreamPlaybackUrl,
+  key: fileKey,
+  tipo,
+  category,
+  subcategory,
+  contentType,
+  visibility,
+  requires_approval: requiresApproval,
+  approval_status: approvalStatus,
+  assigned_users: assignedUsers,
+});
   } catch (error) {
     console.error("Error finalize direct R2:", error);
 
@@ -779,7 +2048,7 @@ export async function POST(req: NextRequest) {
   console.log("UPLOAD_POST", new Date().toISOString());
 
   try {
-        const authenticatedUser = getAuthenticatedUser(req);
+    const authenticatedUser = getAuthenticatedUser(req);
 
     if (!authenticatedUser) {
       return NextResponse.json(
@@ -799,14 +2068,28 @@ export async function POST(req: NextRequest) {
   return handleDirectR2Init(req);
 }
 
+if (mode === "multipart-r2-init") {
+  return handleMultipartR2Init(req);
+}
+
+if (mode === "multipart-r2-sign-part") {
+  return handleMultipartR2SignPart(req);
+}
+
+if (mode === "multipart-r2-complete") {
+  return handleMultipartR2Complete(req);
+}
+
+if (mode === "multipart-r2-abort") {
+  return handleMultipartR2Abort(req);
+}
 if (mode === "finalize-direct-r2") {
   return handleDirectR2Finalize(req);
 }
-
       return NextResponse.json({ error: "Modo no soportado" }, { status: 400 });
     }
 
-  
+
 
     const fileSize = Number(req.headers.get("x-filesize") || 0);
     if (fileSize > 2 * 1024 * 1024 * 1024) {
@@ -847,6 +2130,50 @@ if (mode === "finalize-direct-r2") {
         ficha = null;
       }
     }
+let assignedUsersInput: unknown = [];
+let assignedGroupsInput: unknown = [];
+
+const assignedUsersStr =
+  (formData.get("assignedUsers") as string | null) || "";
+
+if (assignedUsersStr) {
+  try {
+    assignedUsersInput = JSON.parse(assignedUsersStr);
+  } catch {
+    assignedUsersInput = [];
+  }
+}
+
+const assignedGroupsStr =
+  (formData.get(
+    "assignedGroups"
+  ) as string | null) || "";
+
+if (assignedGroupsStr) {
+  try {
+    assignedGroupsInput =
+      JSON.parse(
+        assignedGroupsStr
+      );
+  } catch {
+    assignedGroupsInput = [];
+  }
+}
+const privacy = parseUploadPrivacy({
+  visibility:
+    formData.get("visibility"),
+
+  requiresApproval:
+    formData.get(
+      "requiresApproval"
+    ),
+
+  assignedUsers:
+    assignedUsersInput,
+
+  assignedGroups:
+    assignedGroupsInput,
+});
 
     const filename = file.name;
     const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -856,104 +2183,75 @@ if (mode === "finalize-direct-r2") {
     const tipo = getTipoFromExt(ext);
     const gcsUri: string | null = null;
 
-let r2Path: string | null = null;
+    let r2Path: string | null = null;
 
-try {
-  const buffer = Buffer.from(await file.arrayBuffer());
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
 
-  r2Path = await uploadBufferToR2({
-    key: fileKey,
-    buffer,
-    contentType: file.type || "application/octet-stream",
-  });
+      r2Path = await uploadBufferToR2({
+        key: fileKey,
+        buffer,
+        contentType: file.type || "application/octet-stream",
+      });
 
-  console.log("R2_FORMDATA_UPLOAD_RESULT", {
-    rowId,
-    fileKey,
-    r2Path,
-  });
-} catch (r2Err) {
-  console.error("R2_FORMDATA_UPLOAD_FAILED", r2Err);
-}
-
-if (!r2Path) {
-  return NextResponse.json(
-    { error: "No se pudo guardar el archivo en R2" },
-    { status: 500 }
-  );
-}
-
-   await pool.query(
-  `
-  INSERT INTO uploads
-    (
-      id,
-      file_name,
-      file_key,
-      file_path,
-      size_in_bytes,
-      status,
-      uploaded_at,
-      tipo,
-      category,
-      subcategory,
-      r2_path,
-      created_by_id
-    )
-  VALUES
-    (
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
-      NOW(),
-      $7,
-      $8,
-      $9,
-      $10,
-      $11
-    )
-  `,
-  [
-    rowId,
-    filename,
-    fileKey,
-    gcsUri,
-    file.size,
-    "uploaded",
-    tipo,
-    category,
-    subcategory,
-    r2Path,
-    authenticatedUser.id,
-  ]
-);
-
- await upsertFichaTecnica(rowId, ficha);
-
-const thumbnailUrl = await uploadCustomThumbnail(rowId, thumbnail);
-
-const streamingPath: string | null = null;
-
-const cfData =
-  tipo === "video"
-    ? await sendVideoToCloudflareStream({
+      console.log("R2_FORMDATA_UPLOAD_RESULT", {
         rowId,
-        fileName: filename,
+        fileKey,
         r2Path,
-      })
-    : {
-        cfStreamUid: null as string | null,
-        cfStreamReady: false,
-        cfStreamStatus: null as string | null,
-        cfStreamPlaybackUrl: null as string | null,
-      };
+      });
+    } catch (r2Err) {
+      console.error("R2_FORMDATA_UPLOAD_FAILED", r2Err);
+    }
 
-await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
+    if (!r2Path) {
+      return NextResponse.json(
+        { error: "No se pudo guardar el archivo en R2" },
+        { status: 500 }
+      );
+    }
 
-return NextResponse.json({
+   await createUploadWithPrivacy({
+  rowId,
+  fileName: filename,
+  fileKey,
+  filePath: gcsUri,
+  size: file.size,
+  tipo,
+  category,
+  subcategory,
+  r2Path,
+  createdById: authenticatedUser.id,
+  visibility: privacy.visibility,
+  requiresApproval: privacy.requiresApproval,
+  approvalStatus: privacy.approvalStatus,
+  assignedUsers: privacy.assignedUsers,
+  assignedGroups:
+  privacy.assignedGroups,
+});
+
+    await upsertFichaTecnica(rowId, ficha);
+
+    const thumbnailUrl = await uploadCustomThumbnail(rowId, thumbnail);
+
+    const streamingPath: string | null = null;
+
+    const cfData =
+      tipo === "video"
+        ? await sendVideoToCloudflareStream({
+          rowId,
+          fileName: filename,
+          r2Path,
+        })
+        : {
+          cfStreamUid: null as string | null,
+          cfStreamReady: false,
+          cfStreamStatus: null as string | null,
+          cfStreamPlaybackUrl: null as string | null,
+        };
+
+    await triggerPostProcess(rowId, ext, gcsUri, fileKey, r2Path);
+
+    return NextResponse.json({
   id: rowId,
   message: `Archivo ${ext.toUpperCase()} subido correctamente`,
   url: gcsUri,
@@ -969,6 +2267,11 @@ return NextResponse.json({
   tipo,
   category,
   subcategory,
+  visibility: privacy.visibility,
+  requires_approval: privacy.requiresApproval,
+  approval_status: privacy.approvalStatus,
+  assigned_users: privacy.assignedUsers,
+  assigned_groups: privacy.assignedGroups,
 });
   } catch (error) {
     console.error("Error general:", error);

@@ -45,19 +45,24 @@ if (host && host !== CANONICAL_HOST && !isLocalHost) {
   const isPublic =
   pathname.startsWith("/login") ||
   pathname.startsWith("/register") ||
+  pathname.startsWith("/auth/google-complete") ||
   pathname.startsWith("/api/login") ||
   pathname.startsWith("/api/register") ||
   pathname.startsWith("/api/auth") ||
   pathname.startsWith("/api/auth/") ||
 
   // página pública de detalle
-  pathname.startsWith("/videos/") ||
+(
+  pathname.startsWith("/videos/") &&
+  req.nextUrl.searchParams.has("share")
+) ||
 
   // APIs mínimas para que el detalle funcione sin login
   pathname.startsWith("/api/uploads/") ||
   pathname.startsWith("/api/subtitulos/") ||
   pathname.startsWith("/api/views/") ||
   pathname.startsWith("/api/r2/proxy") ||
+  pathname.startsWith("/api/shared-showcase") ||
 
   pathname.startsWith("/_next") ||
   pathname.startsWith("/favicon") ||
@@ -68,14 +73,12 @@ if (host && host !== CANONICAL_HOST && !isLocalHost) {
   if (isPublic) return NextResponse.next();
 
   // Cookies que cuentan como "logueado":
-  const hasCustomAuth = !!req.cookies.get("auth")?.value;
-  const hasNextAuth =
-    !!req.cookies.get("next-auth.session-token")?.value ||
-    !!req.cookies.get("__Secure-next-auth.session-token")?.value;
+const hasCustomAuth =
+  !!req.cookies.get("auth")?.value;
 
-  if (hasCustomAuth || hasNextAuth) {
-    return NextResponse.next();
-  }
+if (hasCustomAuth) {
+  return NextResponse.next();
+}
 
   // Si no está autenticado, redirige a /login
   const url = req.nextUrl.clone();

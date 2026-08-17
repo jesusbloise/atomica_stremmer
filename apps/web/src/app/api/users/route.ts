@@ -41,22 +41,110 @@ export async function GET(req: Request) {
     let i = 1;
 
     if (q) {
-      clauses.push(`(LOWER(name) LIKE $${i} OR LOWER(email) LIKE $${i})`);
+     clauses.push(
+  `(LOWER(u.name) LIKE $${i} OR LOWER(u.email) LIKE $${i})`
+);
       params.push(`%${q}%`);
       i++;
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 
-    const countSQL = `SELECT COUNT(*)::int AS count FROM users ${where};`;
-    const dataSQL = `
-      SELECT id, name, email, role, is_active, created_at
-      FROM users
-      ${where}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset};
-    `;
+   const countSQL = `
+  SELECT COUNT(*)::int AS count
+  FROM users u
+  ${where};
+`;
 
+const dataSQL = `
+  SELECT
+    u.id,
+    u.name,
+    u.email,
+    u.role,
+    u.is_active,
+    u.created_at,
+
+    COALESCE(upload_stats.total_uploads, 0)::int
+      AS total_uploads,
+
+    COALESCE(upload_stats.public_uploads, 0)::int
+      AS public_uploads,
+
+    COALESCE(upload_stats.restricted_uploads, 0)::int
+      AS restricted_uploads,
+
+    COALESCE(private_access.private_access_count, 0)::int
+      AS private_access_count,
+
+    COALESCE(shared_people.shared_people_count, 0)::int
+      AS shared_people_count
+
+  FROM users u
+
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*) AS total_uploads,
+
+      COUNT(*) FILTER (
+        WHERE COALESCE(upload.visibility, 'PUBLIC') = 'PUBLIC'
+      ) AS public_uploads,
+
+      COUNT(*) FILTER (
+        WHERE COALESCE(upload.visibility, 'PUBLIC') = 'RESTRICTED'
+      ) AS restricted_uploads
+
+    FROM uploads upload
+
+    WHERE
+      upload.created_by_id::text = u.id::text
+      AND upload.is_deleted IS NOT TRUE
+  ) upload_stats ON TRUE
+
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*) AS private_access_count
+
+    FROM upload_access_users access_user
+
+    INNER JOIN uploads access_upload
+      ON access_upload.id::text =
+         access_user.upload_id::text
+
+    WHERE
+      access_user.user_id::text = u.id::text
+      AND access_upload.is_deleted IS NOT TRUE
+      AND COALESCE(
+        access_upload.visibility,
+        'PUBLIC'
+      ) = 'RESTRICTED'
+  ) private_access ON TRUE
+
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(
+        DISTINCT access_user.user_id
+      ) AS shared_people_count
+
+    FROM uploads owner_upload
+
+    INNER JOIN upload_access_users access_user
+      ON access_user.upload_id::text =
+         owner_upload.id::text
+
+    WHERE
+      owner_upload.created_by_id::text =
+        u.id::text
+      AND owner_upload.is_deleted IS NOT TRUE
+  ) shared_people ON TRUE
+
+  ${where}
+
+  ORDER BY u.created_at DESC
+
+  LIMIT ${limit}
+  OFFSET ${offset};
+`;
     const client = await pool.connect();
 
     try {

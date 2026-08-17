@@ -60,6 +60,9 @@ export default function PerfilPage() {
   // Campos passwords (los conservamos, pero no los enviamos a menos que quieras)
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+const [twoFactorLoading, setTwoFactorLoading] = useState(true);
+
 
   const dirty = useMemo(() => !isEqual(perfil, initialPerfil), [perfil, initialPerfil]);
 
@@ -108,6 +111,41 @@ export default function PerfilPage() {
     };
   }, []);
 
+
+  useEffect(() => {
+  let alive = true;
+
+  (async () => {
+    try {
+      setTwoFactorLoading(true);
+
+      const res = await fetch("/api/2fa/status", {
+        cache: "no-store",
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (!alive) return;
+
+      setTwoFactorEnabled(Boolean(data?.enabled));
+    } catch (error) {
+      console.error(
+        "Error cargando estado 2FA:",
+        error
+      );
+    } finally {
+      if (alive) {
+        setTwoFactorLoading(false);
+      }
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, []);
   /* ==== Protección: advertir al salir con cambios sin guardar ==== */
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -240,29 +278,6 @@ window.dispatchEvent(
   })
 );
 alert("Datos guardados ✅");
-
-      // const me = await fetch("/api/me", { cache: "no-store" }).then(r => r.ok ? r.json() : null);
-      // if (me?.id) {
-      //   const det = await fetch(`/api/perfiles/${me.id}`, { cache: "no-store" }).then(r => r.ok ? r.json() : null);
-      //   if (det) {
-      //     const updated: PerfilData = {
-      //       nombre: det.name || "",
-      //       email: det.email || "",
-      //       generacion: det.generacion || "",
-      //       facultad: det.facultad || "",
-      //       descripcion: det.descripcion || "",
-      //       avatarUrl: det.avatar_url || "",
-      //       instagram: det.instagram || "",
-      //       facebook: det.facebook || "",
-      //       whatsapp: det.whatsapp || "",
-      //       participaciones: Array.isArray(det.participaciones) ? det.participaciones : [],
-      //     };
-      //     setPerfil(updated);
-      //     setInitialPerfil(deepClone(updated));
-      //   }
-      // }
-
-      // alert("Datos guardados ✅");
     } catch (e) {
       console.error(e);
       alert("Hubo un problema ❌");
@@ -271,6 +286,8 @@ alert("Datos guardados ✅");
       if (fileInputRef.current) fileInputRef.current.value = ""; // limpia file input
     }
   };
+
+
 
   // Cancelar cambios
   const handleCancel = () => {
@@ -434,6 +451,68 @@ alert("Datos guardados ✅");
                 />
               </div>
 
+{/* Seguridad / Verificación en dos pasos */}
+<div className="mt-6 rounded-xl border border-zinc-700 bg-black/20 p-5">
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h3 className="text-lg font-semibold text-white">
+        Seguridad
+      </h3>
+
+      <p className="mt-1 text-sm text-zinc-400">
+        Verificación en dos pasos con Google Authenticator
+      </p>
+    </div>
+
+    {!twoFactorLoading && (
+      <span
+        className={[
+          "inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-medium",
+          twoFactorEnabled
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            : "border-red-500/30 bg-red-500/10 text-red-300",
+        ].join(" ")}
+      >
+        {twoFactorEnabled
+          ? "Activada"
+          : "Requiere configuración"}
+      </span>
+    )}
+  </div>
+
+  {twoFactorLoading ? (
+    <div className="mt-5 text-sm text-zinc-400">
+      Consultando seguridad de la cuenta...
+    </div>
+  ) : twoFactorEnabled ? (
+    <div className="mt-5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+      <p className="text-sm font-medium text-emerald-100">
+        Tu cuenta está protegida.
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-emerald-100/80">
+        Google Authenticator está activo y se solicitará un código
+        de verificación adicional cada vez que corresponda iniciar sesión.
+      </p>
+
+      <p className="mt-2 text-xs text-zinc-400">
+        La verificación en dos pasos es obligatoria para todas las cuentas
+        de Atomica y no puede desactivarse desde el perfil.
+      </p>
+    </div>
+  ) : (
+    <div className="mt-5 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+      <p className="text-sm font-medium text-red-200">
+        Esta cuenta todavía no tiene Google Authenticator configurado.
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-zinc-300">
+        Por política de seguridad, la configuración es obligatoria.
+        Cierra sesión y vuelve a ingresar para completar el proceso.
+      </p>
+    </div>
+  )}
+</div>
               {/* Participaciones */}
               <div className="mt-6">
                 <div className="flex items-center justify-between">

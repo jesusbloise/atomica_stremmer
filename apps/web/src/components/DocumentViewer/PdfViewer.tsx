@@ -9,8 +9,8 @@
 //   1) <PdfViewer url="..." />
 //   2) <PdfViewer url="..." searchTerm="..." registerNavApi={...} />
 
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+// import "react-pdf/dist/Page/AnnotationLayer.css";
+// import "react-pdf/dist/Page/TextLayer.css";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

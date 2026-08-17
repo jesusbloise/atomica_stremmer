@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg build-essential libpq-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY processor/requirements-transcription.txt /app/requirements-transcription.txt
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && pip install --no-cache-dir -r /app/requirements-transcription.txt
+
+ENV WHISPER_MODEL=small
+ENV WHISPER_DOWNLOAD_ROOT=/opt/whisper-models
+ENV PYTHONUNBUFFERED=1
+
+RUN mkdir -p /opt/whisper-models && python -c "import whisper; whisper.load_model('small', download_root='/opt/whisper-models')"
+
+COPY processor/procesar_subtitulos.py /app/procesar_subtitulos.py
+
+ENTRYPOINT ["python", "/app/procesar_subtitulos.py"]

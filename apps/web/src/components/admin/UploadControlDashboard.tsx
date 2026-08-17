@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     useMutation,
     useQuery,
@@ -61,6 +61,7 @@ type RankingItem = {
     pending: number;
     compliance: number;
 };
+
 type ResponsibleUser = {
     id: string;
     name: string | null;
@@ -87,6 +88,7 @@ type AssignResponsibleResponse = {
         } | null;
     };
 };
+
 type ControlCargasResponse = {
     summary: {
         total: number;
@@ -137,6 +139,70 @@ const STATUS_CLASSES: Record<FichaStatus, string> = {
     WITHOUT_FICHA: "border-zinc-600 bg-zinc-800 text-zinc-300",
 };
 
+const CONTROL_CARGAS_PATH = "/admin/control-cargas";
+const SCROLL_STORAGE_PREFIX = "control-cargas-scroll:";
+
+function isValidStatus(value: string | null): value is StatusFilter {
+    return (
+        value === "ALL" ||
+        value === "COMPLETE" ||
+        value === "INCOMPLETE" ||
+        value === "EMPTY" ||
+        value === "WITHOUT_FICHA"
+    );
+}
+
+function normalizePage(value: string | null) {
+    const parsedValue = Number(value);
+
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+        return 1;
+    }
+
+    return parsedValue;
+}
+
+function buildControlCargasUrl({
+    search,
+    status,
+    userId,
+    page,
+}: {
+    search: string;
+    status: StatusFilter;
+    userId: string;
+    page: number;
+}) {
+    const params = new URLSearchParams();
+    const normalizedSearch = search.trim();
+
+    if (normalizedSearch) {
+        params.set("search", normalizedSearch);
+    }
+
+    if (status !== "ALL") {
+        params.set("status", status);
+    }
+
+    if (userId) {
+        params.set("userId", userId);
+    }
+
+    if (page > 1) {
+        params.set("page", String(page));
+    }
+
+    const queryString = params.toString();
+
+    return queryString
+        ? `${CONTROL_CARGAS_PATH}?${queryString}`
+        : CONTROL_CARGAS_PATH;
+}
+
+function getScrollStorageKey(returnUrl: string) {
+    return `${SCROLL_STORAGE_PREFIX}${returnUrl}`;
+}
+
 async function fetchControlCargas({
     search,
     status,
@@ -182,6 +248,7 @@ async function fetchControlCargas({
 
     return (await response.json()) as ControlCargasResponse;
 }
+
 async function fetchResponsibleUsers() {
     const response = await fetch(
         "/api/admin/control-cargas/responsables",
@@ -234,6 +301,7 @@ async function assignResponsible({
 
     return body as AssignResponsibleResponse;
 }
+
 function SummaryCard({
     title,
     value,
@@ -250,8 +318,14 @@ function SummaryCard({
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-sm text-zinc-400">{title}</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{description}</p>
+
+                    <p className="mt-2 text-2xl font-semibold text-white">
+                        {value}
+                    </p>
+
+                    <p className="mt-1 text-xs text-zinc-500">
+                        {description}
+                    </p>
                 </div>
 
                 <div className="rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-zinc-300">
@@ -279,6 +353,7 @@ function ProgressBar({ value }: { value: number }) {
         <div className="min-w-36">
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                 <span className="text-zinc-400">Completitud</span>
+
                 <span className="font-medium text-zinc-200">
                     {normalizedValue}%
                 </span>
@@ -320,16 +395,99 @@ function getUserLabel(upload: UploadItem) {
 
 export default function UploadControlDashboard() {
     const queryClient = useQueryClient();
-    const [assignmentError, setAssignmentError] = useState<string | null>(null);
-    const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
+
+    const hasRestoredScrollRef = useRef(false);
+
+    const [hasLoadedUrlState, setHasLoadedUrlState] = useState(false);
+
+    const [assignmentError, setAssignmentError] = useState<string | null>(
+        null
+    );
+
+    const [assignmentSuccess, setAssignmentSuccess] = useState<
+        string | null
+    >(null);
+
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState<StatusFilter>("ALL");
     const [userId, setUserId] = useState("");
     const [page, setPage] = useState(1);
 
-    const { data, isLoading, isFetching, isError, error } = useQuery({
-        queryKey: ["control-cargas", search, status, userId, page],
+    /*
+     * Recupera los filtros existentes desde la URL cuando el componente
+     * vuelve a montarse.
+     */
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+
+        const searchFromUrl = params.get("search")?.trim() ?? "";
+        const statusFromUrl = params.get("status");
+        const userIdFromUrl = params.get("userId") ?? "";
+        const pageFromUrl = normalizePage(params.get("page"));
+
+        setSearchInput(searchFromUrl);
+        setSearch(searchFromUrl);
+        setStatus(
+            isValidStatus(statusFromUrl)
+                ? statusFromUrl
+                : "ALL"
+        );
+        setUserId(userIdFromUrl);
+        setPage(pageFromUrl);
+        setHasLoadedUrlState(true);
+    }, []);
+
+    /*
+     * Construye la URL exacta del listado actual.
+     */
+    const returnUrl = useMemo(() => {
+        return buildControlCargasUrl({
+            search,
+            status,
+            userId,
+            page,
+        });
+    }, [search, status, userId, page]);
+
+    /*
+     * Mantiene sincronizados los filtros con la URL del navegador.
+     * replaceState evita recargar la página o crear entradas innecesarias
+     * en el historial.
+     */
+    useEffect(() => {
+        if (!hasLoadedUrlState) {
+            return;
+        }
+
+        const currentUrl =
+            window.location.pathname +
+            window.location.search;
+
+        if (currentUrl !== returnUrl) {
+            window.history.replaceState(
+                window.history.state,
+                "",
+                returnUrl
+            );
+        }
+    }, [hasLoadedUrlState, returnUrl]);
+
+    const {
+        data,
+        isLoading,
+        isFetching,
+        isError,
+        error,
+    } = useQuery({
+        queryKey: [
+            "control-cargas",
+            search,
+            status,
+            userId,
+            page,
+        ],
+
         queryFn: () =>
             fetchControlCargas({
                 search,
@@ -337,8 +495,16 @@ export default function UploadControlDashboard() {
                 userId,
                 page,
             }),
+
         staleTime: 10_000,
+
+        /*
+         * Evita hacer una primera consulta con filtros vacíos antes de
+         * recuperar el estado guardado en la URL.
+         */
+        enabled: hasLoadedUrlState,
     });
+
     const {
         data: responsibleUsersData,
         isLoading: isLoadingResponsibleUsers,
@@ -348,6 +514,47 @@ export default function UploadControlDashboard() {
         queryFn: fetchResponsibleUsers,
         staleTime: 60_000,
     });
+
+    /*
+     * Recupera la posición del scroll una sola vez, después de que los
+     * archivos vuelvan a estar disponibles.
+     */
+    useEffect(() => {
+        if (
+            !hasLoadedUrlState ||
+            !data ||
+            hasRestoredScrollRef.current
+        ) {
+            return;
+        }
+
+        hasRestoredScrollRef.current = true;
+
+        const storageKey = getScrollStorageKey(returnUrl);
+        const storedScroll = window.sessionStorage.getItem(storageKey);
+
+        if (!storedScroll) {
+            return;
+        }
+
+        const scrollPosition = Number(storedScroll);
+
+        if (!Number.isFinite(scrollPosition)) {
+            window.sessionStorage.removeItem(storageKey);
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                window.scrollTo({
+                    top: scrollPosition,
+                    behavior: "auto",
+                });
+
+                window.sessionStorage.removeItem(storageKey);
+            });
+        });
+    }, [data, hasLoadedUrlState, returnUrl]);
 
     const assignMutation = useMutation({
         mutationFn: assignResponsible,
@@ -377,16 +584,58 @@ export default function UploadControlDashboard() {
             );
         },
     });
+
     const knownUsers = useMemo(() => {
         return (data?.ranking ?? []).filter(
-            (user): user is RankingItem & { userId: string } =>
-                Boolean(user.userId)
+            (
+                user
+            ): user is RankingItem & {
+                userId: string;
+            } => Boolean(user.userId)
         );
     }, [data?.ranking]);
+
+    function saveCurrentScrollPosition() {
+        const storageKey = getScrollStorageKey(returnUrl);
+
+        window.sessionStorage.setItem(
+            storageKey,
+            String(window.scrollY)
+        );
+    }
+
+    function getUploadHref(uploadId: string) {
+        return `/videos/${uploadId}?returnTo=${encodeURIComponent(
+            returnUrl
+        )}`;
+    }
 
     function applySearch() {
         setPage(1);
         setSearch(searchInput.trim());
+        hasRestoredScrollRef.current = true;
+    }
+
+    function changeStatus(nextStatus: StatusFilter) {
+        setStatus(nextStatus);
+        setPage(1);
+        hasRestoredScrollRef.current = true;
+    }
+
+    function changeUser(nextUserId: string) {
+        setUserId(nextUserId);
+        setPage(1);
+        hasRestoredScrollRef.current = true;
+    }
+
+    function changePage(nextPage: number) {
+        setPage(Math.max(1, nextPage));
+        hasRestoredScrollRef.current = true;
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     }
 
     function clearFilters() {
@@ -395,6 +644,12 @@ export default function UploadControlDashboard() {
         setStatus("ALL");
         setUserId("");
         setPage(1);
+        hasRestoredScrollRef.current = true;
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     }
 
     const summary = data?.summary;
@@ -412,12 +667,11 @@ export default function UploadControlDashboard() {
                     </h1>
 
                     <p className="mt-1 max-w-3xl text-sm text-zinc-400">
-                        Revisa quién subió cada archivo, el porcentaje de completitud de
-                        su ficha técnica y los campos pendientes.
+                        Revisa quién subió cada archivo, el porcentaje de
+                        completitud de su ficha técnica y los campos
+                        pendientes.
                     </p>
                 </div>
-
-                
 
                 {isFetching && !isLoading && (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
@@ -428,16 +682,16 @@ export default function UploadControlDashboard() {
             </div>
 
             {assignmentSuccess && (
-                    <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-                        {assignmentSuccess}
-                    </div>
-                )}
+                <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">
+                    {assignmentSuccess}
+                </div>
+            )}
 
-                {assignmentError && (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                        {assignmentError}
-                    </div>
-                )}
+            {assignmentError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                    {assignmentError}
+                </div>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <SummaryCard
@@ -488,7 +742,9 @@ export default function UploadControlDashboard() {
                                         <input
                                             value={searchInput}
                                             onChange={(event) =>
-                                                setSearchInput(event.target.value)
+                                                setSearchInput(
+                                                    event.target.value
+                                                )
                                             }
                                             onKeyDown={(event) => {
                                                 if (event.key === "Enter") {
@@ -511,31 +767,51 @@ export default function UploadControlDashboard() {
 
                                 <select
                                     value={status}
-                                    onChange={(event) => {
-                                        setStatus(event.target.value as StatusFilter);
-                                        setPage(1);
-                                    }}
+                                    onChange={(event) =>
+                                        changeStatus(
+                                            event.target
+                                                .value as StatusFilter
+                                        )
+                                    }
                                     className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
                                 >
-                                    <option value="ALL">Todos los estados</option>
-                                    <option value="COMPLETE">Completas</option>
-                                    <option value="INCOMPLETE">Incompletas</option>
-                                    <option value="EMPTY">Vacías</option>
-                                    <option value="WITHOUT_FICHA">Sin ficha</option>
+                                    <option value="ALL">
+                                        Todos los estados
+                                    </option>
+
+                                    <option value="COMPLETE">
+                                        Completas
+                                    </option>
+
+                                    <option value="INCOMPLETE">
+                                        Incompletas
+                                    </option>
+
+                                    <option value="EMPTY">
+                                        Vacías
+                                    </option>
+
+                                    <option value="WITHOUT_FICHA">
+                                        Sin ficha
+                                    </option>
                                 </select>
 
                                 <select
                                     value={userId}
-                                    onChange={(event) => {
-                                        setUserId(event.target.value);
-                                        setPage(1);
-                                    }}
+                                    onChange={(event) =>
+                                        changeUser(event.target.value)
+                                    }
                                     className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
                                 >
-                                    <option value="">Todos los responsables</option>
+                                    <option value="">
+                                        Todos los responsables
+                                    </option>
 
                                     {knownUsers.map((user) => (
-                                        <option key={user.userId} value={user.userId}>
+                                        <option
+                                            key={user.userId}
+                                            value={user.userId}
+                                        >
                                             {user.name}
                                         </option>
                                     ))}
@@ -552,215 +828,340 @@ export default function UploadControlDashboard() {
 
                             <div className="text-xs text-zinc-500">
                                 {pagination?.total ?? 0} archivo
-                                {(pagination?.total ?? 0) !== 1 ? "s" : ""} encontrado
-                                {(pagination?.total ?? 0) !== 1 ? "s" : ""}
+                                {(pagination?.total ?? 0) !== 1
+                                    ? "s"
+                                    : ""}{" "}
+                                encontrado
+                                {(pagination?.total ?? 0) !== 1
+                                    ? "s"
+                                    : ""}
                             </div>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="min-w-[1050px] w-full text-sm">
+                        <table className="w-full min-w-[1050px] text-sm">
                             <thead>
                                 <tr className="border-b border-zinc-800 text-left text-xs uppercase tracking-wide text-zinc-500">
-                                    <th className="px-4 py-3">Archivo</th>
-                                    <th className="px-4 py-3">Responsable</th>
-                                    <th className="px-4 py-3">Categoría</th>
-                                    <th className="px-4 py-3">Ficha</th>
-                                    <th className="px-4 py-3">Campos pendientes</th>
-                                    <th className="px-4 py-3">Fecha</th>
-                                    <th className="px-4 py-3 text-right">Acción</th>
+                                    <th className="px-4 py-3">
+                                        Archivo
+                                    </th>
+
+                                    <th className="px-4 py-3">
+                                        Responsable
+                                    </th>
+
+                                    <th className="px-4 py-3">
+                                        Categoría
+                                    </th>
+
+                                    <th className="px-4 py-3">
+                                        Ficha
+                                    </th>
+
+                                    <th className="px-4 py-3">
+                                        Campos pendientes
+                                    </th>
+
+                                    <th className="px-4 py-3">
+                                        Fecha
+                                    </th>
+
+                                    <th className="px-4 py-3 text-right">
+                                        Acción
+                                    </th>
                                 </tr>
                             </thead>
 
                             <tbody>
-                                {isLoading && (
-                                    <tr>
-                                        <td colSpan={7} className="px-4 py-12">
-                                            <div className="flex items-center justify-center gap-2 text-zinc-400">
-                                                <Loader2 className="h-5 w-5 animate-spin" />
-                                                Cargando control de cargas...
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-
-                                {isError && !isLoading && (
-                                    <tr>
-                                        <td colSpan={7} className="px-4 py-12">
-                                            <div className="flex items-center justify-center gap-2 text-red-400">
-                                                <AlertCircle className="h-5 w-5" />
-                                                {error instanceof Error
-                                                    ? error.message
-                                                    : "Error al cargar la información"}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-
-                                {!isLoading && !isError && uploads.length === 0 && (
+                                {(!hasLoadedUrlState || isLoading) && (
                                     <tr>
                                         <td
                                             colSpan={7}
-                                            className="px-4 py-12 text-center text-zinc-500"
+                                            className="px-4 py-12"
                                         >
-                                            No se encontraron archivos con estos filtros.
+                                            <div className="flex items-center justify-center gap-2 text-zinc-400">
+                                                <Loader2 className="h-5 w-5 animate-spin" />
+                                                Cargando control de
+                                                cargas...
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
 
-                                {uploads.map((upload) => (
-                                    <tr
-                                        key={upload.id}
-                                        className="border-b border-zinc-800/80 align-top transition hover:bg-zinc-800/30"
-                                    >
-                                        <td className="max-w-72 px-4 py-4">
-                                            <Link
-                                                href={`/videos/${upload.id}`}
-                                                className="font-medium text-white hover:underline"
+                                {isError &&
+                                    hasLoadedUrlState &&
+                                    !isLoading && (
+                                        <tr>
+                                            <td
+                                                colSpan={7}
+                                                className="px-4 py-12"
                                             >
-                                                {upload.fileName}
-                                            </Link>
+                                                <div className="flex items-center justify-center gap-2 text-red-400">
+                                                    <AlertCircle className="h-5 w-5" />
 
-                                            <div className="mt-1 text-xs text-zinc-500">
-                                                {upload.tipo || "Tipo desconocido"}
-                                            </div>
-                                        </td>
+                                                    {error instanceof Error
+                                                        ? error.message
+                                                        : "Error al cargar la información"}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
 
-                                        <td className="min-w-64 px-4 py-4">
-                                            <div
-                                                className={
-                                                    upload.createdById
-                                                        ? "text-zinc-200"
-                                                        : "text-zinc-500"
-                                                }
+                                {hasLoadedUrlState &&
+                                    !isLoading &&
+                                    !isError &&
+                                    uploads.length === 0 && (
+                                        <tr>
+                                            <td
+                                                colSpan={7}
+                                                className="px-4 py-12 text-center text-zinc-500"
                                             >
-                                                {getUserLabel(upload)}
-                                            </div>
+                                                No se encontraron archivos
+                                                con estos filtros.
+                                            </td>
+                                        </tr>
+                                    )}
 
-                                            {upload.uploadedBy.email && (
-                                                <div className="mt-1 text-xs text-zinc-500">
-                                                    {upload.uploadedBy.email}
-                                                </div>
-                                            )}
+                                {uploads.map((upload) => {
+                                    const uploadHref =
+                                        getUploadHref(upload.id);
 
-                                            {!upload.createdById && (
-                                                <div className="mt-1 text-xs text-amber-500/80">
-                                                    Carga anterior al seguimiento
-                                                </div>
-                                            )}
-
-                                            <div className="mt-3">
-                                                <select
-                                                    value={upload.createdById ?? ""}
-                                                    disabled={
-                                                        isLoadingResponsibleUsers ||
-                                                        isResponsibleUsersError ||
-                                                        assignMutation.isPending
+                                    return (
+                                        <tr
+                                            key={upload.id}
+                                            className="border-b border-zinc-800/80 align-top transition hover:bg-zinc-800/30"
+                                        >
+                                            <td className="max-w-72 px-4 py-4">
+                                                <Link
+                                                    href={uploadHref}
+                                                    onClick={
+                                                        saveCurrentScrollPosition
                                                     }
-                                                    onChange={(event) => {
-                                                        const nextUserId = event.target.value || null;
-
-                                                        assignMutation.mutate({
-                                                            uploadId: upload.id,
-                                                            userId: nextUserId,
-                                                        });
-                                                    }}
-                                                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-200 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    className="font-medium text-white hover:underline"
                                                 >
-                                                    <option value="">
-                                                        {isLoadingResponsibleUsers
-                                                            ? "Cargando responsables..."
-                                                            : "Sin responsable"}
-                                                    </option>
+                                                    {upload.fileName}
+                                                </Link>
 
-                                                    {responsibleUsers.map((user) => (
-                                                        <option key={user.id} value={user.id}>
-                                                            {user.name?.trim() || user.email}
-                                                            {user.name?.trim() ? ` — ${user.email}` : ""}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="mt-1 text-xs text-zinc-500">
+                                                    {upload.tipo ||
+                                                        "Tipo desconocido"}
+                                                </div>
+                                            </td>
 
-                                                {assignMutation.isPending &&
-                                                    assignMutation.variables?.uploadId === upload.id && (
-                                                        <div className="mt-2 flex items-center gap-1 text-xs text-zinc-400">
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                            Guardando responsable...
-                                                        </div>
+                                            <td className="min-w-64 px-4 py-4">
+                                                <div
+                                                    className={
+                                                        upload.createdById
+                                                            ? "text-zinc-200"
+                                                            : "text-zinc-500"
+                                                    }
+                                                >
+                                                    {getUserLabel(
+                                                        upload
                                                     )}
+                                                </div>
 
-                                                {isResponsibleUsersError && (
-                                                    <div className="mt-2 text-xs text-red-400">
-                                                        No se pudo cargar la lista de usuarios.
+                                                {upload.uploadedBy
+                                                    .email && (
+                                                    <div className="mt-1 text-xs text-zinc-500">
+                                                        {
+                                                            upload
+                                                                .uploadedBy
+                                                                .email
+                                                        }
                                                     </div>
                                                 )}
-                                            </div>
-                                        </td>
 
-                                        <td className="px-4 py-4">
-                                            <div className="text-zinc-300">
-                                                {upload.category || "Sin categoría"}
-                                            </div>
+                                                {!upload.createdById && (
+                                                    <div className="mt-1 text-xs text-amber-500/80">
+                                                        Carga anterior al
+                                                        seguimiento
+                                                    </div>
+                                                )}
 
-                                            {upload.subcategory && (
-                                                <div className="mt-1 text-xs text-zinc-500">
-                                                    {upload.subcategory}
+                                                <div className="mt-3">
+                                                    <select
+                                                        value={
+                                                            upload.createdById ??
+                                                            ""
+                                                        }
+                                                        disabled={
+                                                            isLoadingResponsibleUsers ||
+                                                            isResponsibleUsersError ||
+                                                            assignMutation.isPending
+                                                        }
+                                                        onChange={(
+                                                            event
+                                                        ) => {
+                                                            const nextUserId =
+                                                                event
+                                                                    .target
+                                                                    .value ||
+                                                                null;
+
+                                                            assignMutation.mutate(
+                                                                {
+                                                                    uploadId:
+                                                                        upload.id,
+                                                                    userId: nextUserId,
+                                                                }
+                                                            );
+                                                        }}
+                                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-200 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        <option value="">
+                                                            {isLoadingResponsibleUsers
+                                                                ? "Cargando responsables..."
+                                                                : "Sin responsable"}
+                                                        </option>
+
+                                                        {responsibleUsers.map(
+                                                            (user) => (
+                                                                <option
+                                                                    key={
+                                                                        user.id
+                                                                    }
+                                                                    value={
+                                                                        user.id
+                                                                    }
+                                                                >
+                                                                    {user.name?.trim() ||
+                                                                        user.email}
+
+                                                                    {user.name?.trim()
+                                                                        ? ` — ${user.email}`
+                                                                        : ""}
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+
+                                                    {assignMutation.isPending &&
+                                                        assignMutation
+                                                            .variables
+                                                            ?.uploadId ===
+                                                            upload.id && (
+                                                            <div className="mt-2 flex items-center gap-1 text-xs text-zinc-400">
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                Guardando
+                                                                responsable...
+                                                            </div>
+                                                        )}
+
+                                                    {isResponsibleUsersError && (
+                                                        <div className="mt-2 text-xs text-red-400">
+                                                            No se pudo
+                                                            cargar la lista
+                                                            de usuarios.
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </td>
+                                            </td>
 
-                                        <td className="px-4 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_CLASSES[upload.ficha.status]
+                                            <td className="px-4 py-4">
+                                                <div className="text-zinc-300">
+                                                    {upload.category ||
+                                                        "Sin categoría"}
+                                                </div>
+
+                                                {upload.subcategory && (
+                                                    <div className="mt-1 text-xs text-zinc-500">
+                                                        {
+                                                            upload.subcategory
+                                                        }
+                                                    </div>
+                                                )}
+                                            </td>
+
+                                            <td className="px-4 py-4">
+                                                <span
+                                                    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                                                        STATUS_CLASSES[
+                                                            upload.ficha
+                                                                .status
+                                                        ]
                                                     }`}
-                                            >
-                                                {STATUS_LABELS[upload.ficha.status]}
-                                            </span>
-
-                                            <div className="mt-3">
-                                                <ProgressBar value={upload.ficha.completion} />
-                                            </div>
-
-                                            <div className="mt-2 text-xs text-zinc-500">
-                                                {upload.ficha.completedFields} de{" "}
-                                                {upload.ficha.totalFields} campos
-                                            </div>
-                                        </td>
-
-                                        <td className="max-w-80 px-4 py-4">
-                                            {upload.ficha.missingFields.length === 0 ? (
-                                                <span className="inline-flex items-center gap-1 text-green-400">
-                                                    <CheckCircle2 className="h-4 w-4" />
-                                                    Sin pendientes
+                                                >
+                                                    {
+                                                        STATUS_LABELS[
+                                                            upload.ficha
+                                                                .status
+                                                        ]
+                                                    }
                                                 </span>
-                                            ) : (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {upload.ficha.missingFields.map((field) => (
-                                                        <span
-                                                            key={field}
-                                                            className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
-                                                        >
-                                                            {field}
-                                                        </span>
-                                                    ))}
+
+                                                <div className="mt-3">
+                                                    <ProgressBar
+                                                        value={
+                                                            upload.ficha
+                                                                .completion
+                                                        }
+                                                    />
                                                 </div>
-                                            )}
-                                        </td>
 
-                                        <td className="whitespace-nowrap px-4 py-4 text-xs text-zinc-400">
-                                            {formatDate(upload.uploadedAt)}
-                                        </td>
+                                                <div className="mt-2 text-xs text-zinc-500">
+                                                    {
+                                                        upload.ficha
+                                                            .completedFields
+                                                    }{" "}
+                                                    de{" "}
+                                                    {
+                                                        upload.ficha
+                                                            .totalFields
+                                                    }{" "}
+                                                    campos
+                                                </div>
+                                            </td>
 
-                                        <td className="px-4 py-4 text-right">
-                                            <Link
-                                                href={`/videos/${upload.id}`}
-                                                className="inline-flex rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-700"
-                                            >
-                                                Abrir ficha
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            <td className="max-w-80 px-4 py-4">
+                                                {upload.ficha
+                                                    .missingFields
+                                                    .length === 0 ? (
+                                                    <span className="inline-flex items-center gap-1 text-green-400">
+                                                        <CheckCircle2 className="h-4 w-4" />
+                                                        Sin pendientes
+                                                    </span>
+                                                ) : (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {upload.ficha.missingFields.map(
+                                                            (field) => (
+                                                                <span
+                                                                    key={
+                                                                        field
+                                                                    }
+                                                                    className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+                                                                >
+                                                                    {
+                                                                        field
+                                                                    }
+                                                                </span>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </td>
+
+                                            <td className="whitespace-nowrap px-4 py-4 text-xs text-zinc-400">
+                                                {formatDate(
+                                                    upload.uploadedAt
+                                                )}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-right">
+                                                <Link
+                                                    href={uploadHref}
+                                                    onClick={
+                                                        saveCurrentScrollPosition
+                                                    }
+                                                    className="inline-flex rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-700"
+                                                >
+                                                    Abrir ficha
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -768,16 +1169,26 @@ export default function UploadControlDashboard() {
                     {pagination && (
                         <div className="flex flex-col gap-3 border-t border-zinc-800 p-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="text-sm text-zinc-500">
-                                Página {pagination.page} de {pagination.totalPages}
+                                Página {pagination.page} de{" "}
+                                {Math.max(
+                                    1,
+                                    pagination.totalPages
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    disabled={pagination.page <= 1 || isFetching}
+                                    disabled={
+                                        pagination.page <= 1 ||
+                                        isFetching
+                                    }
                                     onClick={() =>
-                                        setPage((currentPage) =>
-                                            Math.max(1, currentPage - 1)
+                                        changePage(
+                                            Math.max(
+                                                1,
+                                                pagination.page - 1
+                                            )
                                         )
                                     }
                                     className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 transition hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
@@ -789,13 +1200,15 @@ export default function UploadControlDashboard() {
                                 <button
                                     type="button"
                                     disabled={
-                                        pagination.page >= pagination.totalPages || isFetching
+                                        pagination.page >=
+                                            pagination.totalPages ||
+                                        isFetching
                                     }
                                     onClick={() =>
-                                        setPage((currentPage) =>
+                                        changePage(
                                             Math.min(
                                                 pagination.totalPages,
-                                                currentPage + 1
+                                                pagination.page + 1
                                             )
                                         )
                                     }
@@ -817,6 +1230,7 @@ export default function UploadControlDashboard() {
                             <h2 className="font-medium text-white">
                                 Ranking de cargas
                             </h2>
+
                             <p className="text-xs text-zinc-500">
                                 Actividad y cumplimiento por usuario
                             </p>
@@ -832,7 +1246,10 @@ export default function UploadControlDashboard() {
 
                         {ranking.map((user, index) => (
                             <div
-                                key={user.userId || `unknown-${index}`}
+                                key={
+                                    user.userId ||
+                                    `unknown-${index}`
+                                }
                                 className="p-4"
                             >
                                 <div className="flex items-start justify-between gap-3">
@@ -866,6 +1283,7 @@ export default function UploadControlDashboard() {
                                         <div className="text-sm font-semibold text-green-400">
                                             {user.complete}
                                         </div>
+
                                         <div className="text-[11px] text-zinc-500">
                                             Completas
                                         </div>
@@ -875,6 +1293,7 @@ export default function UploadControlDashboard() {
                                         <div className="text-sm font-semibold text-amber-400">
                                             {user.pending}
                                         </div>
+
                                         <div className="text-[11px] text-zinc-500">
                                             Pendientes
                                         </div>
@@ -884,6 +1303,7 @@ export default function UploadControlDashboard() {
                                         <div className="text-sm font-semibold text-zinc-200">
                                             {user.compliance}%
                                         </div>
+
                                         <div className="text-[11px] text-zinc-500">
                                             Calidad
                                         </div>

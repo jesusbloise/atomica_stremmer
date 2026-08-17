@@ -5,10 +5,74 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl as getR2SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
 import { getCloudflareStreamVideoStatus } from "@/lib/cloudflareStream";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const JWT_SECRET =
+  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+
+type AuthUser = {
+  id: string;
+  role: string;
+};
+
+type JwtPayload = {
+  id?: string;
+  sub?: string;
+  userId?: string;
+  role?: string;
+};
+
+type UploadAccessRow = {
+  visibility: "PUBLIC" | "RESTRICTED";
+  created_by_id: string | null;
+  is_assigned: boolean;
+};
+
+function getAuthenticatedUser(req: Request): AuthUser | null {
+  try {
+    const cookie = (req.headers.get("cookie") || "")
+      .split(";")
+      .map((value) => value.trim())
+      .find((value) => value.startsWith("auth="));
+
+    const rawToken = cookie?.slice("auth=".length);
+
+    if (!rawToken) {
+      return null;
+    }
+
+    const token = decodeURIComponent(rawToken);
+
+    const payload = jwt.verify(
+      token,
+      JWT_SECRET
+    ) as JwtPayload;
+
+    const id =
+      payload.id ??
+      payload.sub ??
+      payload.userId ??
+      null;
+
+    if (!id) {
+      return null;
+    }
+
+    return {
+      id: String(id),
+      role: String(payload.role ?? "")
+        .trim()
+        .toUpperCase(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 // const storage = new Storage();
 // const GCS_BUCKET = process.env.GCS_BUCKET;
@@ -111,20 +175,6 @@ function inferTipo(ext: string, contentType?: string | null): "video" | "documen
   return null;
 }
 
-// function parseGsUrl(raw?: string | null) {
-//   if (!raw || !raw.startsWith("gs://")) return null;
-
-//   const withoutScheme = raw.slice(5);
-//   const firstSlash = withoutScheme.indexOf("/");
-//   if (firstSlash === -1) return null;
-
-//   const bucket = withoutScheme.slice(0, firstSlash);
-//   const objectPath = withoutScheme.slice(firstSlash + 1);
-
-//   if (!bucket || !objectPath) return null;
-
-//   return { bucket, objectPath };
-// }
 
 function parseR2Url(raw?: string | null) {
   if (!raw || !raw.startsWith("r2://")) return null;
@@ -141,7 +191,12 @@ function parseR2Url(raw?: string | null) {
   return { bucket, objectPath };
 }
 
-
+function hashShareToken(token: string) {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+}
 
 async function buildR2SignedUrl(params: {
   r2Path?: string | null;
@@ -207,12 +262,142 @@ function mapFichaToCamel(row?: RowFicha | null) {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
+const currentUser = getAuthenticatedUser(req);
 
-  try {
+const { searchParams } = new URL(req.url);
+
+const rawShareToken =
+  String(searchParams.get("share") || "").trim();
+
+let hasValidShareToken = false;
+
+if (rawShareToken) {
+  const tokenHash =
+    hashShareToken(rawShareToken);
+
+  const SHOWCASE_VIDEO_IDS = [
+    "5909f5b1-20b8-4a6e-aca3-bd70870f6513",
+    "0f639512-5ec9-4266-ab0a-abcbce96fb38",
+    "eeb2c14c-2f68-4f7b-b477-d32b2a7a6139",
+    "ce49f9e7-3c7f-49bc-89f2-31e48760a5e0",
+  ];
+
+  const sourceUploadId =
+    String(
+      searchParams.get("source") || id
+    ).trim();
+
+  const shareResult = await pool.query(
+    `
+    UPDATE upload_share_links
+    SET
+      last_accessed_at = NOW(),
+      access_count = access_count + 1
+    WHERE
+      upload_id::text = $1::text
+      AND token_hash = $2
+      AND revoked_at IS NULL
+      AND expires_at > NOW()
+    RETURNING id
+    `,
+    [sourceUploadId, tokenHash]
+  );
+
+  const tokenBelongsToSource =
+    Boolean(shareResult.rowCount);
+
+  const isOriginalSharedUpload =
+    sourceUploadId === id;
+
+  const isAllowedShowcaseUpload =
+    SHOWCASE_VIDEO_IDS.includes(id);
+
+  hasValidShareToken =
+    tokenBelongsToSource &&
+    (
+      isOriginalSharedUpload ||
+      isAllowedShowcaseUpload
+    );
+}
+
+try {
+  const accessQuery = await pool.query<UploadAccessRow>(
+  `
+  SELECT
+    COALESCE(u.visibility, 'PUBLIC') AS visibility,
+    u.created_by_id,
+    CASE
+  WHEN $2::text IS NULL THEN FALSE
+  ELSE (
+    EXISTS (
+      SELECT 1
+      FROM upload_permissions permission
+      WHERE
+        permission.upload_id = u.id::text
+        AND permission.target_type = 'USER'
+        AND permission.target_id = $2::text
+    )
+
+    OR EXISTS (
+      SELECT 1
+      FROM upload_permissions permission
+      INNER JOIN user_group_members gm
+        ON gm.group_id::text = permission.target_id
+      WHERE
+        permission.upload_id = u.id::text
+        AND permission.target_type = 'GROUP'
+        AND gm.user_id::text = $2::text
+    )
+  )
+END AS is_assigned
+  FROM uploads u
+  WHERE
+    u.id::text = $1::text
+    AND u.is_deleted IS NOT TRUE
+  LIMIT 1
+  `,
+  [id, currentUser?.id ?? null]
+);
+    const access = accessQuery.rows[0];
+
+    if (!access) {
+      return NextResponse.json(
+        { error: "Archivo no encontrado" },
+        { status: 404 }
+      );
+    }
+
+  const isOwner =
+  Boolean(currentUser) &&
+  access.created_by_id?.toString() ===
+    currentUser?.id.toString();
+
+const isSuperAdmin =
+  currentUser?.role === "SUPER_ADMIN";
+
+const canAuthenticatedUserView =
+  Boolean(currentUser) &&
+  (
+    access.visibility === "PUBLIC" ||
+    isOwner ||
+    isSuperAdmin ||
+    access.is_assigned
+  );
+
+const canView =
+  hasValidShareToken ||
+  canAuthenticatedUserView;
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: "No tienes permiso para ver este archivo" },
+        { status: 403 }
+      );
+    }
     let row: RowUploadWithMore | null = null;
 
     try {
@@ -391,9 +576,14 @@ console.log("PLAYBACK_URL_SELECTED", {
           url,
           uploaded_at: row.uploaded_at,
           views: row.views ?? 0,
-          category: row.category ?? null,
-          subcategory: row.subcategory ?? null,
-          ficha: mapFichaToCamel(fichaRow),
+        category: row.category ?? null,
+subcategory: row.subcategory ?? null,
+
+visibility: access.visibility,
+created_by_id: access.created_by_id,
+can_manage_privacy: isOwner || isSuperAdmin,
+
+ficha: mapFichaToCamel(fichaRow),
           vimeo_id: row.vimeo_id ?? null,
           duration_sec: row.duration_sec ?? null,
           thumbnail_url: row.thumbnail_url ?? null,
@@ -423,5 +613,112 @@ using_cloudflare_stream:
   } catch (e: any) {
     console.error("❌ Error en /api/uploads/[id]:", e);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  }
+}
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params;
+  const currentUser = getAuthenticatedUser(req);
+
+  if (!currentUser) {
+    return NextResponse.json(
+      { error: "No autorizado" },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const body = await req.json();
+
+    const visibility =
+      String(body?.visibility || "")
+        .trim()
+        .toUpperCase();
+
+    if (
+      visibility !== "PUBLIC" &&
+      visibility !== "RESTRICTED"
+    ) {
+      return NextResponse.json(
+        { error: "Visibilidad inválida" },
+        { status: 400 }
+      );
+    }
+
+    const query = await pool.query<{
+      created_by_id: string | null;
+    }>(
+      `
+      SELECT created_by_id
+      FROM uploads
+      WHERE
+        id::text = $1::text
+        AND is_deleted IS NOT TRUE
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    const upload = query.rows[0];
+
+    if (!upload) {
+      return NextResponse.json(
+        { error: "Archivo no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    const isOwner =
+      upload.created_by_id?.toString() ===
+      currentUser.id.toString();
+
+    const isSuperAdmin =
+      currentUser.role === "SUPER_ADMIN";
+
+    if (!isOwner && !isSuperAdmin) {
+      return NextResponse.json(
+        {
+          error:
+            "No tienes permiso para cambiar la privacidad",
+        },
+        { status: 403 }
+      );
+    }
+
+    await pool.query(
+      `
+      UPDATE uploads
+      SET
+        visibility = $1,
+        updated_at = NOW()
+      WHERE id::text = $2::text
+      `,
+      [visibility, id]
+    );
+
+    return NextResponse.json(
+      {
+        ok: true,
+        visibility,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "PATCH /api/uploads/[id] error:",
+      error
+    );
+
+    return NextResponse.json(
+      { error: "No se pudo cambiar la privacidad" },
+      { status: 500 }
+    );
   }
 }
