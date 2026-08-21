@@ -50,6 +50,8 @@ if (host && host !== CANONICAL_HOST && !isLocalHost) {
   pathname.startsWith("/api/register") ||
   pathname.startsWith("/api/auth") ||
   pathname.startsWith("/api/auth/") ||
+  pathname.startsWith("/api/2fa/setup") ||
+  pathname.startsWith("/api/2fa/enable") ||
 
   // página pública de detalle
 (
