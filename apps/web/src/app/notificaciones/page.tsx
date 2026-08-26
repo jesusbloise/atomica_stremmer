@@ -80,7 +80,7 @@ export default function NotificationsPage() {
     } catch (error: any) {
       setError(
         error?.message ||
-          "Error cargando notificaciones"
+        "Error cargando notificaciones"
       );
     } finally {
       setLoading(false);
@@ -183,6 +183,11 @@ export default function NotificationsPage() {
                 const unreadItem =
                   !item.read_at;
 
+                const displayMessage =
+                  item.type === "RESTRICTED_UPLOAD_SHARED"
+                    ? `${item.metadata?.fileName || item.message} fue compartido contigo de forma restringida.`
+                    : item.message;
+
                 const Icon =
                   getIcon(item.type);
 
@@ -199,12 +204,12 @@ export default function NotificationsPage() {
                       className={[
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
                         item.type ===
-                        "TWO_FACTOR_PENDING"
+                          "TWO_FACTOR_PENDING"
                           ? "bg-amber-500/10 text-amber-300"
                           : item.type ===
                             "RESTRICTED_UPLOAD_SHARED"
-                          ? "bg-orange-500/10 text-orange-300"
-                          : "bg-zinc-800 text-zinc-300",
+                            ? "bg-orange-500/10 text-orange-300"
+                            : "bg-zinc-800 text-zinc-300",
                       ].join(" ")}
                     >
                       <Icon className="h-5 w-5" />
@@ -229,7 +234,7 @@ export default function NotificationsPage() {
                       </div>
 
                       <p className="mt-1 text-sm leading-6 text-zinc-400">
-                        {item.message}
+                        {displayMessage}
                       </p>
 
                       <div className="mt-3 flex flex-wrap items-center gap-3">
