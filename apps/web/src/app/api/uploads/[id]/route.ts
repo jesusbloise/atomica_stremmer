@@ -4,7 +4,11 @@ import pool from "@/db";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl as getR2SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
-import { getCloudflareStreamVideoStatus } from "@/lib/cloudflareStream";
+import {
+  generateCloudflareStreamCaption,
+  getCloudflareStreamCaptions,
+  getCloudflareStreamVideoStatus,
+} from "@/lib/cloudflareStream";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
@@ -592,6 +596,49 @@ if (tipo === "video" && cfStreamUid && !cfStreamReady) {
     console.warn("No se pudo sincronizar estado Cloudflare Stream:", e);
   }
 }
+
+if (tipo === "video" && cfStreamUid && cfStreamReady) {
+  try {
+    const captions = await getCloudflareStreamCaptions(cfStreamUid);
+
+    const captionLanguages = ["es", "en"];
+
+    for (const language of captionLanguages) {
+      const hasCaption = captions.some(
+        (caption) =>
+          caption.language?.trim().toLowerCase() === language
+      );
+
+      if (hasCaption) {
+        continue;
+      }
+
+      try {
+        await generateCloudflareStreamCaption(
+          cfStreamUid,
+          language
+        );
+
+        console.log("CF_STREAM_CAPTION_REQUESTED", {
+          uploadId: row.id,
+          cfStreamUid,
+          language,
+        });
+      } catch (languageError) {
+        console.warn(
+          `No se pudo iniciar caption ${language} en Cloudflare Stream:`,
+          languageError
+        );
+      }
+    }
+  } catch (captionError) {
+    console.warn(
+      "No se pudieron consultar captions de Cloudflare Stream:",
+      captionError
+    );
+  }
+}
+
 if (tipo === "video" && cfStreamReady && cfStreamPlaybackUrl) {
   url = cfStreamPlaybackUrl;
 }
