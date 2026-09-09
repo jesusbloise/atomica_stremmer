@@ -14,35 +14,39 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# Etapa 3: Producción
-FROM node:20-bullseye AS runner
+# Etapa 3: ProducciÃ³n
+FROM node:20-bookworm AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 EXPOSE 3000
 
-# ✅ Instala Python + pip + ffmpeg + todas las dependencias necesarias
+# Instala Python + pip + ffmpeg + todas las dependencias necesarias
 RUN apt-get update && \
     apt-get install -y \
         python3 \
         python3-pip \
         python3-dev \
+        python3-venv \
         ffmpeg \
         build-essential \
         libpq-dev \
         wget \
         ca-certificates && \
-    pip3 install --upgrade pip setuptools wheel && \
-    pip3 install --default-timeout=300 --no-cache-dir \
+    python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --default-timeout=300 --no-cache-dir \
         requests \
         psycopg2-binary \
         python-docx \
         pdfplumber \
         pypdf && \
-    pip3 install --default-timeout=600 --no-cache-dir openai-whisper && \
+    /opt/venv/bin/pip install --default-timeout=600 --no-cache-dir openai-whisper && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Precargar el modelo Whisper dentro de la imagen.
 # Así Cloud Run no tiene que descargarlo al procesar cada video.

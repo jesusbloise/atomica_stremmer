@@ -300,6 +300,9 @@ const isSharedView =
   const [canManagePrivacy, setCanManagePrivacy] = useState(false);
   const [changingPrivacy, setChangingPrivacy] = useState(false);
   const [privacyMessage, setPrivacyMessage] = useState("");
+  const [fichaOpen, setFichaOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cloudflareIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -1120,22 +1123,30 @@ const checkCaptions = async () => {
       setThumbnailSelecting(false);
     }
   };
-  return (
-    <div className="min-h-screen bg-black text-white py-4 sm:py-6 px-0">
-     <div
-  className={
-    isSharedView
-      ? "w-full"
-      : "grid w-full grid-cols-1 gap-6 lg:grid-cols-3"
-  }
->
-  <div
-    className={
-      isSharedView
-        ? "mx-auto w-full max-w-[1400px]"
-        : "lg:col-span-2"
-    }
-  >
+ return (
+  <div className="min-h-screen bg-transparent text-white py-4 sm:py-6 px-0">
+    <div
+      className={
+        isSharedView
+          ? "w-full"
+          : `grid w-full grid-cols-1 gap-4 transition-[grid-template-columns] duration-300 ease-out ${
+              fichaOpen
+                ? "lg:grid-cols-[minmax(0,1fr)_380px]"
+                : transcriptOpen
+                  ? "lg:grid-cols-[minmax(0,1fr)_420px]"
+                  : optionsOpen
+                    ? "lg:grid-cols-[minmax(0,1fr)_340px]"
+                    : "lg:grid-cols-[minmax(0,1fr)_220px]"
+            }`
+      }
+    >
+      <div
+        className={
+          isSharedView
+            ? "mx-auto w-full max-w-[1400px]"
+            : "min-w-0"
+        }
+      >
           <div className="mb-4 flex justify-start">
             <button
               onClick={() => router.back()}
@@ -1145,7 +1156,450 @@ const checkCaptions = async () => {
             </button>
           </div>
 
-          {isAdmin &&
+      
+
+        
+
+          {tipo === "video" && videoUrl && (
+            <div className="mb-4">
+              <div
+                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
+                title={documentFileName}
+              >
+                {documentFileName || "Video sin nombre"}
+              </div>
+
+              <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
+                {(videoLoading || videoBuffering) && !videoError && !isSearchingVideo && (
+                  <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
+                      <p className="text-xs text-zinc-300">
+                        {videoBuffering ? "Cargando reproducción..." : "Preparando video..."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {videoError && (
+                  <div className="absolute inset-0 z-20 grid place-items-center bg-black/80 px-4">
+                    <div className="max-w-md text-center">
+                      <p className="text-sm text-zinc-200 mb-3">{videoError}</p>
+                      <button
+                        type="button"
+                        onClick={retryVideo}
+                        className="px-4 py-2 rounded-lg border border-orange-400 text-orange-300 hover:bg-orange-500/10 text-sm"
+                      >
+                        Reintentar reproducción
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {usingCloudflareStream && cloudflareStreamUrl ? (
+                  <iframe
+                    ref={cloudflareIframeRef}
+                    src={cloudflareSrcWithReload ?? undefined}
+                    className="block w-full max-w-[calc(68vh*16/9)] aspect-video rounded-md shadow bg-black"
+                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                    allowFullScreen
+                    onLoad={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                      setVideoError(null);
+                    }}
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={videoSrcWithReload ?? undefined}
+                    controls
+                    playsInline
+                    controlsList="nodownload"
+                    className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
+                    preload="auto"
+                    onLoadStart={() => {
+                      setVideoLoading(true);
+                      setVideoError(null);
+                    }}
+                    onLoadedMetadata={() => setVideoLoading(false)}
+                    onCanPlay={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onCanPlayThrough={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onWaiting={() => setVideoBuffering(true)}
+                    onPlaying={() => {
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                    }}
+                    onStalled={() => setVideoBuffering(true)}
+                    onError={() => {
+                      if (!retriedRef.current) {
+                        retriedRef.current = true;
+                        setReloadNonce((n) => n + 1);
+                        return;
+                      }
+
+                      setVideoLoading(false);
+                      setVideoBuffering(false);
+                      setVideoError(
+                        "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
+                      );
+                    }}
+                    onPlay={handlePlay}
+                  />
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm text-zinc-400 mt-2 text-center">
+                {views} visualización{views === 1 ? "" : "es"}
+              </div>
+            </div>
+          )}
+
+          {tipo === "documento" && documentUrl && (
+            <div className="mb-4">
+              <div
+                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
+                title={documentFileName}
+              >
+                {documentFileName || "Documento sin nombre"}
+              </div>
+
+              {isWordDocument ? (
+                <DocumentViewer
+                  url={documentUrl}
+                  fileName={documentUrl}
+                  searchTerm={searchTerm}
+                  registerNavApi={(api) => {
+                    viewerApiRef.current = { ...viewerApiRef.current, ...api };
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="w-full rounded-lg overflow-hidden border border-zinc-800 bg-white">
+                    <iframe
+                      src={documentUrl}
+                      title={documentFileName || "Documento PDF"}
+                      className="w-full h-[75vh] bg-white"
+                    />
+                  </div>
+
+                  <div className="mt-2 text-right">
+                    <a
+                      href={documentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-orange-300 underline"
+                    >
+                      Abrir PDF en pestaña
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {!isSharedView && tipo === "documento" && (
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <input
+                type="text"
+                placeholder=" Buscar palabra o frase..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentMatchIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+
+                  e.preventDefault();
+                  const dir = e.shiftKey ? -1 : 1;
+
+                  if (tipo === "documento" && viewerApiRef.current?.step) {
+                    const nextFromViewer = viewerApiRef.current.step(dir);
+
+                    if (Number.isFinite(nextFromViewer) && matchIndices.length) {
+                      const synced =
+                        ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
+                        matchIndices.length;
+
+                      setCurrentMatchIndex(synced);
+                    }
+
+                    return;
+                  }
+
+                  if (!matchIndices.length) return;
+
+                  const next =
+                    (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
+
+                  setCurrentMatchIndex(next);
+                }}
+                className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
+              />
+
+              <div className="text-xs text-zinc-400">
+                {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
+                <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
+              </div>
+            </div>
+          )}
+       
+          {tipo === "documento" && (
+            <TablaDocumento
+              texto={documentoTexto}
+              searchTerm={searchTerm}
+              url={documentUrl}
+              matchIndices={matchIndices}
+              currentMatchIndex={currentMatchIndex}
+              setMatchIndices={setMatchIndices}
+              setCurrentMatchIndex={setCurrentMatchIndex}
+            />
+          )}
+        </div>
+
+   {!isSharedView && (
+  <div
+    className={`w-full lg:pt-[82px] transition-[width] duration-300 ease-out ${
+      fichaOpen
+        ? "lg:w-[380px]"
+        : transcriptOpen
+          ? "lg:w-[420px]"
+          : optionsOpen
+            ? "lg:w-[340px]"
+            : "lg:w-[220px]"
+    }`}
+  >
+    <div className="sticky top-24 space-y-2">
+      <button
+        type="button"
+        onClick={() => {
+          setFichaOpen((current) => !current);
+          setTranscriptOpen(false);
+          setOptionsOpen(false);
+        }}
+        className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-zinc-950/35 px-3 py-2 text-left backdrop-blur-lg transition hover:border-orange-400/50 hover:bg-zinc-900/60"
+      >
+        <div className="text-sm font-semibold text-white">
+          Ficha técnica
+        </div>
+
+        <span
+          className={`text-lg transition-transform duration-200 ${
+            fichaOpen
+              ? "rotate-90 text-orange-300"
+              : "text-zinc-500 group-hover:translate-x-1 group-hover:text-orange-300"
+          }`}
+        >
+          ›
+        </span>
+      </button>
+
+      {fichaOpen && (
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/70 shadow-xl backdrop-blur-xl">
+          <div className="max-h-[65vh] overflow-y-auto p-2">
+            <FichaTecnica uploadId={id} />
+          </div>
+        </div>
+      )}
+
+      {tipo === "video" && (
+        <button
+          type="button"
+          onClick={() => {
+            setTranscriptOpen((current) => !current);
+            setFichaOpen(false);
+            setOptionsOpen(false);
+          }}
+          className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-zinc-950/35 px-3 py-2 text-left backdrop-blur-lg transition hover:border-orange-400/50 hover:bg-zinc-900/60"
+        >
+          <div className="text-sm font-semibold text-white">
+            Transcripción
+          </div>
+
+          <span
+            className={`text-lg transition-transform duration-200 ${
+              transcriptOpen
+                ? "rotate-90 text-orange-300"
+                : "text-zinc-500 group-hover:translate-x-1 group-hover:text-orange-300"
+            }`}
+          >
+            ›
+          </span>
+        </button>
+      )}
+{transcriptOpen && (
+  <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/70 shadow-xl backdrop-blur-xl">
+    <div className="border-b border-white/10 p-3">
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <input
+            type="text"
+            placeholder="Buscar palabra o frase..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentMatchIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+
+              e.preventDefault();
+
+              const dir = e.shiftKey ? -1 : 1;
+
+              if (!matchIndices.length) return;
+
+              const next =
+                (currentMatchIndex + dir + matchIndices.length) %
+                matchIndices.length;
+
+              setCurrentMatchIndex(next);
+            }}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500 focus:border-orange-400/60"
+          />
+        </div>
+
+        <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-zinc-400">
+          {matchIndices.length
+            ? `${currentMatchIndex + 1}/${matchIndices.length}`
+            : "0/0"}
+        </div>
+      </div>
+    </div>
+
+    <div className="max-h-[55vh] overflow-y-auto p-3">
+      {polling && subtitulos.length === 0 ? (
+        <div className="grid min-h-[180px] place-items-center">
+          <div className="text-center">
+            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-orange-400" />
+
+            <p className="text-xs text-zinc-400">
+              Procesando subtítulos...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <TablaSubtitulos
+          data={tableData}
+          searchTerm={searchTerm}
+          matchIndices={matchIndices}
+          currentMatchIndex={currentMatchIndex}
+          setMatchIndices={setMatchIndices}
+          setCurrentMatchIndex={setCurrentMatchIndex}
+        />
+      )}
+    </div>
+  </div>
+)}
+      <button
+        type="button"
+        onClick={() => {
+          setOptionsOpen((current) => !current);
+          setFichaOpen(false);
+          setTranscriptOpen(false);
+        }}
+        className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-zinc-950/35 px-3 py-2 text-left backdrop-blur-lg transition hover:border-orange-400/50 hover:bg-zinc-900/60"
+      >
+        <div className="text-sm font-semibold text-white">
+          Opciones
+        </div>
+
+        <span
+          className={`text-lg transition-transform duration-200 ${
+            optionsOpen
+              ? "rotate-90 text-orange-300"
+              : "text-zinc-500 group-hover:text-orange-300"
+          }`}
+        >
+          ›
+        </span>
+      </button>
+
+      {optionsOpen && (
+        <div className="mt-2 w-full max-h-[65vh] overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/70 p-3 shadow-xl backdrop-blur-xl">
+
+             {isAdmin && (
+            <>
+              <div className="mb-4 flex flex-wrap justify-end gap-2">
+                {canManagePrivacy && (
+                  <button
+                    type="button"
+                    onClick={handleChangePrivacy}
+                    disabled={changingPrivacy}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs transition disabled:opacity-50",
+                      visibility === "RESTRICTED"
+                        ? "border-green-500/70 bg-green-500/10 text-green-300 hover:bg-green-500/20"
+                        : "border-zinc-700 bg-zinc-950/70 text-zinc-300 hover:border-orange-500/70 hover:text-orange-300",
+                    ].join(" ")}
+                  >
+                    {changingPrivacy
+                      ? "Cambiando..."
+                      : visibility === "RESTRICTED"
+                        ? "Hacer público"
+                        : "Hacer restringido"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={thumbnailLoadingCandidates}
+                  onClick={() => {
+                    setThumbnailModalOpen(true);
+                    setThumbnailMessage("Generando capturas del video...");
+                    loadThumbnailCandidates();
+                  }}
+                  className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition disabled:opacity-50"
+                >
+                  {thumbnailLoadingCandidates ? "Generando..." : "Cambiar portada"}
+                </button>
+
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoveCategory(currentCategory);
+                      setMoveSubcategory(currentSubcategory);
+                      setMoveMessage("");
+                      setMoveOpen(true);
+                    }}
+                    className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
+                  >
+                    Mover archivo
+                  </button>
+                )}
+
+                <a
+                  href={`/api/uploads/${id}/download`}
+                  className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
+                >
+                  Descargar archivo
+                </a>
+              </div>
+
+              {thumbnailMessage && (
+                <p className="mb-4 text-right text-xs text-orange-300">
+                  {thumbnailMessage}
+                </p>
+              )}
+              {privacyMessage && (
+                <p className="mb-4 text-right text-xs text-orange-300">
+                  {privacyMessage}
+                </p>
+              )}
+            </>
+          )}
+
+            {isAdmin &&
   !isSharedView &&
   visibility === "PUBLIC" && (
             <div className="mb-3 flex justify-end">
@@ -1274,307 +1728,13 @@ setTimeout(() => {
             </div>
           )}
 
-          {isAdmin && (
-            <>
-              <div className="mb-4 flex flex-wrap justify-end gap-2">
-                {canManagePrivacy && (
-                  <button
-                    type="button"
-                    onClick={handleChangePrivacy}
-                    disabled={changingPrivacy}
-                    className={[
-                      "rounded-full border px-3 py-1.5 text-xs transition disabled:opacity-50",
-                      visibility === "RESTRICTED"
-                        ? "border-green-500/70 bg-green-500/10 text-green-300 hover:bg-green-500/20"
-                        : "border-zinc-700 bg-zinc-950/70 text-zinc-300 hover:border-orange-500/70 hover:text-orange-300",
-                    ].join(" ")}
-                  >
-                    {changingPrivacy
-                      ? "Cambiando..."
-                      : visibility === "RESTRICTED"
-                        ? "Hacer público"
-                        : "Hacer restringido"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={thumbnailLoadingCandidates}
-                  onClick={() => {
-                    setThumbnailModalOpen(true);
-                    setThumbnailMessage("Generando capturas del video...");
-                    loadThumbnailCandidates();
-                  }}
-                  className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition disabled:opacity-50"
-                >
-                  {thumbnailLoadingCandidates ? "Generando..." : "Cambiar portada"}
-                </button>
 
-                {isSuperAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMoveCategory(currentCategory);
-                      setMoveSubcategory(currentSubcategory);
-                      setMoveMessage("");
-                      setMoveOpen(true);
-                    }}
-                    className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-                  >
-                    Mover archivo
-                  </button>
-                )}
-
-                <a
-                  href={`/api/uploads/${id}/download`}
-                  className="rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/20 transition"
-                >
-                  Descargar archivo
-                </a>
-              </div>
-
-              {thumbnailMessage && (
-                <p className="mb-4 text-right text-xs text-orange-300">
-                  {thumbnailMessage}
-                </p>
-              )}
-              {privacyMessage && (
-                <p className="mb-4 text-right text-xs text-orange-300">
-                  {privacyMessage}
-                </p>
-              )}
-            </>
-          )}
-
-          {tipo === "video" && videoUrl && (
-            <div className="mb-4">
-              <div
-                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
-                title={documentFileName}
-              >
-                {documentFileName || "Video sin nombre"}
-              </div>
-
-              <div className="relative flex justify-center rounded-md overflow-hidden border border-zinc-700 bg-zinc-950">
-                {(videoLoading || videoBuffering) && !videoError && !isSearchingVideo && (
-                  <div className="absolute inset-0 z-10 grid place-items-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-8 w-8 rounded-full border-2 border-zinc-500 border-t-orange-400 animate-spin" />
-                      <p className="text-xs text-zinc-300">
-                        {videoBuffering ? "Cargando reproducción..." : "Preparando video..."}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {videoError && (
-                  <div className="absolute inset-0 z-20 grid place-items-center bg-black/80 px-4">
-                    <div className="max-w-md text-center">
-                      <p className="text-sm text-zinc-200 mb-3">{videoError}</p>
-                      <button
-                        type="button"
-                        onClick={retryVideo}
-                        className="px-4 py-2 rounded-lg border border-orange-400 text-orange-300 hover:bg-orange-500/10 text-sm"
-                      >
-                        Reintentar reproducción
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {usingCloudflareStream && cloudflareStreamUrl ? (
-                  <iframe
-                    ref={cloudflareIframeRef}
-                    src={cloudflareSrcWithReload ?? undefined}
-                    className="rounded-md shadow max-w-full max-h-[520px] w-full aspect-video bg-black"
-                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-                    allowFullScreen
-                    onLoad={() => {
-                      setVideoLoading(false);
-                      setVideoBuffering(false);
-                      setVideoError(null);
-                    }}
-                  />
-                ) : (
-                  <video
-                    ref={videoRef}
-                    src={videoSrcWithReload ?? undefined}
-                    controls
-                    playsInline
-                    controlsList="nodownload"
-                    className="rounded-md shadow max-w-full max-h-[520px] w-full h-auto bg-black"
-                    preload="auto"
-                    onLoadStart={() => {
-                      setVideoLoading(true);
-                      setVideoError(null);
-                    }}
-                    onLoadedMetadata={() => setVideoLoading(false)}
-                    onCanPlay={() => {
-                      setVideoLoading(false);
-                      setVideoBuffering(false);
-                    }}
-                    onCanPlayThrough={() => {
-                      setVideoLoading(false);
-                      setVideoBuffering(false);
-                    }}
-                    onWaiting={() => setVideoBuffering(true)}
-                    onPlaying={() => {
-                      setVideoLoading(false);
-                      setVideoBuffering(false);
-                    }}
-                    onStalled={() => setVideoBuffering(true)}
-                    onError={() => {
-                      if (!retriedRef.current) {
-                        retriedRef.current = true;
-                        setReloadNonce((n) => n + 1);
-                        return;
-                      }
-
-                      setVideoLoading(false);
-                      setVideoBuffering(false);
-                      setVideoError(
-                        "No se pudo cargar este video. Puede estar procesándose, tener un formato no compatible o estar demorando desde el servidor."
-                      );
-                    }}
-                    onPlay={handlePlay}
-                  />
-                )}
-              </div>
-
-              <div className="text-xs sm:text-sm text-zinc-400 mt-2 text-center">
-                {views} visualización{views === 1 ? "" : "es"}
-              </div>
-            </div>
-          )}
-
-          {tipo === "documento" && documentUrl && (
-            <div className="mb-4">
-              <div
-                className="text-xs sm:text-sm text-white font-semibold mb-2 text-center truncate"
-                title={documentFileName}
-              >
-                {documentFileName || "Documento sin nombre"}
-              </div>
-
-              {isWordDocument ? (
-                <DocumentViewer
-                  url={documentUrl}
-                  fileName={documentUrl}
-                  searchTerm={searchTerm}
-                  registerNavApi={(api) => {
-                    viewerApiRef.current = { ...viewerApiRef.current, ...api };
-                  }}
-                />
-              ) : (
-                <>
-                  <div className="w-full rounded-lg overflow-hidden border border-zinc-800 bg-white">
-                    <iframe
-                      src={documentUrl}
-                      title={documentFileName || "Documento PDF"}
-                      className="w-full h-[75vh] bg-white"
-                    />
-                  </div>
-
-                  <div className="mt-2 text-right">
-                    <a
-                      href={documentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-orange-300 underline"
-                    >
-                      Abrir PDF en pestaña
-                    </a>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {!isSharedView && (
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <input
-                type="text"
-                placeholder=" Buscar palabra o frase..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentMatchIndex(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-
-                  e.preventDefault();
-                  const dir = e.shiftKey ? -1 : 1;
-
-                  if (tipo === "documento" && viewerApiRef.current?.step) {
-                    const nextFromViewer = viewerApiRef.current.step(dir);
-
-                    if (Number.isFinite(nextFromViewer) && matchIndices.length) {
-                      const synced =
-                        ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
-                        matchIndices.length;
-
-                      setCurrentMatchIndex(synced);
-                    }
-
-                    return;
-                  }
-
-                  if (!matchIndices.length) return;
-
-                  const next =
-                    (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
-
-                  setCurrentMatchIndex(next);
-                }}
-                className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
-              />
-
-              <div className="text-xs text-zinc-400">
-                {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
-                <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
-              </div>
-            </div>
-          )}
-          {!isSharedView &&
-            polling &&
-            subtitulos.length === 0 &&
-            tipo === "video" && (
-              <p className="text-sm text-gray-400 text-center mb-6">Procesando subtítulos...</p>
-            )}
-
-          {tipo === "video" && !isSharedView && (
-            <TablaSubtitulos
-              data={tableData}
-              searchTerm={searchTerm}
-              matchIndices={matchIndices}
-              currentMatchIndex={currentMatchIndex}
-              setMatchIndices={setMatchIndices}
-              setCurrentMatchIndex={setCurrentMatchIndex}
-            />
-          )}
-          {tipo === "documento" && (
-            <TablaDocumento
-              texto={documentoTexto}
-              searchTerm={searchTerm}
-              url={documentUrl}
-              matchIndices={matchIndices}
-              currentMatchIndex={currentMatchIndex}
-              setMatchIndices={setMatchIndices}
-              setCurrentMatchIndex={setCurrentMatchIndex}
-            />
-          )}
+          <div className="rounded-xl bg-black/20 p-1">
+            <UploadPermissionsPanel uploadId={id} />
+          </div>
         </div>
-
-      {!isSharedView && (
-  <div className="space-y-6">
-    <FichaTecnica uploadId={id} />
-
-    <UploadPermissionsPanel uploadId={id} />
-
-    {/* <ArchivosRelacionadosMock /> */}
+      )}
+    </div>
   </div>
 )}
       </div>

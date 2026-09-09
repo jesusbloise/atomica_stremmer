@@ -172,7 +172,7 @@ export default function AppShell({
 
   return (
     <div
-      className="min-h-dvh overflow-x-hidden bg-black text-white"
+      className="min-h-dvh overflow-x-hidden bg-transparent text-white"
       onClickCapture={
         handleSharedClickCapture
       }
@@ -203,17 +203,25 @@ export default function AppShell({
         `}
       >
         <div
-          className={`
-            mx-auto w-full max-w-[1600px]
-            px-4 pt-4
-            transition-all duration-300 ease-out
-            md:px-6 md:pt-6
-            ${containerClassName ?? ""}
-          `}
-        >
-        <main>
-  <RestrictedShareBanner />
-  <PendingUploadsBanner />
+  className={`
+    mx-auto w-full max-w-[1600px]
+    px-3 pt-2
+    transition-all duration-300 ease-out
+    md:px-4 md:pt-3
+    ${containerClassName ?? ""}
+  `}
+>
+        <main className="relative">
+  <div className="pointer-events-none fixed right-4 top-[88px] z-[120] flex w-[min(430px,calc(100vw-2rem))] flex-col gap-3 md:right-6">
+    <div className="pointer-events-auto">
+      <RestrictedShareBanner />
+    </div>
+
+    <div className="pointer-events-auto">
+      <PendingUploadsBanner />
+    </div>
+  </div>
+
   {children}
 </main>
         </div>

@@ -22,15 +22,13 @@ function Switch({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-green-500/80" : "bg-zinc-600"
-      }`}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? "bg-green-500/80" : "bg-zinc-600"
+        }`}
       aria-pressed={checked}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-          checked ? "translate-x-5" : "translate-x-1"
-        }`}
+        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${checked ? "translate-x-5" : "translate-x-1"
+          }`}
       />
     </button>
   );
@@ -44,6 +42,13 @@ type UserRole =
   | "SUPER_ADMIN"
   | "ADMIN"
   | "USUARIO";
+
+type CurrentUser = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+};
 
 type User = {
   id: string;
@@ -167,14 +172,14 @@ type GroupPermissionCategory = {
 type GroupPermissionRule = {
   id: string;
   resource_type:
-    | "CATEGORY"
-    | "SUBCATEGORY"
-    | "UPLOAD";
+  | "CATEGORY"
+  | "SUBCATEGORY"
+  | "UPLOAD";
   resource_id: string;
   access_level:
-    | "VIEWER"
-    | "APPROVER"
-    | "EDITOR";
+  | "VIEWER"
+  | "APPROVER"
+  | "EDITOR";
   resource_name?: string | null;
 };
 
@@ -199,6 +204,23 @@ type GroupPermissionUpload = {
 /* =========================================================
    API USUARIOS
 ========================================================= */
+
+async function fetchCurrentUser() {
+  const response = await fetch("/api/me", {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const result = await response
+    .json()
+    .catch(() => null);
+
+  return result as CurrentUser | null;
+}
 
 async function fetchUsers(
   q: string,
@@ -227,7 +249,7 @@ async function fetchUsers(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar los usuarios"
+      "No se pudieron cargar los usuarios"
     );
   }
 
@@ -261,11 +283,45 @@ async function patchUser(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo actualizar el usuario"
+      "No se pudo actualizar el usuario"
     );
   }
 
   return result as User;
+}
+
+async function resetUser2FA(
+  userId: string
+) {
+  const response = await fetch(
+    `/api/users/${userId}/reset-2fa`,
+    {
+      method: "POST",
+    }
+  );
+
+  const result = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error ||
+      "No se pudo resetear el 2FA"
+    );
+  }
+
+  return result as {
+    ok: boolean;
+    message: string;
+    user: {
+      id: string;
+      name: string | null;
+      email: string;
+      role: string;
+      two_factor_enabled: boolean;
+    };
+  };
 }
 
 /* =========================================================
@@ -288,7 +344,7 @@ async function fetchGroups() {
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar los grupos"
+      "No se pudieron cargar los grupos"
     );
   }
 
@@ -316,7 +372,7 @@ async function createGroup(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo crear el grupo"
+      "No se pudo crear el grupo"
     );
   }
 
@@ -345,7 +401,7 @@ async function fetchGroupMembers(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar los miembros"
+      "No se pudieron cargar los miembros"
     );
   }
 
@@ -368,7 +424,7 @@ async function fetchPermissionCategories() {
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar las categorías"
+      "No se pudieron cargar las categorías"
     );
   }
 
@@ -393,7 +449,7 @@ async function fetchPermissionUploads() {
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar los archivos"
+      "No se pudieron cargar los archivos"
     );
   }
 
@@ -420,7 +476,7 @@ async function fetchGroupPermissions(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar los permisos del grupo"
+      "No se pudieron cargar los permisos del grupo"
     );
   }
 
@@ -451,7 +507,7 @@ async function addGroupMembers(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron agregar los usuarios"
+      "No se pudieron agregar los usuarios"
     );
   }
 
@@ -487,7 +543,7 @@ async function removeGroupMember(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo quitar el usuario"
+      "No se pudo quitar el usuario"
     );
   }
 
@@ -557,7 +613,7 @@ async function fetchRegistrationInvites() {
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudieron cargar las invitaciones"
+      "No se pudieron cargar las invitaciones"
     );
   }
 
@@ -586,7 +642,7 @@ async function createRegistrationInvite(input: {
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo crear la invitación"
+      "No se pudo crear la invitación"
     );
   }
 
@@ -616,7 +672,7 @@ async function revokeRegistrationInvite(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo cancelar la invitación"
+      "No se pudo cancelar la invitación"
     );
   }
 
@@ -630,14 +686,14 @@ async function saveGroupPermission(
   groupId: string,
   input: {
     resourceType:
-      | "CATEGORY"
-      | "SUBCATEGORY"
-      | "UPLOAD";
+    | "CATEGORY"
+    | "SUBCATEGORY"
+    | "UPLOAD";
     resourceId: string;
     accessLevel:
-      | "VIEWER"
-      | "APPROVER"
-      | "EDITOR";
+    | "VIEWER"
+    | "APPROVER"
+    | "EDITOR";
   }
 ) {
   const response = await fetch(
@@ -658,7 +714,7 @@ async function saveGroupPermission(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo guardar el permiso"
+      "No se pudo guardar el permiso"
     );
   }
 
@@ -669,9 +725,9 @@ async function removeGroupPermission(
   groupId: string,
   input: {
     resourceType:
-      | "CATEGORY"
-      | "SUBCATEGORY"
-      | "UPLOAD";
+    | "CATEGORY"
+    | "SUBCATEGORY"
+    | "UPLOAD";
     resourceId: string;
   }
 ) {
@@ -693,7 +749,7 @@ async function removeGroupPermission(
   if (!response.ok) {
     throw new Error(
       result?.error ||
-        "No se pudo quitar el permiso"
+      "No se pudo quitar el permiso"
     );
   }
 
@@ -730,6 +786,14 @@ const GROUP_COLORS = [
 export default function UsersTable() {
   const queryClient = useQueryClient();
 
+  const {
+  data: currentUser,
+} = useQuery({
+  queryKey: ["me", "users-admin"],
+  queryFn: fetchCurrentUser,
+  staleTime: 30_000,
+});
+
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
@@ -760,62 +824,62 @@ export default function UsersTable() {
   ] = useState("");
 
   const [
-  selectedGroup,
-  setSelectedGroup,
-] = useState<UserGroup | null>(null);
+    selectedGroup,
+    setSelectedGroup,
+  ] = useState<UserGroup | null>(null);
 
-const [groupModalTab, setGroupModalTab] =
-  useState<"MEMBERS" | "PERMISSIONS">(
-    "MEMBERS"
-  );
+  const [groupModalTab, setGroupModalTab] =
+    useState<"MEMBERS" | "PERMISSIONS">(
+      "MEMBERS"
+    );
 
-const [selectedUserId, setSelectedUserId] =
-  useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] =
+    useState<string | null>(null);
 
-const [
-  invitePanelOpen,
-  setInvitePanelOpen,
-] = useState(false);
+  const [
+    invitePanelOpen,
+    setInvitePanelOpen,
+  ] = useState(false);
 
-const [
-  inviteEmail,
-  setInviteEmail,
-] = useState("");
+  const [
+    inviteEmail,
+    setInviteEmail,
+  ] = useState("");
 
-const [
-  inviteExpiresInHours,
-  setInviteExpiresInHours,
-] = useState(72);
+  const [
+    inviteExpiresInHours,
+    setInviteExpiresInHours,
+  ] = useState(72);
 
-const [
-  generatedInviteUrl,
-  setGeneratedInviteUrl,
-] = useState("");
+  const [
+    generatedInviteUrl,
+    setGeneratedInviteUrl,
+  ] = useState("");
 
-const [
-  inviteMessage,
-  setInviteMessage,
-] = useState("");
+  const [
+    inviteMessage,
+    setInviteMessage,
+  ] = useState("");
 
-const [
-  selectedAvailableUserIds,
-  setSelectedAvailableUserIds,
-] = useState<string[]>([]);
+  const [
+    selectedAvailableUserIds,
+    setSelectedAvailableUserIds,
+  ] = useState<string[]>([]);
 
-const [
-  availableUserSearch,
-  setAvailableUserSearch,
-] = useState("");
+  const [
+    availableUserSearch,
+    setAvailableUserSearch,
+  ] = useState("");
 
-const [
-  membersMessage,
-  setMembersMessage,
-] = useState("");
+  const [
+    membersMessage,
+    setMembersMessage,
+  ] = useState("");
 
-const [
-  permissionUploadSearch,
-  setPermissionUploadSearch,
-] = useState("");
+  const [
+    permissionUploadSearch,
+    setPermissionUploadSearch,
+  ] = useState("");
 
   /* =========================================================
      CONSULTA DE USUARIOS
@@ -871,77 +935,77 @@ const [
   });
 
   const {
-  data: selectedUserDetail,
-  isLoading: selectedUserDetailLoading,
-  isError: selectedUserDetailError,
-  error: selectedUserDetailQueryError,
-} = useQuery({
-  queryKey: ["user-detail", selectedUserId],
-  queryFn: () => fetchUserDetail(selectedUserId!),
-  enabled: Boolean(selectedUserId),
-  staleTime: 5_000,
-});
+    data: selectedUserDetail,
+    isLoading: selectedUserDetailLoading,
+    isError: selectedUserDetailError,
+    error: selectedUserDetailQueryError,
+  } = useQuery({
+    queryKey: ["user-detail", selectedUserId],
+    queryFn: () => fetchUserDetail(selectedUserId!),
+    enabled: Boolean(selectedUserId),
+    staleTime: 5_000,
+  });
 
-const {
-  data: invitesData,
-  isLoading: invitesLoading,
-  isError: invitesError,
-  error: invitesQueryError,
-} = useQuery({
-  queryKey: ["registration-invites"],
-  queryFn: fetchRegistrationInvites,
-  enabled: invitePanelOpen,
-  staleTime: 5_000,
-});
+  const {
+    data: invitesData,
+    isLoading: invitesLoading,
+    isError: invitesError,
+    error: invitesQueryError,
+  } = useQuery({
+    queryKey: ["registration-invites"],
+    queryFn: fetchRegistrationInvites,
+    enabled: invitePanelOpen,
+    staleTime: 5_000,
+  });
 
-const {
-  data: groupPermissionsData,
-  isLoading: groupPermissionsLoading,
-  isError: groupPermissionsError,
-  error: groupPermissionsQueryError,
-} = useQuery({
-  queryKey: [
-    "user-group-permissions",
-    selectedGroup?.id,
-  ],
-  queryFn: () =>
-    fetchGroupPermissions(
-      selectedGroup!.id
-    ),
-  enabled:
-    Boolean(selectedGroup?.id) &&
-    groupModalTab === "PERMISSIONS",
-  staleTime: 5_000,
-});
+  const {
+    data: groupPermissionsData,
+    isLoading: groupPermissionsLoading,
+    isError: groupPermissionsError,
+    error: groupPermissionsQueryError,
+  } = useQuery({
+    queryKey: [
+      "user-group-permissions",
+      selectedGroup?.id,
+    ],
+    queryFn: () =>
+      fetchGroupPermissions(
+        selectedGroup!.id
+      ),
+    enabled:
+      Boolean(selectedGroup?.id) &&
+      groupModalTab === "PERMISSIONS",
+    staleTime: 5_000,
+  });
 
-const {
-  data: permissionCategories = [],
-  isLoading: loadingPermissionCategories,
-  isError: permissionCategoriesError,
-  error: permissionCategoriesQueryError,
-} = useQuery({
-  queryKey: [
-    "permission-categories",
-  ],
-  queryFn:
-    fetchPermissionCategories,
-  enabled:
-    groupModalTab === "PERMISSIONS",
-  staleTime: 30_000,
-});
+  const {
+    data: permissionCategories = [],
+    isLoading: loadingPermissionCategories,
+    isError: permissionCategoriesError,
+    error: permissionCategoriesQueryError,
+  } = useQuery({
+    queryKey: [
+      "permission-categories",
+    ],
+    queryFn:
+      fetchPermissionCategories,
+    enabled:
+      groupModalTab === "PERMISSIONS",
+    staleTime: 30_000,
+  });
 
-const {
-  data: permissionUploads = [],
-  isLoading: loadingPermissionUploads,
-  isError: permissionUploadsError,
-  error: permissionUploadsQueryError,
-} = useQuery({
-  queryKey: ["permission-uploads"],
-  queryFn: fetchPermissionUploads,
-  enabled:
-    groupModalTab === "PERMISSIONS",
-  staleTime: 30_000,
-});
+  const {
+    data: permissionUploads = [],
+    isLoading: loadingPermissionUploads,
+    isError: permissionUploadsError,
+    error: permissionUploadsQueryError,
+  } = useQuery({
+    queryKey: ["permission-uploads"],
+    queryFn: fetchPermissionUploads,
+    enabled:
+      groupModalTab === "PERMISSIONS",
+    staleTime: 30_000,
+  });
 
   /* =========================================================
      MUTACIÓN DE USUARIO
@@ -989,9 +1053,9 @@ const {
               (user: User) =>
                 user.id === id
                   ? {
-                      ...user,
-                      ...update,
-                    }
+                    ...user,
+                    ...update,
+                  }
                   : user
             ),
           };
@@ -1022,75 +1086,113 @@ const {
       });
     },
   });
-const saveGroupPermissionMutation =
-  useMutation({
-    mutationFn: ({
-      groupId,
-      resourceType,
-      resourceId,
-      accessLevel,
-    }: {
-      groupId: string;
-      resourceType:
+  const saveGroupPermissionMutation =
+    useMutation({
+      mutationFn: ({
+        groupId,
+        resourceType,
+        resourceId,
+        accessLevel,
+      }: {
+        groupId: string;
+        resourceType:
         | "CATEGORY"
         | "SUBCATEGORY"
         | "UPLOAD";
-      resourceId: string;
-      accessLevel:
+        resourceId: string;
+        accessLevel:
         | "VIEWER"
         | "APPROVER"
         | "EDITOR";
-    }) =>
-      saveGroupPermission(
+      }) =>
+        saveGroupPermission(
+          groupId,
+          {
+            resourceType,
+            resourceId,
+            accessLevel,
+          }
+        ),
+
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: [
+            "user-group-permissions",
+            selectedGroup?.id,
+          ],
+        });
+      },
+    });
+
+  const removeGroupPermissionMutation =
+    useMutation({
+      mutationFn: ({
         groupId,
-        {
-          resourceType,
-          resourceId,
-          accessLevel,
-        }
-      ),
-
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: [
-          "user-group-permissions",
-          selectedGroup?.id,
-        ],
-      });
-    },
-  });
-
-const removeGroupPermissionMutation =
-  useMutation({
-    mutationFn: ({
-      groupId,
-      resourceType,
-      resourceId,
-    }: {
-      groupId: string;
-      resourceType:
+        resourceType,
+        resourceId,
+      }: {
+        groupId: string;
+        resourceType:
         | "CATEGORY"
         | "SUBCATEGORY"
         | "UPLOAD";
-      resourceId: string;
-    }) =>
-      removeGroupPermission(
-        groupId,
-        {
-          resourceType,
-          resourceId,
-        }
-      ),
+        resourceId: string;
+      }) =>
+        removeGroupPermission(
+          groupId,
+          {
+            resourceType,
+            resourceId,
+          }
+        ),
 
-    onSuccess: async () => {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: [
+            "user-group-permissions",
+            selectedGroup?.id,
+          ],
+        });
+      },
+    });
+
+    const reset2FAMutation = useMutation({
+  mutationFn: async (user: User) => {
+    const confirmed = window.confirm(
+      `¿Resetear el 2FA de ${user.name || user.email}?\n\n` +
+      "En su próximo inicio de sesión deberá configurar Google Authenticator nuevamente y escanear un nuevo QR."
+    );
+
+    if (!confirmed) {
+      throw new Error("RESET_CANCELLED");
+    }
+
+    return resetUser2FA(user.id);
+  },
+
+  onSuccess: async () => {
+    if (selectedUserId) {
       await queryClient.invalidateQueries({
-        queryKey: [
-          "user-group-permissions",
-          selectedGroup?.id,
-        ],
+        queryKey: ["user-detail", selectedUserId],
       });
-    },
-  });
+    }
+
+    window.alert(
+      "2FA reseteado correctamente. El usuario deberá configurarlo nuevamente en su próximo inicio de sesión."
+    );
+  },
+
+  onError: (error: Error) => {
+    if (error.message === "RESET_CANCELLED") {
+      return;
+    }
+
+    window.alert(
+      error.message || "No se pudo resetear el 2FA"
+    );
+  },
+});
+
   /* =========================================================
      MUTACIÓN CREAR GRUPO
   ========================================================= */
@@ -1120,7 +1222,7 @@ const removeGroupPermissionMutation =
     ) => {
       setGroupMessage(
         mutationError.message ||
-          "No se pudo crear el grupo."
+        "No se pudo crear el grupo."
       );
     },
   });
@@ -1175,7 +1277,7 @@ const removeGroupPermissionMutation =
       ) => {
         setMembersMessage(
           mutationError.message ||
-            "No se pudieron agregar los miembros."
+          "No se pudieron agregar los miembros."
         );
       },
     });
@@ -1224,65 +1326,65 @@ const removeGroupPermissionMutation =
       ) => {
         setMembersMessage(
           mutationError.message ||
-            "No se pudo quitar el usuario."
+          "No se pudo quitar el usuario."
         );
       },
     });
 
-    const deleteGroupMutation = useMutation({
-  mutationFn: deleteUserGroup,
+  const deleteGroupMutation = useMutation({
+    mutationFn: deleteUserGroup,
 
-  onSuccess: async (result) => {
-    setGroupMessage(
-      `Grupo "${result.deletedGroup.name}" eliminado correctamente.`
-    );
+    onSuccess: async (result) => {
+      setGroupMessage(
+        `Grupo "${result.deletedGroup.name}" eliminado correctamente.`
+      );
 
-    if (selectedGroup?.id === result.deletedGroup.id) {
-      setSelectedGroup(null);
-    }
+      if (selectedGroup?.id === result.deletedGroup.id) {
+        setSelectedGroup(null);
+      }
 
-    await queryClient.invalidateQueries({
-      queryKey: ["user-groups"],
-    });
-  },
+      await queryClient.invalidateQueries({
+        queryKey: ["user-groups"],
+      });
+    },
 
-  onError: (mutationError: Error) => {
-    setGroupMessage(
-      mutationError.message || "No se pudo eliminar el grupo."
-    );
-  },
-});
-const filteredPermissionUploads =
-  useMemo(() => {
-    const term =
-      permissionUploadSearch
-        .trim()
-        .toLowerCase();
-
-    if (!term) {
-      return permissionUploads;
-    }
-
-    return permissionUploads.filter(
-      (upload) => {
-        const text = [
-          upload.display_name,
-          upload.titulo,
-          upload.file_name,
-          upload.category,
-          upload.subcategory,
-        ]
-          .filter(Boolean)
-          .join(" ")
+    onError: (mutationError: Error) => {
+      setGroupMessage(
+        mutationError.message || "No se pudo eliminar el grupo."
+      );
+    },
+  });
+  const filteredPermissionUploads =
+    useMemo(() => {
+      const term =
+        permissionUploadSearch
+          .trim()
           .toLowerCase();
 
-        return text.includes(term);
+      if (!term) {
+        return permissionUploads;
       }
-    );
-  }, [
-    permissionUploads,
-    permissionUploadSearch,
-  ]);
+
+      return permissionUploads.filter(
+        (upload) => {
+          const text = [
+            upload.display_name,
+            upload.titulo,
+            upload.file_name,
+            upload.category,
+            upload.subcategory,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return text.includes(term);
+        }
+      );
+    }, [
+      permissionUploads,
+      permissionUploadSearch,
+    ]);
 
   /* =========================================================
      DATOS DERIVADOS
@@ -1372,117 +1474,117 @@ const filteredPermissionUploads =
 
 
   const createInviteMutation = useMutation({
-  mutationFn: createRegistrationInvite,
+    mutationFn: createRegistrationInvite,
 
-  onSuccess: async (result) => {
-    setGeneratedInviteUrl(
-      result.inviteUrl
-    );
+    onSuccess: async (result) => {
+      setGeneratedInviteUrl(
+        result.inviteUrl
+      );
 
-    setInviteMessage(
-      "Invitación creada correctamente."
-    );
+      setInviteMessage(
+        "Invitación creada correctamente."
+      );
 
-    await queryClient.invalidateQueries({
-      queryKey: [
-        "registration-invites",
-      ],
-    });
-  },
+      await queryClient.invalidateQueries({
+        queryKey: [
+          "registration-invites",
+        ],
+      });
+    },
 
-  onError: (mutationError) => {
-    setInviteMessage(
-      mutationError instanceof Error
-        ? mutationError.message
-        : "No se pudo crear la invitación."
-    );
-  },
-});
-
-const revokeInviteMutation = useMutation({
-  mutationFn: revokeRegistrationInvite,
-
-  onSuccess: async () => {
-    setInviteMessage(
-      "Invitación cancelada correctamente."
-    );
-
-    await queryClient.invalidateQueries({
-      queryKey: [
-        "registration-invites",
-      ],
-    });
-  },
-
-  onError: (mutationError) => {
-    setInviteMessage(
-      mutationError instanceof Error
-        ? mutationError.message
-        : "No se pudo cancelar la invitación."
-    );
-  },
-});
-const handleRevokeInvite = (
-  invite: RegistrationInvite
-) => {
-  const confirmed = window.confirm(
-    invite.email
-      ? `¿Cancelar la invitación enviada a ${invite.email}?`
-      : "¿Cancelar esta invitación abierta?"
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  setInviteMessage("");
-
-  revokeInviteMutation.mutate(
-    invite.id
-  );
-};
-const handleCreateInvite = () => {
-  setInviteMessage("");
-  setGeneratedInviteUrl("");
-
-  createInviteMutation.mutate({
-    email: inviteEmail.trim(),
-    expiresInHours:
-      inviteExpiresInHours,
+    onError: (mutationError) => {
+      setInviteMessage(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No se pudo crear la invitación."
+      );
+    },
   });
-};
 
-const handleCopyInvite = async () => {
-  if (!generatedInviteUrl) {
-    return;
-  }
+  const revokeInviteMutation = useMutation({
+    mutationFn: revokeRegistrationInvite,
 
-  try {
-    await navigator.clipboard.writeText(
-      generatedInviteUrl
+    onSuccess: async () => {
+      setInviteMessage(
+        "Invitación cancelada correctamente."
+      );
+
+      await queryClient.invalidateQueries({
+        queryKey: [
+          "registration-invites",
+        ],
+      });
+    },
+
+    onError: (mutationError) => {
+      setInviteMessage(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No se pudo cancelar la invitación."
+      );
+    },
+  });
+  const handleRevokeInvite = (
+    invite: RegistrationInvite
+  ) => {
+    const confirmed = window.confirm(
+      invite.email
+        ? `¿Cancelar la invitación enviada a ${invite.email}?`
+        : "¿Cancelar esta invitación abierta?"
     );
 
-    setInviteMessage(
-      "Enlace copiado al portapapeles."
-    );
-  } catch {
-    setInviteMessage(
-      "No se pudo copiar automáticamente. Copia el enlace manualmente."
-    );
-  }
-};
+    if (!confirmed) {
+      return;
+    }
 
-const closeInvitePanel = () => {
-  if (createInviteMutation.isPending) {
-    return;
-  }
+    setInviteMessage("");
 
-  setInvitePanelOpen(false);
-  setInviteEmail("");
-  setInviteExpiresInHours(72);
-  setGeneratedInviteUrl("");
-  setInviteMessage("");
-};
+    revokeInviteMutation.mutate(
+      invite.id
+    );
+  };
+  const handleCreateInvite = () => {
+    setInviteMessage("");
+    setGeneratedInviteUrl("");
+
+    createInviteMutation.mutate({
+      email: inviteEmail.trim(),
+      expiresInHours:
+        inviteExpiresInHours,
+    });
+  };
+
+  const handleCopyInvite = async () => {
+    if (!generatedInviteUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        generatedInviteUrl
+      );
+
+      setInviteMessage(
+        "Enlace copiado al portapapeles."
+      );
+    } catch {
+      setInviteMessage(
+        "No se pudo copiar automáticamente. Copia el enlace manualmente."
+      );
+    }
+  };
+
+  const closeInvitePanel = () => {
+    if (createInviteMutation.isPending) {
+      return;
+    }
+
+    setInvitePanelOpen(false);
+    setInviteEmail("");
+    setInviteExpiresInHours(72);
+    setGeneratedInviteUrl("");
+    setInviteMessage("");
+  };
   /* =========================================================
      FUNCIONES DE INTERFAZ
   ========================================================= */
@@ -1649,24 +1751,23 @@ const closeInvitePanel = () => {
   };
 
   const handleDeleteGroup = (group: UserGroup) => {
-  const memberCount = Number(group.member_count || 0);
+    const memberCount = Number(group.member_count || 0);
 
-  const message =
-    memberCount > 0
-      ? `¿Eliminar el grupo "${group.name}"?\n\nSe quitarán ${memberCount} membresía${
-          memberCount === 1 ? "" : "s"
+    const message =
+      memberCount > 0
+        ? `¿Eliminar el grupo "${group.name}"?\n\nSe quitarán ${memberCount} membresía${memberCount === 1 ? "" : "s"
         }, pero no se eliminarán usuarios, archivos ni permisos privados.`
-      : `¿Eliminar el grupo "${group.name}"?\n\nNo se eliminarán usuarios, archivos ni permisos privados.`;
+        : `¿Eliminar el grupo "${group.name}"?\n\nNo se eliminarán usuarios, archivos ni permisos privados.`;
 
-  const confirmed = window.confirm(message);
+    const confirmed = window.confirm(message);
 
-  if (!confirmed) {
-    return;
-  }
+    if (!confirmed) {
+      return;
+    }
 
-  setGroupMessage("");
-  deleteGroupMutation.mutate(group.id);
-};
+    setGroupMessage("");
+    deleteGroupMutation.mutate(group.id);
+  };
   /* =========================================================
      RENDER
   ========================================================= */
@@ -1695,20 +1796,20 @@ const closeInvitePanel = () => {
               internos.
             </p>
             <button
-  type="button"
-  onClick={() => {
-    setInvitePanelOpen(true);
-    setInviteMessage("");
-    setGeneratedInviteUrl("");
-  }}
-  className="mt-4 inline-flex items-center gap-2 rounded-lg border border-orange-500/60 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20"
->
-  <span className="text-lg leading-none">
-    +
-  </span>
+              type="button"
+              onClick={() => {
+                setInvitePanelOpen(true);
+                setInviteMessage("");
+                setGeneratedInviteUrl("");
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-orange-500/60 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20"
+            >
+              <span className="text-lg leading-none">
+                +
+              </span>
 
-  Invitar usuario
-</button>
+              Invitar usuario
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1877,11 +1978,10 @@ const closeInvitePanel = () => {
                                 )
                               }
                               aria-label={`Seleccionar color ${color}`}
-                              className={`h-7 w-7 rounded-full border-2 transition ${
-                                active
+                              className={`h-7 w-7 rounded-full border-2 transition ${active
                                   ? "scale-110 border-white"
                                   : "border-transparent opacity-70 hover:opacity-100"
-                              }`}
+                                }`}
                               style={{
                                 backgroundColor:
                                   color,
@@ -1932,7 +2032,7 @@ const closeInvitePanel = () => {
             ) : groupsError ? (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
                 {groupsQueryError instanceof
-                Error
+                  Error
                   ? groupsQueryError.message
                   : "No se pudieron cargar los grupos."}
               </div>
@@ -1981,11 +2081,10 @@ const closeInvitePanel = () => {
                         </div>
 
                         <span
-                          className={`shrink-0 rounded-full border px-2 py-1 text-[10px] ${
-                            group.is_active
+                          className={`shrink-0 rounded-full border px-2 py-1 text-[10px] ${group.is_active
                               ? "border-green-500/30 bg-green-500/10 text-green-300"
                               : "border-zinc-700 bg-zinc-800 text-zinc-400"
-                          }`}
+                            }`}
                         >
                           {group.is_active
                             ? "Activo"
@@ -1994,38 +2093,38 @@ const closeInvitePanel = () => {
                       </div>
 
                       <div className="mt-4 flex flex-col gap-3 border-t border-zinc-800 pt-3 sm:flex-row sm:items-end sm:justify-between">
-  <div>
-    <p className="text-[10px] uppercase tracking-wide text-zinc-500">
-      Miembros
-    </p>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+                            Miembros
+                          </p>
 
-    <p className="text-lg font-bold text-white">
-      {group.member_count ?? 0}
-    </p>
-  </div>
+                          <p className="text-lg font-bold text-white">
+                            {group.member_count ?? 0}
+                          </p>
+                        </div>
 
-  <div className="flex flex-wrap gap-2">
-    <button
-      type="button"
-      onClick={() => openMembersModal(group)}
-      disabled={deleteGroupMutation.isPending}
-      className="rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
-    >
-      Administrar miembros
-    </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openMembersModal(group)}
+                            disabled={deleteGroupMutation.isPending}
+                            className="rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-300 transition hover:bg-orange-500/20 disabled:opacity-50"
+                          >
+                            Administrar miembros
+                          </button>
 
-    <button
-      type="button"
-      onClick={() => handleDeleteGroup(group)}
-      disabled={deleteGroupMutation.isPending}
-      className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {deleteGroupMutation.isPending
-        ? "Eliminando..."
-        : "Eliminar grupo"}
-    </button>
-  </div>
-</div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteGroup(group)}
+                            disabled={deleteGroupMutation.isPending}
+                            className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deleteGroupMutation.isPending
+                              ? "Eliminando..."
+                              : "Eliminar grupo"}
+                          </button>
+                        </div>
+                      </div>
                     </article>
                   )
                 )}
@@ -2136,7 +2235,7 @@ const closeInvitePanel = () => {
                       colSpan={9}
                     >
                       {error instanceof
-                      Error
+                        Error
                         ? error.message
                         : "Error al cargar usuarios."}
                     </td>
@@ -2176,22 +2275,22 @@ const closeInvitePanel = () => {
                       />
 
                       <div className="min-w-0 flex-1">
-  <p className="truncate font-medium text-white">
-    {user.name ?? "Sin nombre"}
-  </p>
+                        <p className="truncate font-medium text-white">
+                          {user.name ?? "Sin nombre"}
+                        </p>
 
-  <p className="truncate text-xs text-zinc-400">
-    {user.email}
-  </p>
+                        <p className="truncate text-xs text-zinc-400">
+                          {user.email}
+                        </p>
 
-  <button
-    type="button"
-    onClick={() => setSelectedUserId(user.id)}
-    className="mt-1 text-xs font-medium text-orange-300 transition hover:text-orange-200"
-  >
-    Ver detalle
-  </button>
-</div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserId(user.id)}
+                          className="mt-1 text-xs font-medium text-orange-300 transition hover:text-orange-200"
+                        >
+                          Ver detalle
+                        </button>
+                      </div>
                     </div>
                   </td>
 
@@ -2397,889 +2496,886 @@ const closeInvitePanel = () => {
               </button>
             </div>
 
-                  <div className="border-b border-zinc-800 px-5">
-  <div className="flex gap-2">
-    <button
-      type="button"
-      onClick={() =>
-        setGroupModalTab("MEMBERS")
-      }
-      className={[
-        "border-b-2 px-4 py-3 text-sm font-medium transition",
-        groupModalTab === "MEMBERS"
-          ? "border-orange-500 text-orange-300"
-          : "border-transparent text-zinc-400 hover:text-white",
-      ].join(" ")}
-    >
-      Miembros
-    </button>
+            <div className="border-b border-zinc-800 px-5">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGroupModalTab("MEMBERS")
+                  }
+                  className={[
+                    "border-b-2 px-4 py-3 text-sm font-medium transition",
+                    groupModalTab === "MEMBERS"
+                      ? "border-orange-500 text-orange-300"
+                      : "border-transparent text-zinc-400 hover:text-white",
+                  ].join(" ")}
+                >
+                  Miembros
+                </button>
 
-    <button
-      type="button"
-      onClick={() =>
-        setGroupModalTab(
-          "PERMISSIONS"
-        )
-      }
-      className={[
-        "border-b-2 px-4 py-3 text-sm font-medium transition",
-        groupModalTab ===
-        "PERMISSIONS"
-          ? "border-orange-500 text-orange-300"
-          : "border-transparent text-zinc-400 hover:text-white",
-      ].join(" ")}
-    >
-      Permisos
-    </button>
-  </div>
-</div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGroupModalTab(
+                      "PERMISSIONS"
+                    )
+                  }
+                  className={[
+                    "border-b-2 px-4 py-3 text-sm font-medium transition",
+                    groupModalTab ===
+                      "PERMISSIONS"
+                      ? "border-orange-500 text-orange-300"
+                      : "border-transparent text-zinc-400 hover:text-white",
+                  ].join(" ")}
+                >
+                  Permisos
+                </button>
+              </div>
+            </div>
 
             <div className="overflow-y-auto p-5">
 
               {groupModalTab === "MEMBERS" && (
-  <>
-              {membersMessage && (
-                <div className="mb-4 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm text-orange-300">
-                  {membersMessage}
-                </div>
+                <>
+                  {membersMessage && (
+                    <div className="mb-4 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm text-orange-300">
+                      {membersMessage}
+                    </div>
+                  )}
+
+                  {groupMembersLoading ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center text-sm text-zinc-400">
+                      Cargando miembros...
+                    </div>
+                  ) : groupMembersError ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                      {groupMembersQueryError instanceof
+                        Error
+                        ? groupMembersQueryError.message
+                        : "No se pudieron cargar los miembros."}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                      {/* MIEMBROS ACTUALES */}
+
+                      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-white">
+                              Miembros actuales
+                            </h3>
+
+                            <p className="mt-1 text-xs text-zinc-400">
+                              {members.length}{" "}
+                              miembro
+                              {members.length !== 1
+                                ? "s"
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        {members.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                            Este grupo todavía
+                            no tiene miembros.
+                          </div>
+                        ) : (
+                          <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                            {members.map(
+                              (member) => {
+                                const memberName =
+                                  member.name ||
+                                  member.email;
+
+                                return (
+                                  <div
+                                    key={
+                                      member.id
+                                    }
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3"
+                                  >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <img
+                                        src={`https://i.pravatar.cc/64?u=${encodeURIComponent(
+                                          member.email
+                                        )}`}
+                                        alt={
+                                          memberName
+                                        }
+                                        className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
+                                      />
+
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium text-white">
+                                          {
+                                            memberName
+                                          }
+                                        </p>
+
+                                        <p className="truncate text-xs text-zinc-400">
+                                          {
+                                            member.email
+                                          }
+                                        </p>
+
+                                        <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                                          {ROLE_LABELS[
+                                            member
+                                              .role
+                                          ] ||
+                                            member.role}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        removeMemberMutation.isPending
+                                      }
+                                      onClick={() =>
+                                        handleRemoveMember(
+                                          member.id,
+                                          memberName
+                                        )
+                                      }
+                                      className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                                    >
+                                      Quitar
+                                    </button>
+                                  </div>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+                      </section>
+
+                      {/* USUARIOS DISPONIBLES */}
+
+                      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                        <div className="mb-4">
+                          <h3 className="font-semibold text-white">
+                            Agregar usuarios
+                          </h3>
+
+                          <p className="mt-1 text-xs text-zinc-400">
+                            Selecciona una o
+                            varias personas.
+                          </p>
+                        </div>
+
+                        <input
+                          value={
+                            availableUserSearch
+                          }
+                          onChange={(event) =>
+                            setAvailableUserSearch(
+                              event.target
+                                .value
+                            )
+                          }
+                          placeholder="Buscar por nombre o email…"
+                          className="mb-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-orange-500/70"
+                        />
+
+                        {filteredAvailableUsers.length >
+                          0 && (
+                            <div className="mb-3 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={
+                                  selectAllVisibleUsers
+                                }
+                                className="text-xs text-orange-300 hover:text-orange-200"
+                              >
+                                Seleccionar todos
+                                los visibles
+                              </button>
+
+                              <span className="text-xs text-zinc-500">
+                                {
+                                  selectedAvailableUserIds.length
+                                }{" "}
+                                seleccionado
+                                {selectedAvailableUserIds.length !==
+                                  1
+                                  ? "s"
+                                  : ""}
+                              </span>
+                            </div>
+                          )}
+
+                        {availableUsers.length ===
+                          0 ? (
+                          <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                            Todos los usuarios
+                            ya pertenecen a este
+                            grupo.
+                          </div>
+                        ) : filteredAvailableUsers.length ===
+                          0 ? (
+                          <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                            No se encontraron
+                            usuarios.
+                          </div>
+                        ) : (
+                          <div className="max-h-[350px] space-y-2 overflow-y-auto pr-1">
+                            {filteredAvailableUsers.map(
+                              (user) => {
+                                const checked =
+                                  selectedAvailableUserIds.includes(
+                                    user.id
+                                  );
+
+                                return (
+                                  <label
+                                    key={
+                                      user.id
+                                    }
+                                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${checked
+                                        ? "border-orange-500/60 bg-orange-500/10"
+                                        : "border-zinc-800 bg-black/30 hover:border-zinc-700"
+                                      }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={
+                                        checked
+                                      }
+                                      onChange={() =>
+                                        toggleAvailableUser(
+                                          user.id
+                                        )
+                                      }
+                                      className="h-4 w-4 accent-orange-500"
+                                    />
+
+                                    <img
+                                      src={`https://i.pravatar.cc/64?u=${encodeURIComponent(
+                                        user.email
+                                      )}`}
+                                      alt={
+                                        user.name ||
+                                        user.email
+                                      }
+                                      className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
+                                    />
+
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-medium text-white">
+                                        {user.name ||
+                                          "Sin nombre"}
+                                      </p>
+
+                                      <p className="truncate text-xs text-zinc-400">
+                                        {
+                                          user.email
+                                        }
+                                      </p>
+                                    </div>
+
+                                    {!user.is_active && (
+                                      <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] text-zinc-400">
+                                        Inactivo
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={
+                            handleAddMembers
+                          }
+                          disabled={
+                            selectedAvailableUserIds.length ===
+                            0 ||
+                            addMembersMutation.isPending
+                          }
+                          className="mt-4 w-full rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-orange-400 disabled:opacity-50"
+                        >
+                          {addMembersMutation.isPending
+                            ? "Agregando..."
+                            : `Agregar ${selectedAvailableUserIds.length ||
+                            ""
+                            } miembro${selectedAvailableUserIds.length ===
+                              1
+                              ? ""
+                              : "s"
+                            }`}
+                        </button>
+                      </section>
+                    </div>
+                  )}
+
+                </>
               )}
-
-              {groupMembersLoading ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center text-sm text-zinc-400">
-                  Cargando miembros...
-                </div>
-              ) : groupMembersError ? (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-                  {groupMembersQueryError instanceof
-                  Error
-                    ? groupMembersQueryError.message
-                    : "No se pudieron cargar los miembros."}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                  {/* MIEMBROS ACTUALES */}
-
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-                    <div className="mb-4 flex items-center justify-between">
+              {groupModalTab === "PERMISSIONS" && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="font-semibold text-white">
-                          Miembros actuales
+                        <h3 className="text-lg font-semibold text-white">
+                          Permisos del grupo
                         </h3>
 
-                        <p className="mt-1 text-xs text-zinc-400">
-                          {members.length}{" "}
-                          miembro
-                          {members.length !== 1
-                            ? "s"
-                            : ""}
+                        <p className="mt-1 text-sm text-zinc-400">
+                          Define a qué categorías completas puede acceder este grupo.
                         </p>
                       </div>
+
+                      <div className="text-xs text-zinc-500">
+                        Categorías asignadas:{" "}
+                        <span className="font-semibold text-orange-300">
+                          {groupPermissionsData?.categories?.length ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-white">
+                        Categorías completas
+                      </h4>
+
+                      <p className="mt-1 text-xs leading-5 text-zinc-400">
+                        Si asignas una categoría, los miembros del grupo tendrán acceso
+                        automático a los archivos actuales y futuros de esa categoría.
+                      </p>
                     </div>
 
-                    {members.length === 0 ? (
+                    {loadingPermissionCategories ||
+                      groupPermissionsLoading ? (
+                      <div className="rounded-lg border border-zinc-800 bg-black/30 p-6 text-center text-sm text-zinc-400">
+                        Cargando categorías y permisos...
+                      </div>
+                    ) : permissionCategoriesError ? (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                        {permissionCategoriesQueryError instanceof Error
+                          ? permissionCategoriesQueryError.message
+                          : "No se pudieron cargar las categorías."}
+                      </div>
+                    ) : groupPermissionsError ? (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                        {groupPermissionsQueryError instanceof Error
+                          ? groupPermissionsQueryError.message
+                          : "No se pudieron cargar los permisos del grupo."}
+                      </div>
+                    ) : permissionCategories.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-                        Este grupo todavía
-                        no tiene miembros.
+                        No hay categorías disponibles.
                       </div>
                     ) : (
-                      <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                        {members.map(
-                          (member) => {
-                            const memberName =
-                              member.name ||
-                              member.email;
+                      <div className="space-y-2">
+                        {permissionCategories.map((category) => {
+                          const assignedRule =
+                            groupPermissionsData?.categories?.find(
+                              (rule) =>
+                                rule.resource_id === category.id
+                            );
 
-                            return (
-                              <div
-                                key={
-                                  member.id
-                                }
-                                className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/30 p-3"
-                              >
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <img
-                                    src={`https://i.pravatar.cc/64?u=${encodeURIComponent(
-                                      member.email
-                                    )}`}
-                                    alt={
-                                      memberName
-                                    }
-                                    className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
+                          const selected = Boolean(
+                            assignedRule
+                          );
+
+                          const saving =
+                            saveGroupPermissionMutation.isPending ||
+                            removeGroupPermissionMutation.isPending;
+
+                          return (
+                            <div
+                              key={category.id}
+                              className={[
+                                "rounded-xl border p-4 transition",
+                                selected
+                                  ? "border-orange-500/60 bg-orange-500/10"
+                                  : "border-zinc-800 bg-black/30",
+                              ].join(" ")}
+                            >
+                              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <label className="flex min-w-0 cursor-pointer items-start gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    disabled={saving}
+                                    onChange={() => {
+                                      if (!selectedGroup) {
+                                        return;
+                                      }
+
+                                      if (selected) {
+                                        removeGroupPermissionMutation.mutate({
+                                          groupId:
+                                            selectedGroup.id,
+                                          resourceType:
+                                            "CATEGORY",
+                                          resourceId:
+                                            category.id,
+                                        });
+
+                                        return;
+                                      }
+
+                                      saveGroupPermissionMutation.mutate({
+                                        groupId:
+                                          selectedGroup.id,
+                                        resourceType:
+                                          "CATEGORY",
+                                        resourceId:
+                                          category.id,
+                                        accessLevel:
+                                          "VIEWER",
+                                      });
+                                    }}
+                                    className="mt-1 h-4 w-4 shrink-0 accent-orange-500"
                                   />
 
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium text-white">
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-semibold text-white">
+                                      {category.label}
+                                    </span>
+
+                                    <span className="mt-1 block text-xs text-zinc-500">
+                                      {category.description ||
+                                        `Slug: ${category.slug}`}
+                                    </span>
+
+                                    <span className="mt-1 block text-[11px] text-zinc-500">
                                       {
-                                        memberName
+                                        category.subcategories.filter(
+                                          (subcategory) =>
+                                            subcategory.is_active
+                                        ).length
+                                      }{" "}
+                                      subcategoría
+                                      {category.subcategories.filter(
+                                        (subcategory) =>
+                                          subcategory.is_active
+                                      ).length !== 1
+                                        ? "s"
+                                        : ""}
+                                    </span>
+                                  </span>
+                                </label>
+
+                                {selected && (
+                                  <select
+                                    value={
+                                      assignedRule?.access_level ||
+                                      "VIEWER"
+                                    }
+                                    disabled={saving}
+                                    onChange={(event) => {
+                                      if (!selectedGroup) {
+                                        return;
                                       }
-                                    </p>
 
-                                    <p className="truncate text-xs text-zinc-400">
-                                      {
-                                        member.email
-                                      }
-                                    </p>
+                                      saveGroupPermissionMutation.mutate({
+                                        groupId:
+                                          selectedGroup.id,
+                                        resourceType:
+                                          "CATEGORY",
+                                        resourceId:
+                                          category.id,
+                                        accessLevel:
+                                          event.target.value as
+                                          | "VIEWER"
+                                          | "APPROVER"
+                                          | "EDITOR",
+                                      });
+                                    }}
+                                    className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white outline-none focus:border-orange-500/70 sm:w-44"
+                                  >
+                                    <option value="VIEWER">
+                                      Puede ver
+                                    </option>
 
-                                    <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                                      {ROLE_LABELS[
-                                        member
-                                          .role
-                                      ] ||
-                                        member.role}
-                                    </p>
-                                  </div>
-                                </div>
+                                    <option value="APPROVER">
+                                      Puede aprobar
+                                    </option>
 
-                                <button
-                                  type="button"
-                                  disabled={
-                                    removeMemberMutation.isPending
-                                  }
-                                  onClick={() =>
-                                    handleRemoveMember(
-                                      member.id,
-                                      memberName
-                                    )
-                                  }
-                                  className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
-                                >
-                                  Quitar
-                                </button>
+                                    <option value="EDITOR">
+                                      Puede editar
+                                    </option>
+                                  </select>
+                                )}
                               </div>
-                            );
-                          }
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </section>
 
-                  {/* USUARIOS DISPONIBLES */}
-
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
                     <div className="mb-4">
-                      <h3 className="font-semibold text-white">
-                        Agregar usuarios
-                      </h3>
+                      <h4 className="font-semibold text-white">
+                        Subcategorías específicas
+                      </h4>
+
+                      <p className="mt-1 text-xs leading-5 text-zinc-400">
+                        Permite acceso únicamente a determinadas
+                        subcategorías sin habilitar la categoría completa.
+                      </p>
+                    </div>
+
+                    <div className="space-y-5">
+                      {permissionCategories.map((category) => {
+                        const activeSubcategories =
+                          category.subcategories.filter(
+                            (subcategory) =>
+                              subcategory.is_active
+                          );
+
+                        if (
+                          activeSubcategories.length === 0
+                        ) {
+                          return null;
+                        }
+
+                        return (
+                          <div
+                            key={category.id}
+                            className="rounded-xl border border-zinc-800 bg-black/30 p-4"
+                          >
+                            <p className="mb-3 text-sm font-semibold text-orange-200">
+                              {category.label}
+                            </p>
+
+                            <div className="space-y-2">
+                              {activeSubcategories.map(
+                                (subcategory) => {
+                                  const assignedRule =
+                                    groupPermissionsData
+                                      ?.subcategories?.find(
+                                        (rule) =>
+                                          rule.resource_id ===
+                                          subcategory.id
+                                      );
+
+                                  const selected =
+                                    Boolean(assignedRule);
+
+                                  const saving =
+                                    saveGroupPermissionMutation.isPending ||
+                                    removeGroupPermissionMutation.isPending;
+
+                                  return (
+                                    <div
+                                      key={subcategory.id}
+                                      className={[
+                                        "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
+                                        selected
+                                          ? "border-orange-500/50 bg-orange-500/10"
+                                          : "border-zinc-800 bg-zinc-950/60",
+                                      ].join(" ")}
+                                    >
+                                      <label className="flex cursor-pointer items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={selected}
+                                          disabled={saving}
+                                          onChange={() => {
+                                            if (
+                                              !selectedGroup
+                                            ) {
+                                              return;
+                                            }
+
+                                            if (selected) {
+                                              removeGroupPermissionMutation.mutate(
+                                                {
+                                                  groupId:
+                                                    selectedGroup.id,
+                                                  resourceType:
+                                                    "SUBCATEGORY",
+                                                  resourceId:
+                                                    subcategory.id,
+                                                }
+                                              );
+
+                                              return;
+                                            }
+
+                                            saveGroupPermissionMutation.mutate(
+                                              {
+                                                groupId:
+                                                  selectedGroup.id,
+                                                resourceType:
+                                                  "SUBCATEGORY",
+                                                resourceId:
+                                                  subcategory.id,
+                                                accessLevel:
+                                                  "VIEWER",
+                                              }
+                                            );
+                                          }}
+                                          className="h-4 w-4 accent-orange-500"
+                                        />
+
+                                        <span className="text-sm text-white">
+                                          {subcategory.label}
+                                        </span>
+                                      </label>
+
+                                      {selected && (
+                                        <select
+                                          value={
+                                            assignedRule?.access_level ||
+                                            "VIEWER"
+                                          }
+                                          disabled={saving}
+                                          onChange={(event) => {
+                                            if (
+                                              !selectedGroup
+                                            ) {
+                                              return;
+                                            }
+
+                                            saveGroupPermissionMutation.mutate(
+                                              {
+                                                groupId:
+                                                  selectedGroup.id,
+                                                resourceType:
+                                                  "SUBCATEGORY",
+                                                resourceId:
+                                                  subcategory.id,
+                                                accessLevel:
+                                                  event.target
+                                                    .value as
+                                                  | "VIEWER"
+                                                  | "APPROVER"
+                                                  | "EDITOR",
+                                              }
+                                            );
+                                          }}
+                                          className="rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white"
+                                        >
+                                          <option value="VIEWER">
+                                            Puede ver
+                                          </option>
+
+                                          <option value="APPROVER">
+                                            Puede aprobar
+                                          </option>
+
+                                          <option value="EDITOR">
+                                            Puede editar
+                                          </option>
+                                        </select>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-white">
+                        Archivos específicos
+                      </h4>
 
                       <p className="mt-1 text-xs text-zinc-400">
-                        Selecciona una o
-                        varias personas.
+                        Selecciona videos o documentos concretos
+                        que podrá visualizar este grupo.
                       </p>
                     </div>
 
                     <input
-                      value={
-                        availableUserSearch
-                      }
+                      type="text"
+                      value={permissionUploadSearch}
                       onChange={(event) =>
-                        setAvailableUserSearch(
-                          event.target
-                            .value
+                        setPermissionUploadSearch(
+                          event.target.value
                         )
                       }
-                      placeholder="Buscar por nombre o email…"
-                      className="mb-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-orange-500/70"
+                      placeholder="Buscar archivo por título, nombre, categoría o subcategoría…"
+                      className="mb-4 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-orange-500/70"
                     />
 
-                    {filteredAvailableUsers.length >
-                      0 && (
-                      <div className="mb-3 flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={
-                            selectAllVisibleUsers
-                          }
-                          className="text-xs text-orange-300 hover:text-orange-200"
-                        >
-                          Seleccionar todos
-                          los visibles
-                        </button>
-
-                        <span className="text-xs text-zinc-500">
-                          {
-                            selectedAvailableUserIds.length
-                          }{" "}
-                          seleccionado
-                          {selectedAvailableUserIds.length !==
-                          1
-                            ? "s"
-                            : ""}
-                        </span>
+                    {loadingPermissionUploads ||
+                      groupPermissionsLoading ? (
+                      <div className="p-6 text-center text-sm text-zinc-400">
+                        Cargando archivos...
                       </div>
-                    )}
-
-                    {availableUsers.length ===
-                    0 ? (
-                      <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-                        Todos los usuarios
-                        ya pertenecen a este
-                        grupo.
-                      </div>
-                    ) : filteredAvailableUsers.length ===
-                      0 ? (
-                      <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-                        No se encontraron
-                        usuarios.
+                    ) : permissionUploadsError ? (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                        {permissionUploadsQueryError instanceof Error
+                          ? permissionUploadsQueryError.message
+                          : "No se pudieron cargar los archivos."}
                       </div>
                     ) : (
-                      <div className="max-h-[350px] space-y-2 overflow-y-auto pr-1">
-                        {filteredAvailableUsers.map(
-                          (user) => {
-                            const checked =
-                              selectedAvailableUserIds.includes(
-                                user.id
+                      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                        {filteredPermissionUploads.map(
+                          (upload) => {
+                            const assignedRule =
+                              groupPermissionsData?.uploads?.find(
+                                (rule) =>
+                                  rule.resource_id ===
+                                  upload.id
                               );
 
+                            const selected =
+                              Boolean(assignedRule);
+
+                            const saving =
+                              saveGroupPermissionMutation.isPending ||
+                              removeGroupPermissionMutation.isPending;
+
                             return (
-                              <label
-                                key={
-                                  user.id
-                                }
-                                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
-                                  checked
+                              <div
+                                key={upload.id}
+                                className={[
+                                  "rounded-xl border p-3 transition",
+                                  selected
                                     ? "border-orange-500/60 bg-orange-500/10"
-                                    : "border-zinc-800 bg-black/30 hover:border-zinc-700"
-                                }`}
+                                    : "border-zinc-800 bg-black/30",
+                                ].join(" ")}
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={
-                                    checked
-                                  }
-                                  onChange={() =>
-                                    toggleAvailableUser(
-                                      user.id
-                                    )
-                                  }
-                                  className="h-4 w-4 accent-orange-500"
-                                />
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                  <label className="flex min-w-0 cursor-pointer items-start gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      disabled={saving}
+                                      onChange={() => {
+                                        if (
+                                          !selectedGroup
+                                        ) {
+                                          return;
+                                        }
 
-                                <img
-                                  src={`https://i.pravatar.cc/64?u=${encodeURIComponent(
-                                    user.email
-                                  )}`}
-                                  alt={
-                                    user.name ||
-                                    user.email
-                                  }
-                                  className="h-9 w-9 rounded-full border border-zinc-700 object-cover"
-                                />
+                                        if (selected) {
+                                          removeGroupPermissionMutation.mutate(
+                                            {
+                                              groupId:
+                                                selectedGroup.id,
+                                              resourceType:
+                                                "UPLOAD",
+                                              resourceId:
+                                                upload.id,
+                                            }
+                                          );
 
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-white">
-                                    {user.name ||
-                                      "Sin nombre"}
-                                  </p>
+                                          return;
+                                        }
 
-                                  <p className="truncate text-xs text-zinc-400">
-                                    {
-                                      user.email
-                                    }
-                                  </p>
+                                        saveGroupPermissionMutation.mutate(
+                                          {
+                                            groupId:
+                                              selectedGroup.id,
+                                            resourceType:
+                                              "UPLOAD",
+                                            resourceId:
+                                              upload.id,
+                                            accessLevel:
+                                              "VIEWER",
+                                          }
+                                        );
+                                      }}
+                                      className="mt-1 h-4 w-4 accent-orange-500"
+                                    />
+
+                                    <span className="min-w-0">
+                                      <span className="block truncate text-sm font-semibold text-white">
+                                        {upload.display_name ||
+                                          upload.titulo ||
+                                          upload.file_name ||
+                                          "Archivo sin nombre"}
+                                      </span>
+
+                                      <span className="mt-1 block text-xs text-zinc-500">
+                                        {upload.tipo ||
+                                          "archivo"}
+
+                                        {" · "}
+
+                                        {upload.category ||
+                                          "Sin categoría"}
+
+                                        {upload.subcategory
+                                          ? ` / ${upload.subcategory}`
+                                          : ""}
+                                      </span>
+                                    </span>
+                                  </label>
+
+                                  {selected && (
+                                    <select
+                                      value={
+                                        assignedRule?.access_level ||
+                                        "VIEWER"
+                                      }
+                                      disabled={saving}
+                                      onChange={(event) => {
+                                        if (
+                                          !selectedGroup
+                                        ) {
+                                          return;
+                                        }
+
+                                        saveGroupPermissionMutation.mutate(
+                                          {
+                                            groupId:
+                                              selectedGroup.id,
+                                            resourceType:
+                                              "UPLOAD",
+                                            resourceId:
+                                              upload.id,
+                                            accessLevel:
+                                              event.target
+                                                .value as
+                                              | "VIEWER"
+                                              | "APPROVER"
+                                              | "EDITOR",
+                                          }
+                                        );
+                                      }}
+                                      className="rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white"
+                                    >
+                                      <option value="VIEWER">
+                                        Puede ver
+                                      </option>
+
+                                      <option value="APPROVER">
+                                        Puede aprobar
+                                      </option>
+
+                                      <option value="EDITOR">
+                                        Puede editar
+                                      </option>
+                                    </select>
+                                  )}
                                 </div>
-
-                                {!user.is_active && (
-                                  <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] text-zinc-400">
-                                    Inactivo
-                                  </span>
-                                )}
-                              </label>
+                              </div>
                             );
                           }
                         )}
+
+                        {filteredPermissionUploads.length ===
+                          0 && (
+                            <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                              No encontramos archivos con esa búsqueda.
+                            </div>
+                          )}
                       </div>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={
-                        handleAddMembers
-                      }
-                      disabled={
-                        selectedAvailableUserIds.length ===
-                          0 ||
-                        addMembersMutation.isPending
-                      }
-                      className="mt-4 w-full rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-orange-400 disabled:opacity-50"
-                    >
-                      {addMembersMutation.isPending
-                        ? "Agregando..."
-                        : `Agregar ${
-                            selectedAvailableUserIds.length ||
-                            ""
-                          } miembro${
-                            selectedAvailableUserIds.length ===
-                            1
-                              ? ""
-                              : "s"
-                          }`}
-                    </button>
                   </section>
                 </div>
               )}
-
-                </>
-)}
-{groupModalTab === "PERMISSIONS" && (
-  <div className="space-y-5">
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white">
-            Permisos del grupo
-          </h3>
-
-          <p className="mt-1 text-sm text-zinc-400">
-            Define a qué categorías completas puede acceder este grupo.
-          </p>
-        </div>
-
-        <div className="text-xs text-zinc-500">
-          Categorías asignadas:{" "}
-          <span className="font-semibold text-orange-300">
-            {groupPermissionsData?.categories?.length ?? 0}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-      <div className="mb-4">
-        <h4 className="font-semibold text-white">
-          Categorías completas
-        </h4>
-
-        <p className="mt-1 text-xs leading-5 text-zinc-400">
-          Si asignas una categoría, los miembros del grupo tendrán acceso
-          automático a los archivos actuales y futuros de esa categoría.
-        </p>
-      </div>
-
-      {loadingPermissionCategories ||
-      groupPermissionsLoading ? (
-        <div className="rounded-lg border border-zinc-800 bg-black/30 p-6 text-center text-sm text-zinc-400">
-          Cargando categorías y permisos...
-        </div>
-      ) : permissionCategoriesError ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {permissionCategoriesQueryError instanceof Error
-            ? permissionCategoriesQueryError.message
-            : "No se pudieron cargar las categorías."}
-        </div>
-      ) : groupPermissionsError ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {groupPermissionsQueryError instanceof Error
-            ? groupPermissionsQueryError.message
-            : "No se pudieron cargar los permisos del grupo."}
-        </div>
-      ) : permissionCategories.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-          No hay categorías disponibles.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {permissionCategories.map((category) => {
-            const assignedRule =
-              groupPermissionsData?.categories?.find(
-                (rule) =>
-                  rule.resource_id === category.id
-              );
-
-            const selected = Boolean(
-              assignedRule
-            );
-
-            const saving =
-              saveGroupPermissionMutation.isPending ||
-              removeGroupPermissionMutation.isPending;
-
-            return (
-              <div
-                key={category.id}
-                className={[
-                  "rounded-xl border p-4 transition",
-                  selected
-                    ? "border-orange-500/60 bg-orange-500/10"
-                    : "border-zinc-800 bg-black/30",
-                ].join(" ")}
-              >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <label className="flex min-w-0 cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={saving}
-                      onChange={() => {
-                        if (!selectedGroup) {
-                          return;
-                        }
-
-                        if (selected) {
-                          removeGroupPermissionMutation.mutate({
-                            groupId:
-                              selectedGroup.id,
-                            resourceType:
-                              "CATEGORY",
-                            resourceId:
-                              category.id,
-                          });
-
-                          return;
-                        }
-
-                        saveGroupPermissionMutation.mutate({
-                          groupId:
-                            selectedGroup.id,
-                          resourceType:
-                            "CATEGORY",
-                          resourceId:
-                            category.id,
-                          accessLevel:
-                            "VIEWER",
-                        });
-                      }}
-                      className="mt-1 h-4 w-4 shrink-0 accent-orange-500"
-                    />
-
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-white">
-                        {category.label}
-                      </span>
-
-                      <span className="mt-1 block text-xs text-zinc-500">
-                        {category.description ||
-                          `Slug: ${category.slug}`}
-                      </span>
-
-                      <span className="mt-1 block text-[11px] text-zinc-500">
-                        {
-                          category.subcategories.filter(
-                            (subcategory) =>
-                              subcategory.is_active
-                          ).length
-                        }{" "}
-                        subcategoría
-                        {category.subcategories.filter(
-                          (subcategory) =>
-                            subcategory.is_active
-                        ).length !== 1
-                          ? "s"
-                          : ""}
-                      </span>
-                    </span>
-                  </label>
-
-                  {selected && (
-                    <select
-                      value={
-                        assignedRule?.access_level ||
-                        "VIEWER"
-                      }
-                      disabled={saving}
-                      onChange={(event) => {
-                        if (!selectedGroup) {
-                          return;
-                        }
-
-                        saveGroupPermissionMutation.mutate({
-                          groupId:
-                            selectedGroup.id,
-                          resourceType:
-                            "CATEGORY",
-                          resourceId:
-                            category.id,
-                          accessLevel:
-                            event.target.value as
-                              | "VIEWER"
-                              | "APPROVER"
-                              | "EDITOR",
-                        });
-                      }}
-                      className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white outline-none focus:border-orange-500/70 sm:w-44"
-                    >
-                      <option value="VIEWER">
-                        Puede ver
-                      </option>
-
-                      <option value="APPROVER">
-                        Puede aprobar
-                      </option>
-
-                      <option value="EDITOR">
-                        Puede editar
-                      </option>
-                    </select>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-  <div className="mb-4">
-    <h4 className="font-semibold text-white">
-      Subcategorías específicas
-    </h4>
-
-    <p className="mt-1 text-xs leading-5 text-zinc-400">
-      Permite acceso únicamente a determinadas
-      subcategorías sin habilitar la categoría completa.
-    </p>
-  </div>
-
-  <div className="space-y-5">
-    {permissionCategories.map((category) => {
-      const activeSubcategories =
-        category.subcategories.filter(
-          (subcategory) =>
-            subcategory.is_active
-        );
-
-      if (
-        activeSubcategories.length === 0
-      ) {
-        return null;
-      }
-
-      return (
-        <div
-          key={category.id}
-          className="rounded-xl border border-zinc-800 bg-black/30 p-4"
-        >
-          <p className="mb-3 text-sm font-semibold text-orange-200">
-            {category.label}
-          </p>
-
-          <div className="space-y-2">
-            {activeSubcategories.map(
-              (subcategory) => {
-                const assignedRule =
-                  groupPermissionsData
-                    ?.subcategories?.find(
-                      (rule) =>
-                        rule.resource_id ===
-                        subcategory.id
-                    );
-
-                const selected =
-                  Boolean(assignedRule);
-
-                const saving =
-                  saveGroupPermissionMutation.isPending ||
-                  removeGroupPermissionMutation.isPending;
-
-                return (
-                  <div
-                    key={subcategory.id}
-                    className={[
-                      "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
-                      selected
-                        ? "border-orange-500/50 bg-orange-500/10"
-                        : "border-zinc-800 bg-zinc-950/60",
-                    ].join(" ")}
-                  >
-                    <label className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        disabled={saving}
-                        onChange={() => {
-                          if (
-                            !selectedGroup
-                          ) {
-                            return;
-                          }
-
-                          if (selected) {
-                            removeGroupPermissionMutation.mutate(
-                              {
-                                groupId:
-                                  selectedGroup.id,
-                                resourceType:
-                                  "SUBCATEGORY",
-                                resourceId:
-                                  subcategory.id,
-                              }
-                            );
-
-                            return;
-                          }
-
-                          saveGroupPermissionMutation.mutate(
-                            {
-                              groupId:
-                                selectedGroup.id,
-                              resourceType:
-                                "SUBCATEGORY",
-                              resourceId:
-                                subcategory.id,
-                              accessLevel:
-                                "VIEWER",
-                            }
-                          );
-                        }}
-                        className="h-4 w-4 accent-orange-500"
-                      />
-
-                      <span className="text-sm text-white">
-                        {subcategory.label}
-                      </span>
-                    </label>
-
-                    {selected && (
-                      <select
-                        value={
-                          assignedRule?.access_level ||
-                          "VIEWER"
-                        }
-                        disabled={saving}
-                        onChange={(event) => {
-                          if (
-                            !selectedGroup
-                          ) {
-                            return;
-                          }
-
-                          saveGroupPermissionMutation.mutate(
-                            {
-                              groupId:
-                                selectedGroup.id,
-                              resourceType:
-                                "SUBCATEGORY",
-                              resourceId:
-                                subcategory.id,
-                              accessLevel:
-                                event.target
-                                  .value as
-                                  | "VIEWER"
-                                  | "APPROVER"
-                                  | "EDITOR",
-                            }
-                          );
-                        }}
-                        className="rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white"
-                      >
-                        <option value="VIEWER">
-                          Puede ver
-                        </option>
-
-                        <option value="APPROVER">
-                          Puede aprobar
-                        </option>
-
-                        <option value="EDITOR">
-                          Puede editar
-                        </option>
-                      </select>
-                    )}
-                  </div>
-                );
-              }
-            )}
-          </div>
-        </div>
-      );
-    })}
-  </div>
-</section>
-
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-  <div className="mb-4">
-    <h4 className="font-semibold text-white">
-      Archivos específicos
-    </h4>
-
-    <p className="mt-1 text-xs text-zinc-400">
-      Selecciona videos o documentos concretos
-      que podrá visualizar este grupo.
-    </p>
-  </div>
-
-  <input
-    type="text"
-    value={permissionUploadSearch}
-    onChange={(event) =>
-      setPermissionUploadSearch(
-        event.target.value
-      )
-    }
-    placeholder="Buscar archivo por título, nombre, categoría o subcategoría…"
-    className="mb-4 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-orange-500/70"
-  />
-
-  {loadingPermissionUploads ||
-  groupPermissionsLoading ? (
-    <div className="p-6 text-center text-sm text-zinc-400">
-      Cargando archivos...
-    </div>
-  ) : permissionUploadsError ? (
-    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-      {permissionUploadsQueryError instanceof Error
-        ? permissionUploadsQueryError.message
-        : "No se pudieron cargar los archivos."}
-    </div>
-  ) : (
-    <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-      {filteredPermissionUploads.map(
-        (upload) => {
-          const assignedRule =
-            groupPermissionsData?.uploads?.find(
-              (rule) =>
-                rule.resource_id ===
-                upload.id
-            );
-
-          const selected =
-            Boolean(assignedRule);
-
-          const saving =
-            saveGroupPermissionMutation.isPending ||
-            removeGroupPermissionMutation.isPending;
-
-          return (
-            <div
-              key={upload.id}
-              className={[
-                "rounded-xl border p-3 transition",
-                selected
-                  ? "border-orange-500/60 bg-orange-500/10"
-                  : "border-zinc-800 bg-black/30",
-              ].join(" ")}
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <label className="flex min-w-0 cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    disabled={saving}
-                    onChange={() => {
-                      if (
-                        !selectedGroup
-                      ) {
-                        return;
-                      }
-
-                      if (selected) {
-                        removeGroupPermissionMutation.mutate(
-                          {
-                            groupId:
-                              selectedGroup.id,
-                            resourceType:
-                              "UPLOAD",
-                            resourceId:
-                              upload.id,
-                          }
-                        );
-
-                        return;
-                      }
-
-                      saveGroupPermissionMutation.mutate(
-                        {
-                          groupId:
-                            selectedGroup.id,
-                          resourceType:
-                            "UPLOAD",
-                          resourceId:
-                            upload.id,
-                          accessLevel:
-                            "VIEWER",
-                        }
-                      );
-                    }}
-                    className="mt-1 h-4 w-4 accent-orange-500"
-                  />
-
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-white">
-                      {upload.display_name ||
-                        upload.titulo ||
-                        upload.file_name ||
-                        "Archivo sin nombre"}
-                    </span>
-
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      {upload.tipo ||
-                        "archivo"}
-
-                      {" · "}
-
-                      {upload.category ||
-                        "Sin categoría"}
-
-                      {upload.subcategory
-                        ? ` / ${upload.subcategory}`
-                        : ""}
-                    </span>
-                  </span>
-                </label>
-
-                {selected && (
-                  <select
-                    value={
-                      assignedRule?.access_level ||
-                      "VIEWER"
-                    }
-                    disabled={saving}
-                    onChange={(event) => {
-                      if (
-                        !selectedGroup
-                      ) {
-                        return;
-                      }
-
-                      saveGroupPermissionMutation.mutate(
-                        {
-                          groupId:
-                            selectedGroup.id,
-                          resourceType:
-                            "UPLOAD",
-                          resourceId:
-                            upload.id,
-                          accessLevel:
-                            event.target
-                              .value as
-                              | "VIEWER"
-                              | "APPROVER"
-                              | "EDITOR",
-                        }
-                      );
-                    }}
-                    className="rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white"
-                  >
-                    <option value="VIEWER">
-                      Puede ver
-                    </option>
-
-                    <option value="APPROVER">
-                      Puede aprobar
-                    </option>
-
-                    <option value="EDITOR">
-                      Puede editar
-                    </option>
-                  </select>
-                )}
-              </div>
-            </div>
-          );
-        }
-      )}
-
-      {filteredPermissionUploads.length ===
-        0 && (
-        <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-          No encontramos archivos con esa búsqueda.
-        </div>
-      )}
-    </div>
-  )}
-</section>
-  </div>
-)}
             </div>
 
 
@@ -3303,634 +3399,670 @@ const closeInvitePanel = () => {
       )}
 
       {invitePanelOpen && (
-  <div className="fixed inset-0 z-[160] grid place-items-center bg-black/80 px-4 py-8 backdrop-blur-sm">
-    <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">
-            Registro privado
-          </p>
+        <div className="fixed inset-0 z-[160] grid place-items-center bg-black/80 px-4 py-8 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">
+                  Registro privado
+                </p>
 
-          <h2 className="mt-1 text-xl font-bold text-white">
-            Invitar usuario
-          </h2>
+                <h2 className="mt-1 text-xl font-bold text-white">
+                  Invitar usuario
+                </h2>
 
-          <p className="mt-1 text-sm text-zinc-400">
-            Genera un enlace único y de un solo uso.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={closeInvitePanel}
-          className="text-2xl text-zinc-400 transition hover:text-white"
-          aria-label="Cerrar"
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-5">
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <div className="grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
-            <label>
-              <span className="mb-1 block text-xs text-zinc-400">
-                Correo autorizado
-              </span>
-
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(event) =>
-                  setInviteEmail(
-                    event.target.value
-                  )
-                }
-                placeholder="correo@empresa.com"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-orange-500/70"
-              />
-
-              <span className="mt-1 block text-[11px] text-zinc-500">
-                Déjalo vacío para permitir cualquier correo.
-              </span>
-            </label>
-
-            <label>
-              <span className="mb-1 block text-xs text-zinc-400">
-                Vencimiento
-              </span>
-
-              <select
-                value={inviteExpiresInHours}
-                onChange={(event) =>
-                  setInviteExpiresInHours(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-orange-500/70"
-              >
-                <option value={24}>
-                  24 horas
-                </option>
-
-                <option value={72}>
-                  3 días
-                </option>
-
-                <option value={168}>
-                  7 días
-                </option>
-
-                <option value={720}>
-                  30 días
-                </option>
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={handleCreateInvite}
-              disabled={
-                createInviteMutation.isPending
-              }
-              className="rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {createInviteMutation.isPending
-                ? "Generando..."
-                : "Generar enlace"}
-            </button>
-          </div>
-
-          {inviteMessage && (
-            <div className="mt-4 rounded-lg border border-zinc-700 bg-black/30 px-3 py-2 text-sm text-zinc-300">
-              {inviteMessage}
-            </div>
-          )}
-
-          {generatedInviteUrl && (
-            <div className="mt-4 rounded-xl border border-green-500/30 bg-green-500/10 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-green-300">
-                Enlace listo
-              </p>
-
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                <input
-                  value={generatedInviteUrl}
-                  readOnly
-                  onFocus={(event) =>
-                    event.currentTarget.select()
-                  }
-                  className="min-w-0 flex-1 rounded-lg border border-green-500/30 bg-black/40 px-3 py-2 text-xs text-green-200 outline-none"
-                />
-
-                <button
-                  type="button"
-                  onClick={handleCopyInvite}
-                  className="rounded-lg border border-green-500/50 bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-300 transition hover:bg-green-500/20"
-                >
-                  Copiar enlace
-                </button>
-              </div>
-
-              <p className="mt-2 text-xs text-green-200/70">
-                El token completo solo se muestra ahora. Guárdalo o envíalo antes de cerrar.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section className="mt-6">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-white">
-                Historial de invitaciones
-              </h3>
-
-              <p className="text-xs text-zinc-500">
-                Pendientes, utilizadas y vencidas.
-              </p>
-            </div>
-
-            <span className="text-xs text-zinc-500">
-              {invitesData?.total ?? 0} invitaciones
-            </span>
-          </div>
-
-          {invitesLoading ? (
-            <div className="rounded-xl border border-zinc-800 p-6 text-center text-sm text-zinc-400">
-              Cargando invitaciones...
-            </div>
-          ) : invitesError ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-              {invitesQueryError instanceof Error
-                ? invitesQueryError.message
-                : "No se pudieron cargar las invitaciones."}
-            </div>
-          ) : !invitesData?.rows?.length ? (
-            <div className="rounded-xl border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-              Todavía no existen invitaciones.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {invitesData.rows.map(
-                (invite) => {
-                  const isUsed =
-                    Boolean(invite.used_at);
-
-                  const isRevoked =
-                    Boolean(
-                      invite.revoked_at
-                    );
-
-                  const isExpired =
-                    !isUsed &&
-                    !isRevoked &&
-                    new Date(
-                      invite.expires_at
-                    ).getTime() <
-                      Date.now();
-
-                  const statusLabel =
-                    isUsed
-                      ? "Utilizada"
-                      : isRevoked
-                        ? "Revocada"
-                        : isExpired
-                          ? "Vencida"
-                          : "Pendiente";
-
-                  const statusClass =
-                    isUsed
-                      ? "border-green-500/30 bg-green-500/10 text-green-300"
-                      : isRevoked
-                        ? "border-red-500/30 bg-red-500/10 text-red-300"
-                        : isExpired
-                          ? "border-zinc-700 bg-zinc-800 text-zinc-400"
-                          : "border-orange-500/30 bg-orange-500/10 text-orange-300";
-
-                  return (
-                    <article
-                      key={invite.id}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="font-medium text-white">
-                            {invite.email ||
-                              "Cualquier correo autorizado"}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Creada:{" "}
-                            {new Intl.DateTimeFormat(
-                              "es-CL",
-                              {
-                                dateStyle:
-                                  "medium",
-                                timeStyle:
-                                  "short",
-                              }
-                            ).format(
-                              new Date(
-                                invite.created_at
-                              )
-                            )}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Vence:{" "}
-                            {new Intl.DateTimeFormat(
-                              "es-CL",
-                              {
-                                dateStyle:
-                                  "medium",
-                                timeStyle:
-                                  "short",
-                              }
-                            ).format(
-                              new Date(
-                                invite.expires_at
-                              )
-                            )}
-                          </p>
-
-                          {invite.used_at && (
-                            <p className="mt-1 text-xs text-green-300">
-                              Usada por:{" "}
-                              {invite.used_by_name ||
-                                invite.used_by_email ||
-                                "Usuario registrado"}
-                            </p>
-                          )}
-                        </div>
-
-                       <div className="flex shrink-0 flex-col items-end gap-2">
-  <span
-    className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs ${statusClass}`}
-  >
-    {statusLabel}
-  </span>
-
-  {!isUsed &&
-    !isRevoked &&
-    !isExpired && (
-      <button
-        type="button"
-        onClick={() =>
-          handleRevokeInvite(invite)
-        }
-        disabled={
-          revokeInviteMutation.isPending
-        }
-        className="text-xs font-medium text-red-300 transition hover:text-red-200 disabled:opacity-50"
-      >
-        Cancelar invitación
-      </button>
-    )}
-</div>
-                      </div>
-                    </article>
-                  );
-                }
-              )}
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="flex justify-end border-t border-zinc-800 p-4">
-        <button
-          type="button"
-          onClick={closeInvitePanel}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-        >
-          Cerrar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-      {selectedUserId && (
-  <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm">
-    <div className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">
-            Control administrativo
-          </p>
-
-          <h2 className="mt-1 text-xl font-bold text-white">
-            Detalle del usuario
-          </h2>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setSelectedUserId(null)}
-          className="text-2xl text-zinc-400 transition hover:text-white"
-          aria-label="Cerrar detalle"
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-5">
-        {selectedUserDetailLoading ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center text-sm text-zinc-400">
-            Cargando detalle del usuario...
-          </div>
-        ) : selectedUserDetailError ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            {selectedUserDetailQueryError instanceof Error
-              ? selectedUserDetailQueryError.message
-              : "No se pudo cargar el detalle del usuario."}
-          </div>
-        ) : selectedUserDetail ? (
-          <div className="space-y-6">
-            {/* Información general */}
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={`https://i.pravatar.cc/96?u=${encodeURIComponent(
-                      selectedUserDetail.user.email
-                    )}`}
-                    alt={
-                      selectedUserDetail.user.name ||
-                      selectedUserDetail.user.email
-                    }
-                    className="h-16 w-16 rounded-full border border-zinc-700 object-cover"
-                  />
-
-                  <div>
-                    <h3 className="text-lg font-bold text-white">
-                      {selectedUserDetail.user.name || "Sin nombre"}
-                    </h3>
-
-                    <p className="text-sm text-zinc-400">
-                      {selectedUserDetail.user.email}
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-xs text-orange-300">
-                        {ROLE_LABELS[
-                          selectedUserDetail.user.role as UserRole
-                        ] || selectedUserDetail.user.role}
-                      </span>
-
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs ${
-                          selectedUserDetail.user.is_active
-                            ? "border-green-500/30 bg-green-500/10 text-green-300"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-400"
-                        }`}
-                      >
-                        {selectedUserDetail.user.is_active
-                          ? "Activo"
-                          : "Inactivo"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-sm text-zinc-400">
-                  Registro:{" "}
-                  {dateFormatter.format(
-                    new Date(selectedUserDetail.user.created_at)
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Estadísticas */}
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              {[
-                ["Archivos subidos", selectedUserDetail.stats.totalUploads],
-                ["Públicos", selectedUserDetail.stats.publicUploads],
-                ["Privados", selectedUserDetail.stats.restrictedUploads],
-                [
-                  "Accesos recibidos",
-                  selectedUserDetail.stats.receivedAccessCount,
-                ],
-                [
-                  "Personas compartidas",
-                  selectedUserDetail.stats.totalPeopleShared,
-                ],
-                ["Grupos", selectedUserDetail.stats.groupCount],
-              ].map(([label, value]) => (
-                <div
-                  key={String(label)}
-                  className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
-                >
-                  <p className="text-xs text-zinc-500">{label}</p>
-
-                  <p className="mt-1 text-2xl font-bold text-white">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </section>
-
-            {/* Grupos */}
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-              <h3 className="font-semibold text-white">
-                Grupos del usuario
-              </h3>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {selectedUserDetail.groups?.length ? (
-                  selectedUserDetail.groups.map((group: any) => (
-                    <span
-                      key={group.id}
-                      className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300"
-                    >
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{
-                          backgroundColor: group.color || "#f97316",
-                        }}
-                      />
-
-                      {group.name}
-                    </span>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">
-                    Este usuario no pertenece a ningún grupo.
-                  </p>
-                )}
-              </div>
-            </section>
-
-            {/* Archivos subidos */}
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-              <div className="mb-4">
-                <h3 className="font-semibold text-white">
-                  Archivos subidos
-                </h3>
-
-                <p className="mt-1 text-xs text-zinc-400">
-                  Revisa su visibilidad, categoría y personas autorizadas.
+                <p className="mt-1 text-sm text-zinc-400">
+                  Genera un enlace único y de un solo uso.
                 </p>
               </div>
 
-              {!selectedUserDetail.uploads?.length ? (
-                <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
-                  Este usuario no ha subido archivos.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedUserDetail.uploads.map((upload: any) => (
-                    <article
-                      key={upload.id}
-                      className="rounded-xl border border-zinc-800 bg-black/30 p-4"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-white">
-                            {upload.display_name ||
-                              upload.file_name ||
-                              "Archivo sin nombre"}
-                          </p>
+              <button
+                type="button"
+                onClick={closeInvitePanel}
+                className="text-2xl text-zinc-400 transition hover:text-white"
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+            </div>
 
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {upload.category || "Sin categoría"}
-                            {upload.subcategory
-                              ? ` / ${upload.subcategory}`
-                              : ""}
+            <div className="flex-1 overflow-y-auto p-5">
+              <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                <div className="grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+                  <label>
+                    <span className="mb-1 block text-xs text-zinc-400">
+                      Correo autorizado
+                    </span>
+
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(event) =>
+                        setInviteEmail(
+                          event.target.value
+                        )
+                      }
+                      placeholder="correo@empresa.com"
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-orange-500/70"
+                    />
+
+                    <span className="mt-1 block text-[11px] text-zinc-500">
+                      Déjalo vacío para permitir cualquier correo.
+                    </span>
+                  </label>
+
+                  <label>
+                    <span className="mb-1 block text-xs text-zinc-400">
+                      Vencimiento
+                    </span>
+
+                    <select
+                      value={inviteExpiresInHours}
+                      onChange={(event) =>
+                        setInviteExpiresInHours(
+                          Number(
+                            event.target.value
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-orange-500/70"
+                    >
+                      <option value={24}>
+                        24 horas
+                      </option>
+
+                      <option value={72}>
+                        3 días
+                      </option>
+
+                      <option value={168}>
+                        7 días
+                      </option>
+
+                      <option value={720}>
+                        30 días
+                      </option>
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateInvite}
+                    disabled={
+                      createInviteMutation.isPending
+                    }
+                    className="rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {createInviteMutation.isPending
+                      ? "Generando..."
+                      : "Generar enlace"}
+                  </button>
+                </div>
+
+                {inviteMessage && (
+                  <div className="mt-4 rounded-lg border border-zinc-700 bg-black/30 px-3 py-2 text-sm text-zinc-300">
+                    {inviteMessage}
+                  </div>
+                )}
+
+                {generatedInviteUrl && (
+                  <div className="mt-4 rounded-xl border border-green-500/30 bg-green-500/10 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-green-300">
+                      Enlace listo
+                    </p>
+
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={generatedInviteUrl}
+                        readOnly
+                        onFocus={(event) =>
+                          event.currentTarget.select()
+                        }
+                        className="min-w-0 flex-1 rounded-lg border border-green-500/30 bg-black/40 px-3 py-2 text-xs text-green-200 outline-none"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleCopyInvite}
+                        className="rounded-lg border border-green-500/50 bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-300 transition hover:bg-green-500/20"
+                      >
+                        Copiar enlace
+                      </button>
+                    </div>
+
+                    <p className="mt-2 text-xs text-green-200/70">
+                      El token completo solo se muestra ahora. Guárdalo o envíalo antes de cerrar.
+                    </p>
+                  </div>
+                )}
+              </section>
+
+              <section className="mt-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white">
+                      Historial de invitaciones
+                    </h3>
+
+                    <p className="text-xs text-zinc-500">
+                      Pendientes, utilizadas y vencidas.
+                    </p>
+                  </div>
+
+                  <span className="text-xs text-zinc-500">
+                    {invitesData?.total ?? 0} invitaciones
+                  </span>
+                </div>
+
+                {invitesLoading ? (
+                  <div className="rounded-xl border border-zinc-800 p-6 text-center text-sm text-zinc-400">
+                    Cargando invitaciones...
+                  </div>
+                ) : invitesError ? (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                    {invitesQueryError instanceof Error
+                      ? invitesQueryError.message
+                      : "No se pudieron cargar las invitaciones."}
+                  </div>
+                ) : !invitesData?.rows?.length ? (
+                  <div className="rounded-xl border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                    Todavía no existen invitaciones.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {invitesData.rows.map(
+                      (invite) => {
+                        const isUsed =
+                          Boolean(invite.used_at);
+
+                        const isRevoked =
+                          Boolean(
+                            invite.revoked_at
+                          );
+
+                        const isExpired =
+                          !isUsed &&
+                          !isRevoked &&
+                          new Date(
+                            invite.expires_at
+                          ).getTime() <
+                          Date.now();
+
+                        const statusLabel =
+                          isUsed
+                            ? "Utilizada"
+                            : isRevoked
+                              ? "Revocada"
+                              : isExpired
+                                ? "Vencida"
+                                : "Pendiente";
+
+                        const statusClass =
+                          isUsed
+                            ? "border-green-500/30 bg-green-500/10 text-green-300"
+                            : isRevoked
+                              ? "border-red-500/30 bg-red-500/10 text-red-300"
+                              : isExpired
+                                ? "border-zinc-700 bg-zinc-800 text-zinc-400"
+                                : "border-orange-500/30 bg-orange-500/10 text-orange-300";
+
+                        return (
+                          <article
+                            key={invite.id}
+                            className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4"
+                          >
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-medium text-white">
+                                  {invite.email ||
+                                    "Cualquier correo autorizado"}
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  Creada:{" "}
+                                  {new Intl.DateTimeFormat(
+                                    "es-CL",
+                                    {
+                                      dateStyle:
+                                        "medium",
+                                      timeStyle:
+                                        "short",
+                                    }
+                                  ).format(
+                                    new Date(
+                                      invite.created_at
+                                    )
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  Vence:{" "}
+                                  {new Intl.DateTimeFormat(
+                                    "es-CL",
+                                    {
+                                      dateStyle:
+                                        "medium",
+                                      timeStyle:
+                                        "short",
+                                    }
+                                  ).format(
+                                    new Date(
+                                      invite.expires_at
+                                    )
+                                  )}
+                                </p>
+
+                                {invite.used_at && (
+                                  <p className="mt-1 text-xs text-green-300">
+                                    Usada por:{" "}
+                                    {invite.used_by_name ||
+                                      invite.used_by_email ||
+                                      "Usuario registrado"}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex shrink-0 flex-col items-end gap-2">
+                                <span
+                                  className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs ${statusClass}`}
+                                >
+                                  {statusLabel}
+                                </span>
+
+                                {!isUsed &&
+                                  !isRevoked &&
+                                  !isExpired && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRevokeInvite(invite)
+                                      }
+                                      disabled={
+                                        revokeInviteMutation.isPending
+                                      }
+                                      className="text-xs font-medium text-red-300 transition hover:text-red-200 disabled:opacity-50"
+                                    >
+                                      Cancelar invitación
+                                    </button>
+                                  )}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="flex justify-end border-t border-zinc-800 p-4">
+              <button
+                type="button"
+                onClick={closeInvitePanel}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedUserId && (
+        <div className="fixed inset-0 z-[110] bg-black/75 backdrop-blur-sm">
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-zinc-800 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">
+                  Control administrativo
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold text-white">
+                  Detalle del usuario
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedUserId(null)}
+                className="text-2xl text-zinc-400 transition hover:text-white"
+                aria-label="Cerrar detalle"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {selectedUserDetailLoading ? (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center text-sm text-zinc-400">
+                  Cargando detalle del usuario...
+                </div>
+              ) : selectedUserDetailError ? (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                  {selectedUserDetailQueryError instanceof Error
+                    ? selectedUserDetailQueryError.message
+                    : "No se pudo cargar el detalle del usuario."}
+                </div>
+              ) : selectedUserDetail ? (
+                <div className="space-y-6">
+                  {/* Información general */}
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={`https://i.pravatar.cc/96?u=${encodeURIComponent(
+                            selectedUserDetail.user.email
+                          )}`}
+                          alt={
+                            selectedUserDetail.user.name ||
+                            selectedUserDetail.user.email
+                          }
+                          className="h-16 w-16 rounded-full border border-zinc-700 object-cover"
+                        />
+
+                        <div>
+                          <h3 className="text-lg font-bold text-white">
+                            {selectedUserDetail.user.name || "Sin nombre"}
+                          </h3>
+
+                          <p className="text-sm text-zinc-400">
+                            {selectedUserDetail.user.email}
                           </p>
 
                           <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-xs text-orange-300">
+                              {ROLE_LABELS[
+                                selectedUserDetail.user.role as UserRole
+                              ] || selectedUserDetail.user.role}
+                            </span>
+
                             <span
-                              className={`rounded-full border px-2 py-1 text-[10px] ${
-                                upload.visibility === "RESTRICTED"
-                                  ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                                  : "border-green-500/30 bg-green-500/10 text-green-300"
-                              }`}
+                              className={`rounded-full border px-2 py-1 text-xs ${selectedUserDetail.user.is_active
+                                  ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                  : "border-zinc-700 bg-zinc-800 text-zinc-400"
+                                }`}
                             >
-                              {upload.visibility === "RESTRICTED"
-                                ? "Privado"
-                                : "Público"}
-                            </span>
-
-                            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400">
-                              {upload.shared_people_count || 0} personas
-                            </span>
-
-                            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400">
-                              {upload.views || 0} vistas
+                              {selectedUserDetail.user.is_active
+                                ? "Activo"
+                                : "Inactivo"}
                             </span>
                           </div>
                         </div>
-
-                        <a
-                          href={`/videos/${upload.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="shrink-0 rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-xs text-orange-300 transition hover:bg-orange-500/20"
-                        >
-                          Ver archivo
-                        </a>
                       </div>
 
-                      {upload.shared_with?.length > 0 && (
-                        <div className="mt-4 border-t border-zinc-800 pt-3">
-                          <p className="mb-2 text-xs font-medium text-zinc-400">
-                            Personas con acceso
+                      <div className="text-sm text-zinc-400">
+                        Registro:{" "}
+                        {dateFormatter.format(
+                          new Date(selectedUserDetail.user.created_at)
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                                    {/* Seguridad / 2FA */}
+                  {currentUser?.role === "SUPER_ADMIN" && (
+                    <section className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">
+                            Seguridad
                           </p>
 
-                          <div className="flex flex-wrap gap-2">
-                            {upload.shared_with.map((person: any) => (
-                              <span
-                                key={person.id}
-                                title={person.email}
-                                className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-300"
-                              >
-                                {person.name || person.email}
-                              </span>
-                            ))}
-                          </div>
+                          <h3 className="mt-1 text-base font-bold text-white">
+                            Autenticación en dos pasos
+                          </h3>
+
+                          <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-400">
+                            Usa esta opción si el usuario perdió el acceso a
+                            Google Authenticator. El 2FA actual será eliminado
+                            y deberá configurarlo nuevamente en su próximo
+                            inicio de sesión escaneando un nuevo código QR.
+                          </p>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            reset2FAMutation.mutate(
+                              selectedUserDetail.user
+                            )
+                          }
+                          disabled={reset2FAMutation.isPending}
+                          className="shrink-0 rounded-lg border border-orange-500/50 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {reset2FAMutation.isPending
+                            ? "Reseteando..."
+                            : "Resetear 2FA"}
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Estadísticas */}
+                  <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                    {[
+                      ["Archivos subidos", selectedUserDetail.stats.totalUploads],
+                      ["Públicos", selectedUserDetail.stats.publicUploads],
+                      ["Privados", selectedUserDetail.stats.restrictedUploads],
+                      [
+                        "Accesos recibidos",
+                        selectedUserDetail.stats.receivedAccessCount,
+                      ],
+                      [
+                        "Personas compartidas",
+                        selectedUserDetail.stats.totalPeopleShared,
+                      ],
+                      ["Grupos", selectedUserDetail.stats.groupCount],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
+                      >
+                        <p className="text-xs text-zinc-500">{label}</p>
+
+                        <p className="mt-1 text-2xl font-bold text-white">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </section>
+
+                  {/* Grupos */}
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <h3 className="font-semibold text-white">
+                      Grupos del usuario
+                    </h3>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {selectedUserDetail.groups?.length ? (
+                        selectedUserDetail.groups.map((group: any) => (
+                          <span
+                            key={group.id}
+                            className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{
+                                backgroundColor: group.color || "#f97316",
+                              }}
+                            />
+
+                            {group.name}
+                          </span>
+                        ))
+                      ) : (
+                        <p className="text-sm text-zinc-500">
+                          Este usuario no pertenece a ningún grupo.
+                        </p>
                       )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+                    </div>
+                  </section>
 
-            {/* Accesos recibidos */}
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-              <h3 className="font-semibold text-white">
-                Archivos privados recibidos
-              </h3>
+                  {/* Archivos subidos */}
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <div className="mb-4">
+                      <h3 className="font-semibold text-white">
+                        Archivos subidos
+                      </h3>
 
-              <div className="mt-4 space-y-3">
-                {selectedUserDetail.receivedAccess?.length ? (
-                  selectedUserDetail.receivedAccess.map((access: any) => (
-                    <article
-                      key={`${access.id}-${access.access_created_at}`}
-                      className="rounded-xl border border-zinc-800 bg-black/30 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-white">
-                            {access.display_name ||
-                              access.file_name ||
-                              "Archivo sin nombre"}
-                          </p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        Revisa su visibilidad, categoría y personas autorizadas.
+                      </p>
+                    </div>
 
-                          <p className="mt-1 text-xs text-zinc-400">
-                            Propietario:{" "}
-                            {access.owner_name ||
-                              access.owner_email ||
-                              "No identificado"}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Acceso concedido por:{" "}
-                            {access.assigned_by_name ||
-                              access.assigned_by_email ||
-                              "No identificado"}
-                          </p>
-                        </div>
-
-                        <a
-                          href={`/videos/${access.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="shrink-0 text-xs text-orange-300 hover:text-orange-200"
-                        >
-                          Abrir
-                        </a>
+                    {!selectedUserDetail.uploads?.length ? (
+                      <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+                        Este usuario no ha subido archivos.
                       </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">
-                    No ha recibido accesos privados.
-                  </p>
-                )}
-              </div>
-            </section>
-          </div>
-        ) : null}
-      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedUserDetail.uploads.map((upload: any) => (
+                          <article
+                            key={upload.id}
+                            className="rounded-xl border border-zinc-800 bg-black/30 p-4"
+                          >
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-white">
+                                  {upload.display_name ||
+                                    upload.file_name ||
+                                    "Archivo sin nombre"}
+                                </p>
 
-      <div className="flex justify-end border-t border-zinc-800 p-4">
-        <button
-          type="button"
-          onClick={() => setSelectedUserId(null)}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-        >
-          Cerrar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  {upload.category || "Sin categoría"}
+                                  {upload.subcategory
+                                    ? ` / ${upload.subcategory}`
+                                    : ""}
+                                </p>
+
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <span
+                                    className={`rounded-full border px-2 py-1 text-[10px] ${upload.visibility === "RESTRICTED"
+                                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                                        : "border-green-500/30 bg-green-500/10 text-green-300"
+                                      }`}
+                                  >
+                                    {upload.visibility === "RESTRICTED"
+                                      ? "Privado"
+                                      : "Público"}
+                                  </span>
+
+                                  <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400">
+                                    {upload.shared_people_count || 0} personas
+                                  </span>
+
+                                  <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400">
+                                    {upload.views || 0} vistas
+                                  </span>
+                                </div>
+                              </div>
+
+                              <a
+                                href={`/videos/${upload.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0 rounded-lg border border-orange-500/50 bg-orange-500/10 px-3 py-2 text-xs text-orange-300 transition hover:bg-orange-500/20"
+                              >
+                                Ver archivo
+                              </a>
+                            </div>
+
+                            {upload.shared_with?.length > 0 && (
+                              <div className="mt-4 border-t border-zinc-800 pt-3">
+                                <p className="mb-2 text-xs font-medium text-zinc-400">
+                                  Personas con acceso
+                                </p>
+
+                                <div className="flex flex-wrap gap-2">
+                                  {upload.shared_with.map((person: any) => (
+                                    <span
+                                      key={person.id}
+                                      title={person.email}
+                                      className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-300"
+                                    >
+                                      {person.name || person.email}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Accesos recibidos */}
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+                    <h3 className="font-semibold text-white">
+                      Archivos privados recibidos
+                    </h3>
+
+                    <div className="mt-4 space-y-3">
+                      {selectedUserDetail.receivedAccess?.length ? (
+                        selectedUserDetail.receivedAccess.map((access: any) => (
+                          <article
+                            key={`${access.id}-${access.access_created_at}`}
+                            className="rounded-xl border border-zinc-800 bg-black/30 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-white">
+                                  {access.display_name ||
+                                    access.file_name ||
+                                    "Archivo sin nombre"}
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-400">
+                                  Propietario:{" "}
+                                  {access.owner_name ||
+                                    access.owner_email ||
+                                    "No identificado"}
+                                </p>
+
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  Acceso concedido por:{" "}
+                                  {access.assigned_by_name ||
+                                    access.assigned_by_email ||
+                                    "No identificado"}
+                                </p>
+                              </div>
+
+                              <a
+                                href={`/videos/${access.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0 text-xs text-orange-300 hover:text-orange-200"
+                              >
+                                Abrir
+                              </a>
+                            </div>
+                          </article>
+                        ))
+                      ) : (
+                        <p className="text-sm text-zinc-500">
+                          No ha recibido accesos privados.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex justify-end border-t border-zinc-800 p-4">
+              <button
+                type="button"
+                onClick={() => setSelectedUserId(null)}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
