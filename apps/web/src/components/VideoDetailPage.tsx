@@ -290,6 +290,9 @@ const isSharedView =
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
+  const [shareExpiresInHours, setShareExpiresInHours] =
+  useState(72);
+
   // const [showSharedFicha, setShowSharedFicha] = useState(false);
   // const [showSharedTranscript, setShowSharedTranscript] = useState(false);
 
@@ -1602,130 +1605,213 @@ const checkCaptions = async () => {
             {isAdmin &&
   !isSharedView &&
   visibility === "PUBLIC" && (
-            <div className="mb-3 flex justify-end">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    setCopiedId(false);
+            <div className="mb-4 rounded-2xl border border-orange-500/40 bg-orange-500/5 p-4">
+  <div className="mb-4">
+    <p className="text-sm font-semibold text-white">
+      Compartir archivo
+    </p>
 
-                    const response = await fetch(
-                      `/api/uploads/${id}/share-link`,
-                      {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          expiresInHours: 72,
-                        }),
-                      }
-                    );
+    <p className="mt-1 text-xs text-zinc-400">
+      Genera un enlace público con fecha de expiración.
+    </p>
+  </div>
 
-                    const result = await response
-                      .json()
-                      .catch(() => ({}));
+  <div className="mb-4">
+    <p className="mb-2 text-xs font-medium text-zinc-300">
+      El enlace expirará en:
+    </p>
 
-                    if (!response.ok) {
-                      throw new Error(
-                        result?.error ||
-                        "No se pudo generar el enlace compartido"
-                      );
-                    }
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {[
+        { label: "3 días", value: 72 },
+        { label: "7 días", value: 168 },
+        { label: "15 días", value: 360 },
+        { label: "30 días", value: 720 },
+      ].map((option) => {
+        const isSelected =
+          shareExpiresInHours === option.value;
 
-                 const shareUrl = String(result.shareUrl || "").trim();
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() =>
+              setShareExpiresInHours(option.value)
+            }
+            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+              isSelected
+                ? "border-orange-500 bg-orange-500/20 text-orange-300"
+                : "border-zinc-700 bg-zinc-950/70 text-zinc-400 hover:border-orange-500/50 hover:text-zinc-200"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
 
-if (!shareUrl) {
-  throw new Error("El servidor no devolvió un enlace para compartir");
-}
+  <button
+    type="button"
+    onClick={async () => {
+      try {
+        setCopiedId(false);
 
-let sharedNatively = false;
+        const response = await fetch(
+          `/api/uploads/${id}/share-link`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              expiresInHours: shareExpiresInHours,
+            }),
+          }
+        );
 
-// En móviles/iPhone intentamos primero el menú nativo de compartir.
-if (
-  typeof navigator !== "undefined" &&
-  typeof navigator.share === "function"
-) {
-  try {
-    await navigator.share({
-      title: "Archivo compartido",
-      url: shareUrl,
-    });
+        const result = await response
+          .json()
+          .catch(() => ({}));
 
-    sharedNatively = true;
-  } catch (shareError: any) {
-    // AbortError significa que el usuario simplemente cerró
-    // el menú de compartir. No lo tratamos como error real.
-    if (shareError?.name === "AbortError") {
-      return;
-    }
+        if (!response.ok) {
+          throw new Error(
+            result?.error ||
+              "No se pudo generar el enlace compartido"
+          );
+        }
 
-    console.warn(
-      "No se pudo usar el menú nativo de compartir:",
-      shareError
-    );
-  }
-}
+        const shareUrl = String(
+          result.shareUrl || ""
+        ).trim();
 
-// Si no existe navigator.share o falló, usamos portapapeles.
-if (!sharedNatively) {
-  try {
-    if (
-      navigator.clipboard &&
-      typeof navigator.clipboard.writeText === "function"
-    ) {
-      await navigator.clipboard.writeText(shareUrl);
-    } else {
-      throw new Error("Clipboard API no disponible");
-    }
-  } catch {
-    // Fallback para Safari/iOS u otros navegadores
-    const textarea = document.createElement("textarea");
+        if (!shareUrl) {
+          throw new Error(
+            "El servidor no devolvió un enlace para compartir"
+          );
+        }
 
-    textarea.value = shareUrl;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    textarea.style.pointerEvents = "none";
+        let sharedNatively = false;
 
-    document.body.appendChild(textarea);
+        // En móviles/iPhone intentamos primero el menú nativo de compartir.
+        if (
+          typeof navigator !== "undefined" &&
+          typeof navigator.share === "function"
+        ) {
+          try {
+            await navigator.share({
+              title: "Archivo compartido",
+              url: shareUrl,
+            });
 
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
+            sharedNatively = true;
+          } catch (shareError: any) {
+            // AbortError significa que el usuario simplemente cerró
+            // el menú de compartir. No lo tratamos como error real.
+            if (
+              shareError?.name === "AbortError"
+            ) {
+              return;
+            }
 
-    const copied = document.execCommand("copy");
+            console.warn(
+              "No se pudo usar el menú nativo de compartir:",
+              shareError
+            );
+          }
+        }
 
-    document.body.removeChild(textarea);
+        // Si no existe navigator.share o falló, usamos portapapeles.
+        if (!sharedNatively) {
+          try {
+            if (
+              navigator.clipboard &&
+              typeof navigator.clipboard
+                .writeText === "function"
+            ) {
+              await navigator.clipboard.writeText(
+                shareUrl
+              );
+            } else {
+              throw new Error(
+                "Clipboard API no disponible"
+              );
+            }
+          } catch {
+            // Fallback para Safari/iOS u otros navegadores
+            const textarea =
+              document.createElement("textarea");
 
-    if (!copied) {
-      throw new Error(
-        "No se pudo copiar el enlace al portapapeles"
-      );
-    }
-  }
-}
+            textarea.value = shareUrl;
+            textarea.setAttribute(
+              "readonly",
+              ""
+            );
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            textarea.style.pointerEvents =
+              "none";
 
-setCopiedId(true);
+            document.body.appendChild(
+              textarea
+            );
 
-setTimeout(() => {
-  setCopiedId(false);
-}, 1800);
-                  } catch (error) {
-                    console.error(
-                      "Error generando enlace compartido:",
-                      error
-                    );
+            textarea.focus();
+            textarea.select();
+            textarea.setSelectionRange(
+              0,
+              textarea.value.length
+            );
 
-                    setCopiedId(false);
-                  }
-                }}
-                className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-orange-500/70 hover:text-orange-300 transition"
-                title="Copiar enlace compartido"
-              >
-                {copiedId ? "Enlace copiado" : "Compartir archivo"}
-              </button>
-            </div>
+            const copied =
+              document.execCommand("copy");
+
+            document.body.removeChild(
+              textarea
+            );
+
+            if (!copied) {
+              throw new Error(
+                "No se pudo copiar el enlace al portapapeles"
+              );
+            }
+          }
+        }
+
+        setCopiedId(true);
+
+        setTimeout(() => {
+          setCopiedId(false);
+        }, 1800);
+      } catch (error) {
+        console.error(
+          "Error generando enlace compartido:",
+          error
+        );
+
+        setCopiedId(false);
+      }
+    }}
+    className="w-full rounded-xl border border-orange-500 bg-orange-500/15 px-4 py-3 text-sm font-semibold text-orange-300 transition hover:bg-orange-500/25"
+    title="Generar y copiar enlace compartido"
+  >
+    {copiedId
+      ? "Enlace copiado"
+      : `Generar y copiar enlace · ${
+          shareExpiresInHours === 72
+            ? "3 días"
+            : shareExpiresInHours === 168
+              ? "7 días"
+              : shareExpiresInHours === 360
+                ? "15 días"
+                : "30 días"
+        }`}
+  </button>
+
+  <p className="mt-3 text-xs text-zinc-500">
+    El enlace se copiará automáticamente al portapapeles.
+  </p>
+</div>
           )}
 
 
