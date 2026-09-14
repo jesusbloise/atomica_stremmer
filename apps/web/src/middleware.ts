@@ -78,7 +78,16 @@ if (host && host !== CANONICAL_HOST && !isLocalHost) {
 const hasCustomAuth =
   !!req.cookies.get("auth")?.value;
 
-if (hasCustomAuth) {
+const authorization =
+  req.headers.get("authorization") || "";
+
+const hasBearerAuth =
+  (pathname === "/api/me" ||
+    pathname === "/api/videos") &&
+  authorization.toLowerCase().startsWith("bearer ") &&
+  authorization.slice(7).trim().length > 0;
+
+if (hasCustomAuth || hasBearerAuth) {
   return NextResponse.next();
 }
 

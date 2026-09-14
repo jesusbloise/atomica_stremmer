@@ -1,24 +1,11 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import db from "@/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
 
-type AuthUser = {
-  id: string;
-  role: string;
-};
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
 
 type RowVideo = {
   id: string;
@@ -45,48 +32,7 @@ type RowVideo = {
   created_by_id?: string | null;
 };
 
-function getAuthenticatedUser(req: Request): AuthUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
 
-    const rawToken = cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token = decodeURIComponent(rawToken);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    const role = String(payload.role ?? "")
-      .trim()
-      .toUpperCase();
-
-    return {
-      id: String(id),
-      role,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function buildReadableUrl(row: RowVideo) {
   if (
@@ -108,7 +54,14 @@ function buildReadableUrl(row: RowVideo) {
 }
 
 export async function GET(req: Request) {
-  const currentUser = getAuthenticatedUser(req);
+  const session = getSessionFromRequest(req);
+
+const currentUser = session
+  ? {
+      id: String(session.id ?? session.sub),
+      role: String(session.role ?? "").trim().toUpperCase(),
+    }
+  : null;
 
   if (!currentUser) {
     return NextResponse.json(
