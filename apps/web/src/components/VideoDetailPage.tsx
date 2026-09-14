@@ -749,21 +749,51 @@ const checkCaptions = async () => {
   };
 }, [id, usingCloudflareStream, cloudflareStreamUrl, isSharedView]);
 
+const registerView = useCallback(() => {
+  if (!id) return;
+
+  fetch(`/api/views/${id}`, { method: "POST" })
+    .then((res) => res.json())
+    .then((data) => {
+      if (data?.views !== undefined) {
+        setViews(data.views);
+      }
+    })
+    .catch(() => {});
+}, [id]);
+
+const handlePlay = useCallback(() => {
+  registerView();
+}, [registerView]);
+
   useEffect(() => {
     if (!usingCloudflareStream || !cloudflareStreamUrl) return;
     if (!cloudflareIframeRef.current) return;
 
     const setupPlayer = () => {
-      const Stream = (window as any).Stream;
-      if (!Stream || !cloudflareIframeRef.current) return;
+  const Stream = (window as any).Stream;
+  if (!Stream || !cloudflareIframeRef.current) return;
 
-      cloudflarePlayerRef.current = Stream(cloudflareIframeRef.current);
-      setCloudflareReady(true);
+  cloudflarePlayerRef.current = Stream(cloudflareIframeRef.current);
 
-      console.log("CLOUDFLARE_READY", {
-        ready: !!cloudflarePlayerRef.current,
-      });
-    };
+  try {
+    cloudflarePlayerRef.current.addEventListener(
+      "play",
+      registerView
+    );
+  } catch (error) {
+    console.warn(
+      "No se pudo registrar el evento play de Cloudflare:",
+      error
+    );
+  }
+
+  setCloudflareReady(true);
+
+  console.log("CLOUDFLARE_READY", {
+    ready: !!cloudflarePlayerRef.current,
+  });
+};
 
     if ((window as any).Stream) {
       setupPlayer();
@@ -785,7 +815,11 @@ const checkCaptions = async () => {
     script.onload = setupPlayer;
 
     document.body.appendChild(script);
-  }, [usingCloudflareStream, cloudflareStreamUrl]);
+  }, [
+  usingCloudflareStream,
+  cloudflareStreamUrl,
+  registerView,
+]);
 
   const jumpTo = useCallback((tsSeconds: number) => {
     if (usingCloudflareStream && cloudflarePlayerRef.current) {
@@ -903,16 +937,7 @@ const checkCaptions = async () => {
     };
   }, []);
 
-  const handlePlay = useCallback(() => {
-    if (!id) return;
 
-    fetch(`/api/views/${id}`, { method: "POST" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.views !== undefined) setViews(data.views);
-      })
-      .catch(() => { });
-  }, [id]);
 
   const retryVideo = useCallback(() => {
     setVideoError(null);
