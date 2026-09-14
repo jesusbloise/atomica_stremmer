@@ -83,7 +83,8 @@ const authorization =
 
 const hasBearerAuth =
   (pathname === "/api/me" ||
-    pathname === "/api/videos") &&
+    pathname === "/api/videos" ||
+    pathname === "/api/uploads") &&
   authorization.toLowerCase().startsWith("bearer ") &&
   authorization.slice(7).trim().length > 0;
 

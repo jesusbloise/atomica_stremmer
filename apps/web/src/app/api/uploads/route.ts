@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import pool from "@/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
 
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
-
-type AuthUser = {
-  id: string;
-  role: string;
-};
 
 type RowUpload = {
   id: string;
@@ -44,43 +31,7 @@ type RowUpload = {
   created_by_id?: string | null;
 };
 
-function getAuthenticatedUser(req: NextRequest): AuthUser | null {
-  try {
-    const raw = req.cookies.get("auth")?.value;
 
-    if (!raw) {
-      return null;
-    }
-
-    const token = decodeURIComponent(raw);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    const role = String(payload.role ?? "")
-      .trim()
-      .toUpperCase();
-
-    return {
-      id: String(id),
-      role,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function buildReadableUrl(row: RowUpload) {
   if (
@@ -102,7 +53,14 @@ function buildReadableUrl(row: RowUpload) {
 }
 
 export async function GET(req: NextRequest) {
-  const currentUser = getAuthenticatedUser(req);
+  const session = getSessionFromRequest(req);
+
+const currentUser = session
+  ? {
+      id: String(session.id ?? session.sub),
+      role: String(session.role ?? "").trim().toUpperCase(),
+    }
+  : null;
 
   if (!currentUser) {
     return NextResponse.json(
