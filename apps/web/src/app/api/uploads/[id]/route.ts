@@ -9,74 +9,18 @@ import {
   getCloudflareStreamCaptions,
   getCloudflareStreamVideoStatus,
 } from "@/lib/cloudflareStream";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-type AuthUser = {
-  id: string;
-  role: string;
-};
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
-
 type UploadAccessRow = {
   visibility: "PUBLIC" | "RESTRICTED";
   created_by_id: string | null;
   is_assigned: boolean;
 };
-
-function getAuthenticatedUser(req: Request): AuthUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
-
-    const rawToken = cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token = decodeURIComponent(rawToken);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-      role: String(payload.role ?? "")
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
-    return null;
-  }
-}
 
 // const storage = new Storage();
 // const GCS_BUCKET = process.env.GCS_BUCKET;
@@ -270,7 +214,14 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-const currentUser = getAuthenticatedUser(req);
+const session = getSessionFromRequest(req);
+
+const currentUser = session
+  ? {
+      id: String(session.id ?? session.sub),
+      role: String(session.role ?? "").trim().toUpperCase(),
+    }
+  : null;
 
 const { searchParams } = new URL(req.url);
 
@@ -733,7 +684,14 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  const currentUser = getAuthenticatedUser(req);
+  const session = getSessionFromRequest(req);
+
+  const currentUser = session
+    ? {
+        id: String(session.id ?? session.sub),
+        role: String(session.role ?? "").trim().toUpperCase(),
+      }
+    : null;
 
   if (!currentUser) {
     return NextResponse.json(
