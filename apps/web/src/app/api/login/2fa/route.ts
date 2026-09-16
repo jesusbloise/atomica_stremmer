@@ -170,6 +170,7 @@ export async function POST(req: Request) {
       id: user.id,
       name: user.name,
       role: user.role,
+      authToken,
     });
 
     response.cookies.set(
