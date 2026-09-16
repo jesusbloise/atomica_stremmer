@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 
 import pool from "@/db";
 import {
@@ -10,16 +10,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
 
 type AuthUser = {
   id: string;
@@ -32,45 +22,6 @@ type UploadCaptionAccessRow = {
   created_by_id: string | null;
   is_assigned: boolean;
 };
-
-function getAuthenticatedUser(req: Request): AuthUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
-
-    const rawToken = cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const payload = jwt.verify(
-      decodeURIComponent(rawToken),
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-      role: String(payload.role ?? "")
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
-    return null;
-  }
-}
 
 async function getUploadAccess(
   uploadId: string,
@@ -187,7 +138,14 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = getAuthenticatedUser(req);
+    const session = getSessionFromRequest(req);
+
+    const currentUser = session
+      ? {
+          id: String(session.id ?? session.sub),
+          role: String(session.role ?? "").trim().toUpperCase(),
+        }
+      : null;
 
     if (!currentUser) {
       return NextResponse.json(
@@ -245,7 +203,14 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = getAuthenticatedUser(req);
+    const session = getSessionFromRequest(req);
+
+    const currentUser = session
+      ? {
+          id: String(session.id ?? session.sub),
+          role: String(session.role ?? "").trim().toUpperCase(),
+        }
+      : null;
 
     if (!currentUser) {
       return NextResponse.json(
