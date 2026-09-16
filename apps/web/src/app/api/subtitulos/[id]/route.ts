@@ -2,26 +2,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import pool from "@/db";
-
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
 
 type Ctx<T extends Record<string, string>> = {
   params: Promise<T>;
-};
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
-
-type AuthUser = {
-  id: string;
-  role: string;
 };
 
 type SubtitleRow = {
@@ -32,54 +17,163 @@ type SubtitleRow = {
   text: string | null;
 };
 
-function getAuthenticatedUser(req: Request): AuthUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
+type AuthUser = {
+  id: string;
+  role: string;
+};
 
-    const rawToken = cookie?.slice("auth=".length);
+type UploadAccessRow = {
+  visibility: "PUBLIC" | "RESTRICTED";
+  created_by_id: string | null;
+  is_assigned: boolean;
+};
 
-    if (!rawToken) {
-      return null;
-    }
+async function getUploadAccess(
+  uploadId: string,
+  currentUser: AuthUser
+): Promise<UploadAccessRow | null> {
+  const result = await pool.query<UploadAccessRow>(
+    `
+      SELECT
+        COALESCE(u.visibility, 'PUBLIC') AS visibility,
+        u.created_by_id,
 
-    const token = decodeURIComponent(rawToken);
+        CASE
+          WHEN $2::text IS NULL THEN FALSE
+          ELSE (
+            EXISTS (
+              SELECT 1
+              FROM upload_permissions permission
+              WHERE
+                permission.upload_id = u.id::text
+                AND permission.target_type = 'USER'
+                AND permission.target_id = $2::text
+            )
 
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
+            OR EXISTS (
+              SELECT 1
+              FROM upload_permissions permission
+              INNER JOIN user_group_members gm
+                ON gm.group_id::text = permission.target_id
+              WHERE
+                permission.upload_id = u.id::text
+                AND permission.target_type = 'GROUP'
+                AND gm.user_id::text = $2::text
+            )
 
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
+            OR EXISTS (
+              SELECT 1
+              FROM access_rules rule
+              INNER JOIN user_group_members gm
+                ON gm.group_id::text = rule.target_id::text
+              WHERE
+                rule.target_type = 'GROUP'
+                AND gm.user_id::text = $2::text
 
-    if (!id) {
-      return null;
-    }
+                AND (
+                  (
+                    rule.resource_type = 'UPLOAD'
+                    AND rule.resource_id::text = u.id::text
+                  )
 
-    return {
-      id: String(id),
-      role: String(payload.role ?? "")
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
-    return null;
-  }
+                  OR (
+                    rule.resource_type = 'CATEGORY'
+                    AND EXISTS (
+                      SELECT 1
+                      FROM categories category_rule
+                      WHERE
+                        category_rule.id::text = rule.resource_id::text
+                        AND LOWER(category_rule.slug) =
+                            LOWER(COALESCE(u.category, ''))
+                    )
+                  )
+
+                  OR (
+                    rule.resource_type = 'SUBCATEGORY'
+                    AND EXISTS (
+                      SELECT 1
+                      FROM subcategories subcategory_rule
+                      WHERE
+                        subcategory_rule.id::text = rule.resource_id::text
+                        AND LOWER(BTRIM(subcategory_rule.label)) =
+                            LOWER(BTRIM(COALESCE(u.subcategory, '')))
+                    )
+                  )
+                )
+            )
+          )
+        END AS is_assigned
+
+      FROM uploads u
+      WHERE
+        u.id::text = $1::text
+        AND u.is_deleted IS NOT TRUE
+      LIMIT 1
+    `,
+    [uploadId, currentUser.id]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+function canViewUpload(
+  upload: UploadAccessRow,
+  currentUser: AuthUser
+) {
+  const isOwner =
+    upload.created_by_id?.toString() ===
+    currentUser.id.toString();
+
+  const isSuperAdmin =
+    currentUser.role === "SUPER_ADMIN";
+
+  return (
+    upload.visibility === "PUBLIC" ||
+    isOwner ||
+    isSuperAdmin ||
+    upload.is_assigned
+  );
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   context: Ctx<{ id: string }>
 ) {
+  const session = getSessionFromRequest(req);
+
+  const currentUser = session
+    ? {
+        id: String(session.id ?? session.sub),
+        role: String(session.role ?? "").trim().toUpperCase(),
+      }
+    : null;
+
+  if (!currentUser) {
+    return NextResponse.json(
+      { error: "No autenticado" },
+      { status: 401 }
+    );
+  }
+
   const { id } = await context.params;
 
   try {
+    const upload = await getUploadAccess(id, currentUser);
+
+    if (!upload) {
+      return NextResponse.json(
+        { error: "Archivo no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    if (!canViewUpload(upload, currentUser)) {
+      return NextResponse.json(
+        { error: "No tienes permiso para ver este archivo" },
+        { status: 403 }
+      );
+    }
+
     const result = await pool.query<SubtitleRow>(
       `
       SELECT
@@ -124,7 +218,14 @@ export async function PATCH(
   req: Request,
   context: Ctx<{ id: string }>
 ) {
-  const currentUser = getAuthenticatedUser(req);
+  const session = getSessionFromRequest(req);
+
+  const currentUser = session
+    ? {
+        id: String(session.id ?? session.sub),
+        role: String(session.role ?? "").trim().toUpperCase(),
+      }
+    : null;
 
   if (!currentUser) {
     return NextResponse.json(
