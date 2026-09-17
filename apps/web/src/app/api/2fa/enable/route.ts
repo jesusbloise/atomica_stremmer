@@ -170,6 +170,7 @@ export async function POST(req: Request) {
         id: user.id,
         name: user.name,
         role: user.role,
+        authToken,
         message:
           "Verificación en dos pasos activada correctamente.",
       },
