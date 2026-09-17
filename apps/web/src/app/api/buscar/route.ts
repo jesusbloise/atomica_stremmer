@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
+import { getSessionFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(req: Request) {
+  const session = getSessionFromRequest(req);
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "No autorizado" },
+      { status: 401 }
+    );
+  }
+
+  const currentUser = {
+    id: String(session.id ?? session.sub),
+    role: String(session.role ?? "").trim().toUpperCase(),
+  };
+
   const { searchParams } = new URL(req.url);
 
   const q = String(
@@ -126,6 +141,79 @@ export async function GET(req: Request) {
 
         WHERE
           u.is_deleted IS NOT TRUE
+
+          AND (
+            COALESCE(u.visibility, 'PUBLIC') = 'PUBLIC'
+
+            OR $3::text = 'SUPER_ADMIN'
+
+            OR u.created_by_id::text = $2::text
+
+            OR EXISTS (
+              SELECT 1
+              FROM upload_permissions permission
+              WHERE
+                permission.upload_id = u.id::text
+                AND permission.target_type = 'USER'
+                AND permission.target_id = $2::text
+            )
+
+            OR EXISTS (
+              SELECT 1
+              FROM upload_permissions permission
+              INNER JOIN user_group_members gm
+                ON gm.group_id::text = permission.target_id
+              WHERE
+                permission.upload_id = u.id::text
+                AND permission.target_type = 'GROUP'
+                AND gm.user_id::text = $2::text
+            )
+
+            OR EXISTS (
+              SELECT 1
+              FROM access_rules rule
+
+              INNER JOIN user_group_members gm
+                ON gm.group_id::text = rule.target_id::text
+
+              WHERE
+                rule.target_type = 'GROUP'
+                AND gm.user_id::text = $2::text
+
+                AND (
+                  (
+                    rule.resource_type = 'UPLOAD'
+                    AND rule.resource_id::text = u.id::text
+                  )
+
+                  OR (
+                    rule.resource_type = 'CATEGORY'
+
+                    AND EXISTS (
+                      SELECT 1
+                      FROM categories category_rule
+                      WHERE
+                        category_rule.id::text = rule.resource_id::text
+                        AND LOWER(category_rule.slug) =
+                          LOWER(COALESCE(u.category, ''))
+                    )
+                  )
+
+                  OR (
+                    rule.resource_type = 'SUBCATEGORY'
+
+                    AND EXISTS (
+                      SELECT 1
+                      FROM subcategories subcategory_rule
+                      WHERE
+                        subcategory_rule.id::text = rule.resource_id::text
+                        AND LOWER(BTRIM(subcategory_rule.label)) =
+                          LOWER(BTRIM(COALESCE(u.subcategory, '')))
+                    )
+                  )
+                )
+            )
+          )
       ),
 
       subtitles AS (
@@ -389,7 +477,11 @@ export async function GET(req: Request) {
 
       LIMIT 100
       `,
-      [q]
+      [
+        q,
+        currentUser.id,
+        currentUser.role,
+      ]
     );
 
     const results = rows.map(
