@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { router, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -28,10 +28,7 @@ function getUploadName(item?: UploadItem) {
   if (!item) return "";
 
   const name =
-    item.display_name ||
-    item.titulo ||
-    item.file_name ||
-    "Sin nombre";
+    item.display_name || item.titulo || item.file_name || "Sin nombre";
 
   return name.replace(/\.[^/.]+$/, "");
 }
@@ -77,11 +74,10 @@ export default function CategoryScreen() {
           throw new Error("La categoría no es válida.");
         }
 
-        const [uploadsData, categoriesData] =
-          await Promise.all([
-            getCategoryUploads(authToken, slug, 80),
-            getCategories(authToken),
-          ]);
+        const [uploadsData, categoriesData] = await Promise.all([
+          getCategoryUploads(authToken, slug, 80),
+          getCategories(authToken),
+        ]);
 
         if (!cancelled) {
           setUploads(uploadsData);
@@ -93,7 +89,7 @@ export default function CategoryScreen() {
           setError(
             err instanceof Error
               ? err.message
-              : "No se pudo cargar la categoría."
+              : "No se pudo cargar la categoría.",
           );
         }
       } finally {
@@ -111,11 +107,8 @@ export default function CategoryScreen() {
   }, [slug]);
 
   const activeCategory = useMemo(
-    () =>
-      categories.find(
-        (category) => category.slug === slug
-      ) || null,
-    [categories, slug]
+    () => categories.find((category) => category.slug === slug) || null,
+    [categories, slug],
   );
 
   const grouped = useMemo(() => {
@@ -123,8 +116,7 @@ export default function CategoryScreen() {
 
     for (const item of uploads) {
       const subcategory = item.subcategory?.trim();
-      const key =
-        subcategory || getDefaultGroup(slug);
+      const key = subcategory || getDefaultGroup(slug);
 
       if (!map.has(key)) {
         map.set(key, []);
@@ -133,9 +125,7 @@ export default function CategoryScreen() {
       map.get(key)!.push(item);
     }
 
-    return [...map.entries()].filter(
-      ([, items]) => items.length > 0
-    );
+    return [...map.entries()].filter(([, items]) => items.length > 0);
   }, [uploads, slug]);
 
   const visibleGroups = useMemo(() => {
@@ -143,16 +133,12 @@ export default function CategoryScreen() {
       return grouped;
     }
 
-    return grouped.filter(
-      ([label]) => label === activeShelf
-    );
+    return grouped.filter(([label]) => label === activeShelf);
   }, [activeShelf, grouped]);
 
   const featuredItem = uploads[0];
 
-  const featuredImage = resolveMediaUrl(
-    featuredItem?.thumbnail_url
-  );
+  const featuredImage = resolveMediaUrl(featuredItem?.thumbnail_url);
 
   if (loading) {
     return (
@@ -184,17 +170,13 @@ export default function CategoryScreen() {
             resizeMode="contain"
           />
 
-          <Text style={styles.error}>
-            {error}
-          </Text>
+          <Text style={styles.error}>{error}</Text>
 
           <Pressable
             style={styles.backErrorButton}
             onPress={() => router.back()}
           >
-            <Text style={styles.backErrorText}>
-              Volver
-            </Text>
+            <Text style={styles.backErrorText}>Volver</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -202,10 +184,7 @@ export default function CategoryScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={styles.screen}
-      edges={["top"]}
-    >
+    <SafeAreaView style={styles.screen} edges={["top"]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -240,9 +219,7 @@ export default function CategoryScreen() {
                 <View style={styles.heroShade} />
 
                 <CategoryHeroContent
-                  category={
-                    activeCategory?.label || slug
-                  }
+                  category={activeCategory?.label || slug}
                   total={uploads.length}
                   item={featuredItem}
                 />
@@ -250,9 +227,7 @@ export default function CategoryScreen() {
             ) : (
               <View style={styles.heroFallback}>
                 <CategoryHeroContent
-                  category={
-                    activeCategory?.label || slug
-                  }
+                  category={activeCategory?.label || slug}
                   total={uploads.length}
                   item={featuredItem}
                 />
@@ -278,30 +253,22 @@ export default function CategoryScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.filters}
             >
-              {[
-                "Todo",
-                ...grouped.map(([label]) => label),
-              ].map((label) => {
-                const active =
-                  activeShelf === label;
+              {["Todo", ...grouped.map(([label]) => label)].map((label) => {
+                const active = activeShelf === label;
 
                 return (
                   <Pressable
                     key={label}
-                    onPress={() =>
-                      setActiveShelf(label)
-                    }
+                    onPress={() => setActiveShelf(label)}
                     style={[
                       styles.filterButton,
-                      active &&
-                        styles.filterButtonActive,
+                      active && styles.filterButtonActive,
                     ]}
                   >
                     <Text
                       style={[
                         styles.filterText,
-                        active &&
-                          styles.filterTextActive,
+                        active && styles.filterTextActive,
                       ]}
                     >
                       {label}
@@ -312,66 +279,45 @@ export default function CategoryScreen() {
             </ScrollView>
 
             <View style={styles.groups}>
-              {visibleGroups.map(
-                ([label, items]) => (
-                  <View
-                    key={label}
-                    style={styles.group}
-                  >
-                    <View
-                      style={styles.groupHeader}
-                    >
-                      <View>
-                        <Text
-                          style={styles.groupTitle}
-                        >
-                          {label}
-                        </Text>
+              {visibleGroups.map(([label, items]) => (
+                <View key={label} style={styles.group}>
+                  <View style={styles.groupHeader}>
+                    <View>
+                      <Text style={styles.groupTitle}>{label}</Text>
 
-                        <Text
-                          style={styles.groupCount}
-                        >
-                          {items.length}{" "}
-                          {items.length === 1
-                            ? "archivo"
-                            : "archivos"}
-                        </Text>
-                      </View>
-
-                      <Pressable>
-                        <Text
-                          style={styles.seeAll}
-                        >
-                          Ver todos
-                        </Text>
-                      </Pressable>
+                      <Text style={styles.groupCount}>
+                        {items.length}{" "}
+                        {items.length === 1 ? "archivo" : "archivos"}
+                      </Text>
                     </View>
 
-                    <FlatList
-                      horizontal
-                      data={items}
-                      keyExtractor={(item) => item.id}
-                      renderItem={({ item }) => (
-                        <UploadCard item={item} />
-                      )}
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.carousel}
-                      ItemSeparatorComponent={() => (
-                        <View style={{ width: 14 }} />
-                      )}
-                      initialNumToRender={3}
-                      maxToRenderPerBatch={3}
-                      windowSize={3}
-                      removeClippedSubviews
-                      getItemLayout={(_, index) => ({
-                        length: 299,
-                        offset: 299 * index,
-                        index,
-                      })}
-                    />
+                    <Pressable>
+                      <Text style={styles.seeAll}>Ver todos</Text>
+                    </Pressable>
                   </View>
-                )
-              )}
+
+                  <FlatList
+                    horizontal
+                    data={items}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => <UploadCard item={item} />}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.carousel}
+                    ItemSeparatorComponent={() => (
+                      <View style={{ width: 14 }} />
+                    )}
+                    initialNumToRender={3}
+                    maxToRenderPerBatch={3}
+                    windowSize={3}
+                    removeClippedSubviews
+                    getItemLayout={(_, index) => ({
+                      length: 299,
+                      offset: 299 * index,
+                      index,
+                    })}
+                  />
+                </View>
+              ))}
             </View>
           </>
         ) : null}
@@ -392,48 +338,38 @@ function CategoryHeroContent({
   return (
     <View style={styles.heroLayout}>
       <View style={styles.heroTop}>
-        <Text style={styles.categoryName}>
-          {category}
-        </Text>
+        <Text style={styles.categoryName}>{category}</Text>
 
         <Text style={styles.assetCount}>
-          {total}{" "}
-          {total === 1 ? "archivo" : "archivos"}{" "}
-          disponibles
+          {total} {total === 1 ? "archivo" : "archivos"} disponibles
         </Text>
       </View>
 
       <View style={styles.heroContent}>
-        <Text style={styles.latestLabel}>
-          ÚLTIMO AGREGADO
-        </Text>
+        <Text style={styles.latestLabel}>ÚLTIMO AGREGADO</Text>
 
-        <Text style={styles.heroTitle}>
-          {getUploadName(item)}
-        </Text>
+        <Text style={styles.heroTitle}>{getUploadName(item)}</Text>
 
-        <Pressable style={styles.playButton}>
-          <Text style={styles.playButtonText}>
-            Reproducir
-          </Text>
+        <Pressable
+          style={styles.playButton}
+          onPress={() => router.push(`/videos/${item.id}`)}
+        >
+          <Text style={styles.playButtonText}>Reproducir</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-function UploadCard({
-  item,
-}: {
-  item: UploadItem;
-}) {
-  const thumbnail = resolveMediaUrl(
-    item.thumbnail_url
-  );
+function UploadCard({ item }: { item: UploadItem }) {
+  const thumbnail = resolveMediaUrl(item.thumbnail_url);
 
   if (thumbnail) {
     return (
-      <Pressable style={styles.card}>
+      <Pressable
+        style={styles.card}
+        onPress={() => router.push(`/videos/${item.id}`)}
+      >
         <ImageBackground
           source={{ uri: thumbnail }}
           style={styles.cardImage}
@@ -442,17 +378,12 @@ function UploadCard({
           <View style={styles.cardShade} />
 
           <View style={styles.cardContent}>
-            <Text
-              style={styles.cardTitle}
-              numberOfLines={2}
-            >
+            <Text style={styles.cardTitle} numberOfLines={2}>
               {getUploadName(item)}
             </Text>
 
             <View style={styles.moreButton}>
-              <Text style={styles.moreButtonText}>
-                Ver más
-              </Text>
+              <Text style={styles.moreButtonText}>Ver más</Text>
             </View>
           </View>
         </ImageBackground>
@@ -461,7 +392,10 @@ function UploadCard({
   }
 
   return (
-    <Pressable style={styles.card}>
+    <Pressable
+      style={styles.card}
+      onPress={() => router.push(`/videos/${item.id}`)}
+    >
       <View style={styles.cardFallback}>
         {item.tipo === "video" && (
           <View style={styles.videoFallback}>
@@ -470,17 +404,12 @@ function UploadCard({
           </View>
         )}
 
-        <Text
-          style={styles.cardTitle}
-          numberOfLines={2}
-        >
+        <Text style={styles.cardTitle} numberOfLines={2}>
           {getUploadName(item)}
         </Text>
 
         <View style={styles.moreButton}>
-          <Text style={styles.moreButtonText}>
-            Ver más
-          </Text>
+          <Text style={styles.moreButtonText}>Ver más</Text>
         </View>
       </View>
     </Pressable>

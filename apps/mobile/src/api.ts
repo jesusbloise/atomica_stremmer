@@ -12,7 +12,7 @@ export type LoginResponse = {
 
 export async function login(
   email: string,
-  password: string
+  password: string,
 ): Promise<LoginResponse> {
   const response = await fetch(`${API_BASE_URL}/api/login`, {
     method: "POST",
@@ -29,9 +29,7 @@ export async function login(
   const data = (await response.json()) as LoginResponse;
 
   if (!response.ok) {
-    throw new Error(
-      data.error || "No se pudo iniciar sesión"
-    );
+    throw new Error(data.error || "No se pudo iniciar sesión");
   }
 
   return data;
@@ -50,7 +48,7 @@ export type TwoFactorLoginResponse = {
 
 export async function verifyTwoFactorLogin(
   challengeToken: string,
-  code: string
+  code: string,
 ): Promise<TwoFactorLoginResponse> {
   const response = await fetch(`${API_BASE_URL}/api/login/2fa`, {
     method: "POST",
@@ -67,9 +65,7 @@ export async function verifyTwoFactorLogin(
   const data = (await response.json()) as TwoFactorLoginResponse;
 
   if (!response.ok) {
-    throw new Error(
-      data.error || "No se pudo completar la verificación"
-    );
+    throw new Error(data.error || "No se pudo completar la verificación");
   }
 
   return data;
@@ -89,9 +85,7 @@ export type VideoItem = {
   using_cloudflare_stream?: boolean;
 };
 
-export async function getVideos(
-  authToken: string
-): Promise<VideoItem[]> {
+export async function getVideos(authToken: string): Promise<VideoItem[]> {
   const response = await fetch(`${API_BASE_URL}/api/videos`, {
     method: "GET",
     headers: {
@@ -101,9 +95,7 @@ export async function getVideos(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `No se pudieron cargar los videos (${response.status})`
-    );
+    throw new Error(`No se pudieron cargar los videos (${response.status})`);
   }
 
   const data = (await response.json()) as VideoItem[];
@@ -139,24 +131,20 @@ type CategoriesResponse = {
 };
 
 export async function getCategories(
-  authToken?: string
+  authToken?: string,
 ): Promise<CategoryItem[]> {
   const response = await fetch(`${API_BASE_URL}/api/categories`, {
     method: "GET",
     headers: {
       Accept: "application/json",
-      ...(authToken
-        ? { Authorization: `Bearer ${authToken}` }
-        : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
   });
 
   const data = (await response.json()) as CategoriesResponse;
 
   if (!response.ok) {
-    throw new Error(
-      data.error || "No se pudieron cargar las categorías"
-    );
+    throw new Error(data.error || "No se pudieron cargar las categorías");
   }
 
   if (!Array.isArray(data.categories)) {
@@ -196,7 +184,7 @@ export type UploadItem = {
 export async function getCategoryUploads(
   authToken: string,
   category: string,
-  limit = 80
+  limit = 80,
 ): Promise<UploadItem[]> {
   const params = new URLSearchParams({
     category,
@@ -211,13 +199,11 @@ export async function getCategoryUploads(
         Accept: "application/json",
         Authorization: `Bearer ${authToken}`,
       },
-    }
+    },
   );
 
   if (!response.ok) {
-    throw new Error(
-      `No se pudieron cargar los archivos (${response.status})`
-    );
+    throw new Error(`No se pudieron cargar los archivos (${response.status})`);
   }
 
   const data = (await response.json()) as UploadItem[];
@@ -227,4 +213,77 @@ export async function getCategoryUploads(
   }
 
   return data;
+}
+export type UploadDetail = {
+  id: string;
+  tipo?: string | null;
+  titulo?: string | null;
+  display_name?: string | null;
+  file_name?: string | null;
+  ext?: string | null;
+  content_type?: string | null;
+  url?: string | null;
+  uploaded_at?: string | null;
+  views?: number;
+  category?: string | null;
+  subcategory?: string | null;
+
+  visibility?: "PUBLIC" | "RESTRICTED" | null;
+  created_by_id?: string | null;
+  can_manage_privacy?: boolean;
+
+  ficha?: Record<string, unknown> | null;
+
+  vimeo_id?: string | null;
+  duration_sec?: number | null;
+  thumbnail_url?: string | null;
+
+  file_path?: string | null;
+  r2_path?: string | null;
+  streaming_path?: string | null;
+  playback_path?: string | null;
+  using_streaming?: boolean;
+  using_r2?: boolean;
+
+  cf_stream_uid?: string | null;
+  cf_stream_status?: string | null;
+  cf_stream_ready?: boolean;
+  cf_stream_playback_url?: string | null;
+  cf_stream_hls_url?: string | null;
+  using_cloudflare_stream?: boolean;
+};
+
+type UploadDetailResponse = {
+  upload?: UploadDetail;
+  error?: string;
+};
+
+export async function getUploadById(
+  authToken: string,
+  id: string,
+): Promise<UploadDetail> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(id)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json()) as UploadDetailResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo cargar el archivo (${response.status})`,
+    );
+  }
+
+  if (!data.upload?.id) {
+    throw new Error("La respuesta del archivo no es válida");
+  }
+
+  return data.upload;
 }
