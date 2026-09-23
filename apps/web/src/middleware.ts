@@ -84,6 +84,7 @@ const authorization =
 const hasBearerAuth =
   (pathname === "/api/me" ||
     pathname === "/api/videos" ||
+    pathname === "/api/categories" ||
     pathname === "/api/uploads" ||
     pathname === "/api/buscar" ||
     pathname.startsWith("/api/fichas/")) &&
@@ -107,4 +108,6 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|webp|avif|svg|ico)$).*)",
   ],
 };
+
+
 
