@@ -521,9 +521,10 @@ const playbackPath = preferR2
     let url: string | null = null;
 
     let cfStreamUid = row.cf_stream_uid ?? null;
-let cfStreamStatus = row.cf_stream_status ?? null;
-let cfStreamReady = Boolean(row.cf_stream_ready);
-let cfStreamPlaybackUrl = row.cf_stream_playback_url ?? null;
+    let cfStreamStatus = row.cf_stream_status ?? null;
+    let cfStreamReady = Boolean(row.cf_stream_ready);
+    let cfStreamPlaybackUrl = row.cf_stream_playback_url ?? null;
+    let cfStreamHlsUrl: string | null = null;
 
 if (tipo === "video" && cfStreamUid && !cfStreamReady) {
   try {
@@ -532,6 +533,7 @@ if (tipo === "video" && cfStreamUid && !cfStreamReady) {
     cfStreamStatus = cf.status;
     cfStreamReady = cf.ready;
     cfStreamPlaybackUrl = cf.playbackUrl;
+    cfStreamHlsUrl = cf.hlsUrl;
 
     await pool.query(
       `
@@ -547,7 +549,19 @@ if (tipo === "video" && cfStreamUid && !cfStreamReady) {
     console.warn("No se pudo sincronizar estado Cloudflare Stream:", e);
   }
 }
-
+if (
+  tipo === "video" &&
+  cfStreamUid &&
+  cfStreamReady &&
+  !cfStreamHlsUrl
+) {
+  try {
+    const cf = await getCloudflareStreamVideoStatus(cfStreamUid);
+    cfStreamHlsUrl = cf.hlsUrl;
+  } catch (e) {
+    console.warn("No se pudo obtener HLS de Cloudflare Stream:", e);
+  }
+}
 if (tipo === "video" && cfStreamUid && cfStreamReady) {
   try {
     const captions = await getCloudflareStreamCaptions(cfStreamUid);
@@ -663,6 +677,7 @@ ficha: mapFichaToCamel(fichaRow),
 cf_stream_status: cfStreamStatus,
 cf_stream_ready: cfStreamReady,
 cf_stream_playback_url: cfStreamPlaybackUrl,
+cf_stream_hls_url: cfStreamHlsUrl,
 using_cloudflare_stream:
   tipo === "video" && cfStreamReady && Boolean(cfStreamPlaybackUrl),
         },

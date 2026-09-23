@@ -115,12 +115,17 @@ export async function getCloudflareStreamVideoStatus(uid: string) {
   }
 
   const ready = Boolean(data.result?.readyToStream);
+  const hlsUrl =
+    typeof data.result?.playback?.hls === "string"
+      ? data.result.playback.hls
+      : null;
 
   return {
     uid,
     ready,
     status: ready ? "ready" : "processing",
     playbackUrl: getCloudflareStreamPlaybackUrl(uid),
+    hlsUrl,
     raw: data.result,
   };
 }
