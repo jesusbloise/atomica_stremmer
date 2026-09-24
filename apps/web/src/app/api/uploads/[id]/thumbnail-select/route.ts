@@ -1,36 +1,17 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import pool from "@/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-function getRoleFromReq(req: Request) {
-  const cookie = (req.headers.get("cookie") || "")
-    .split(";")
-    .map((v) => v.trim())
-    .find((v) => v.startsWith("auth="));
-
-  const raw = cookie?.split("=")?.[1];
-  if (!raw) return null;
-
-  try {
-    const token = decodeURIComponent(raw);
-    const payload = jwt.verify(token, JWT_SECRET) as any;
-    return String(payload.role || "").trim().toUpperCase();
-  } catch {
-    return null;
-  }
-}
 
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const role = getRoleFromReq(req);
+    const session = getSessionFromRequest(req);
+    const role = String(session?.role || "").trim().toUpperCase();
 
     if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
