@@ -287,3 +287,44 @@ export async function getUploadById(
 
   return data.upload;
 }
+export type CurrentUser = {
+  id?: string;
+  sub?: string;
+  name: string;
+  email?: string | null;
+  role:
+    | "SUPER_ADMIN"
+    | "ADMIN"
+    | "USUARIO"
+    | "PROFESOR"
+    | "ESTUDIANTE";
+  avatarUrl?: string | null;
+};
+
+export async function getMe(
+  authToken: string,
+): Promise<CurrentUser> {
+  const response = await fetch(`${API_BASE_URL}/api/me`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+
+  const data = (await response.json()) as CurrentUser & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo validar la sesión (${response.status})`,
+    );
+  }
+
+  if (!data?.name || !data?.role) {
+    throw new Error("La respuesta de sesión no es válida");
+  }
+
+  return data;
+}
