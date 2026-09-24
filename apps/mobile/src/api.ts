@@ -83,6 +83,13 @@ export type VideoItem = {
   thumbnail_url?: string | null;
   cf_stream_playback_url?: string | null;
   using_cloudflare_stream?: boolean;
+  uploaded_at?: string | null;
+  created_at?: string | null;
+  views?: number | null;
+  category?: string | null;
+  subcategory?: string | null;
+  contentType?: string | null;
+  mimeType?: string | null;
 };
 
 export async function getVideos(authToken: string): Promise<VideoItem[]> {
@@ -327,4 +334,73 @@ export async function getMe(
   }
 
   return data;
+}
+export type SearchResultItem = {
+  id: string;
+  file_name?: string | null;
+  display_name?: string | null;
+  titulo?: string | null;
+  tipo?: string | null;
+
+  url?: string | null;
+  file_path?: string | null;
+  r2_path?: string | null;
+
+  thumbnail_url?: string | null;
+
+  uploaded_at?: string | null;
+  created_at?: string | null;
+  views?: number | null;
+
+  category?: string | null;
+  subcategory?: string | null;
+
+  contentType?: string | null;
+  mimeType?: string | null;
+
+  ficha?: {
+    titulo?: string | null;
+    [key: string]: unknown;
+  } | null;
+};
+
+type SearchResponse = {
+  results?: SearchResultItem[];
+  error?: string;
+};
+
+export async function searchUploads(
+  authToken: string,
+  query: string,
+): Promise<SearchResultItem[]> {
+  const q = query.trim();
+
+  if (!q) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/buscar?q=${encodeURIComponent(q)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json()) as SearchResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo realizar la búsqueda (${response.status})`,
+    );
+  }
+
+  if (!Array.isArray(data.results)) {
+    throw new Error("La respuesta de búsqueda no es válida");
+  }
+
+  return data.results;
 }

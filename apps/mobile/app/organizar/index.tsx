@@ -168,15 +168,13 @@ export default function OrganizarScreen() {
   }
 
   function submitSearch() {
-    const query = searchQuery.trim();
+  const query = searchQuery.trim();
 
-    if (!query) return;
+  if (!query) return;
 
-    setSearchOpen(false);
-
-    // La pantalla nativa /explorar se construye en el siguiente bloque.
-    // Conservamos el término para conectarlo allí.
-  }
+  setSearchOpen(false);
+  router.push(`/explorar?q=${encodeURIComponent(query)}`);
+}
 
   if (loading) {
     return (
@@ -292,16 +290,20 @@ export default function OrganizarScreen() {
       ) : null}
 
       <View style={styles.quickTabs}>
-        <Pressable style={styles.quickTab}>
-          <Text style={styles.quickTabText}>
-            Últimos agregados
-          </Text>
-        </Pressable>
+  <Pressable
+    style={styles.quickTab}
+    onPress={() => router.push("/explorar?tab=ultimos")}
+  >
+    <Text style={styles.quickTabText}>Últimos agregados</Text>
+  </Pressable>
 
-        <Pressable style={styles.quickTab}>
-          <Text style={styles.quickTabText}>Más vistos</Text>
-        </Pressable>
-      </View>
+  <Pressable
+    style={styles.quickTab}
+    onPress={() => router.push("/explorar?tab=mas-vistos")}
+  >
+    <Text style={styles.quickTabText}>Más vistos</Text>
+  </Pressable>
+</View>
 
       <ScrollView
         style={styles.scroll}
@@ -446,9 +448,12 @@ export default function OrganizarScreen() {
             />
 
             <DrawerItem
-              label="Todos los archivos"
-              onPress={closeMenu}
-            />
+  label="Todos los archivos"
+  onPress={() => {
+    closeMenu();
+    router.push("/explorar");
+  }}
+/>
 
             {canUpload ? (
               <>
