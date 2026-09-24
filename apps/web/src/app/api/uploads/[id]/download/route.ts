@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import pool from "@/db";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl as getR2SignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -8,33 +8,6 @@ import { getR2Client } from "@/lib/r2";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-function getRoleFromReq(req: Request) {
-  const cookie = (req.headers.get("cookie") || "")
-    .split(";")
-    .map((value) => value.trim())
-    .find((value) => value.startsWith("auth="));
-
-  const raw = cookie?.split("=")?.[1];
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const token = decodeURIComponent(raw);
-    const payload = jwt.verify(token, JWT_SECRET) as {
-      role?: string;
-    };
-
-    return String(payload.role || "").trim().toUpperCase();
-  } catch (error) {
-    console.error("Token de descarga inválido:", error);
-    return null;
-  }
-}
 
 function parseR2Url(raw?: string | null) {
   if (!raw || !raw.startsWith("r2://")) {
@@ -66,7 +39,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const role = getRoleFromReq(req);
+    const session = getSessionFromRequest(req);
+    const role = String(session?.role || "").trim().toUpperCase();
     const allowedRoles = ["SUPER_ADMIN", "ADMIN"];
 
     if (!role || !allowedRoles.includes(role)) {
