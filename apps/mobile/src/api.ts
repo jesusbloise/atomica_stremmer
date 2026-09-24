@@ -658,3 +658,241 @@ export async function updateTranscriptLine(
 
   return data.subtitle?.text?.trim() || cleanText;
 }
+export type UploadVisibility = "PUBLIC" | "RESTRICTED";
+
+export type ThumbnailCandidate = {
+  timeSec: number;
+  r2Uri: string;
+  url: string;
+};
+
+export async function updateUploadVisibility(
+  authToken: string,
+  uploadId: string,
+  visibility: UploadVisibility,
+): Promise<UploadVisibility> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ visibility }),
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    visibility?: UploadVisibility;
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo cambiar la privacidad (${response.status})`,
+    );
+  }
+
+  return data.visibility || visibility;
+}
+
+export async function moveUpload(
+  authToken: string,
+  uploadId: string,
+  category: string,
+  subcategory?: string | null,
+): Promise<{
+  id: string;
+  file_name?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+}> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/category`,
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        category: category.trim(),
+        subcategory: subcategory?.trim() || "",
+      }),
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    upload?: {
+      id: string;
+      file_name?: string | null;
+      category?: string | null;
+      subcategory?: string | null;
+    };
+    error?: string;
+  };
+
+  if (!response.ok || !data.upload) {
+    throw new Error(
+      data.error || `No se pudo mover el archivo (${response.status})`,
+    );
+  }
+
+  return data.upload;
+}
+
+export async function createUploadShareLink(
+  authToken: string,
+  uploadId: string,
+  expiresInHours: number,
+): Promise<string> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/share-link`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ expiresInHours }),
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    shareUrl?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !data.shareUrl) {
+    throw new Error(
+      data.error || `No se pudo generar el enlace (${response.status})`,
+    );
+  }
+
+  return data.shareUrl;
+}
+
+export async function getThumbnailCandidates(
+  authToken: string,
+  uploadId: string,
+): Promise<ThumbnailCandidate[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/thumbnail-candidates`,
+    {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    candidates?: ThumbnailCandidate[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudieron generar las portadas (${response.status})`,
+    );
+  }
+
+  return Array.isArray(data.candidates)
+    ? data.candidates.map((candidate) => ({
+        ...candidate,
+        url: candidate.url.startsWith("http")
+          ? candidate.url
+          : `${API_BASE_URL}${candidate.url}`,
+      }))
+    : [];
+}
+
+export function getUploadDownloadUrl(uploadId: string): string {
+  return `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/download`;
+}
+export async function selectUploadThumbnail(
+  authToken: string,
+  uploadId: string,
+  thumbnailUrl: string,
+): Promise<string> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/thumbnail-select`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        thumbnail_url: thumbnailUrl,
+      }),
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    thumbnail_url?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !data.thumbnail_url) {
+    throw new Error(
+      data.error ||
+        `No se pudo seleccionar la portada (${response.status})`,
+    );
+  }
+
+  return data.thumbnail_url;
+}
+export async function uploadCustomThumbnail(
+  authToken: string,
+  uploadId: string,
+  image: {
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+  },
+): Promise<string> {
+  const formData = new FormData();
+
+  formData.append(
+    "file",
+    {
+      uri: image.uri,
+      name: image.fileName || "thumbnail.jpg",
+      type: image.mimeType || "image/jpeg",
+    } as any,
+  );
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/thumbnail`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: formData,
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    thumbnail_url?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !data.thumbnail_url) {
+    throw new Error(
+      data.error ||
+        `No se pudo subir la portada (${response.status})`,
+    );
+  }
+
+  return data.thumbnail_url;
+}

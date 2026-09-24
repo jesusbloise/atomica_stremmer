@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,18 +13,27 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
 
 import {
+  createUploadShareLink,
   CurrentUser,
   getMe,
   getTechnicalSheet,
+  getThumbnailCandidates,
   getTranscript,
   getUploadById,
+  moveUpload,
   TechnicalSheet,
+  ThumbnailCandidate,
   TranscriptLine,
   updateTechnicalSheet,
   updateTranscriptLine,
+  updateUploadVisibility,
   UploadDetail,
+  UploadVisibility,
+  selectUploadThumbnail,
+  uploadCustomThumbnail,
 } from "../../../src/api";
 import { getAuthToken } from "../../../src/authStorage";
 
@@ -230,9 +240,9 @@ function LoadedVideoDetail({
     initialData.transcript,
   );
 
-  const [openPanel, setOpenPanel] = useState<
-    "ficha" | "transcript" | null
-  >(null);
+ const [openPanel, setOpenPanel] = useState<
+  "ficha" | "transcript" | "options" | null
+>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -273,11 +283,13 @@ function LoadedVideoDetail({
     );
   }, [normalizedSearch, transcript]);
 
-  function togglePanel(panel: "ficha" | "transcript") {
-    setOpenPanel((current) =>
-      current === panel ? null : panel,
-    );
-  }
+  function togglePanel(
+  panel: "ficha" | "transcript" | "options",
+) {
+  setOpenPanel((current) =>
+    current === panel ? null : panel,
+  );
+}
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -461,6 +473,22 @@ function LoadedVideoDetail({
               )}
             </View>
           ) : null}
+                    <PanelButton
+            title="Opciones"
+            open={openPanel === "options"}
+            onPress={() => togglePanel("options")}
+          />
+
+          {openPanel === "options" ? (
+            <View style={styles.panelContent}>
+              <UploadOptionsPanel
+                upload={initialData.upload}
+                authToken={authToken}
+                uploadId={uploadId}
+                role={role}
+              />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -496,6 +524,617 @@ function PanelButton({
         ›
       </Text>
     </Pressable>
+  );
+}
+function formatThumbnailTime(timeSec: number): string {
+  const totalSeconds = Math.max(0, Math.floor(Number(timeSec) || 0));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function UploadOptionsPanel({
+  upload,
+  authToken,
+  uploadId,
+  role,
+}: {
+  upload: UploadDetail;
+  authToken: string;
+  uploadId: string;
+  role?: string | null;
+}) {
+  const normalizedRole = String(role || "").trim().toUpperCase();
+
+  const isAdmin =
+    normalizedRole === "SUPER_ADMIN" ||
+    normalizedRole === "ADMIN";
+
+  const isSuperAdmin = normalizedRole === "SUPER_ADMIN";
+
+  const canManagePrivacy =
+    upload.can_manage_privacy === true;
+
+  const [visibility, setVisibility] =
+    useState<UploadVisibility>(
+      upload.visibility === "RESTRICTED"
+        ? "RESTRICTED"
+        : "PUBLIC",
+    );
+
+  const [category, setCategory] = useState(
+    upload.category || "",
+  );
+
+  const [subcategory, setSubcategory] = useState(
+    upload.subcategory || "",
+  );
+
+  const [moveCategory, setMoveCategory] = useState(
+    upload.category || "",
+  );
+
+  const [moveSubcategory, setMoveSubcategory] = useState(
+    upload.subcategory || "",
+  );
+
+  const [moving, setMoving] = useState(false);
+  const [changingPrivacy, setChangingPrivacy] =
+    useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareExpiresInHours, setShareExpiresInHours] =
+    useState(168);
+
+  const [loadingThumbnails, setLoadingThumbnails] =
+    useState(false);
+
+  const [thumbnailCandidates, setThumbnailCandidates] =
+    useState<ThumbnailCandidate[]>([]);
+
+  async function handleChangePrivacy() {
+    if (!isAdmin || !canManagePrivacy || changingPrivacy) {
+      return;
+    }
+
+    const nextVisibility: UploadVisibility =
+      visibility === "PUBLIC"
+        ? "RESTRICTED"
+        : "PUBLIC";
+
+    Alert.alert(
+      nextVisibility === "PUBLIC"
+        ? "Hacer público"
+        : "Hacer restringido",
+      nextVisibility === "PUBLIC"
+        ? "¿Quieres hacer público este archivo?"
+        : "¿Quieres restringir este archivo?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Confirmar",
+          onPress: () => {
+            void (async () => {
+              try {
+                setChangingPrivacy(true);
+
+                const savedVisibility =
+                  await updateUploadVisibility(
+                    authToken,
+                    uploadId,
+                    nextVisibility,
+                  );
+
+                setVisibility(savedVisibility);
+
+                Alert.alert(
+                  "Privacidad actualizada",
+                  savedVisibility === "PUBLIC"
+                    ? "El archivo ahora es público."
+                    : "El archivo ahora es restringido.",
+                );
+              } catch (error) {
+                Alert.alert(
+                  "No se pudo cambiar la privacidad",
+                  error instanceof Error
+                    ? error.message
+                    : "Ocurrió un error inesperado.",
+                );
+              } finally {
+                setChangingPrivacy(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }
+
+  async function handleMoveUpload() {
+    if (!isSuperAdmin || moving) {
+      return;
+    }
+
+    const cleanCategory = moveCategory.trim();
+
+    if (!cleanCategory) {
+      Alert.alert(
+        "Categoría requerida",
+        "Selecciona o escribe una categoría.",
+      );
+      return;
+    }
+
+    try {
+      setMoving(true);
+
+      const updated = await moveUpload(
+        authToken,
+        uploadId,
+        cleanCategory,
+        moveSubcategory,
+      );
+
+      setCategory(updated.category || cleanCategory);
+      setSubcategory(updated.subcategory || "");
+      setMoveCategory(updated.category || cleanCategory);
+      setMoveSubcategory(updated.subcategory || "");
+
+      Alert.alert(
+        "Archivo movido",
+        updated.subcategory
+          ? `Ahora está en ${updated.category} · ${updated.subcategory}.`
+          : `Ahora está en ${updated.category}.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        "No se pudo mover el archivo",
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error inesperado.",
+      );
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  async function handleShare() {
+    if (!isAdmin || sharing) {
+      return;
+    }
+
+    if (visibility !== "PUBLIC") {
+      Alert.alert(
+        "Archivo restringido",
+        "Solo puedes generar un enlace público cuando el archivo es público.",
+      );
+      return;
+    }
+
+    try {
+      setSharing(true);
+
+      const shareUrl = await createUploadShareLink(
+        authToken,
+        uploadId,
+        shareExpiresInHours,
+      );
+
+      Alert.alert(
+        "Enlace generado",
+        shareUrl,
+      );
+    } catch (error) {
+      Alert.alert(
+        "No se pudo generar el enlace",
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error inesperado.",
+      );
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function handleLoadThumbnails() {
+    if (!isAdmin || loadingThumbnails) {
+      return;
+    }
+
+    try {
+      setLoadingThumbnails(true);
+
+      const candidates = await getThumbnailCandidates(
+        authToken,
+        uploadId,
+      );
+
+      setThumbnailCandidates(candidates);
+
+      if (candidates.length === 0) {
+        Alert.alert(
+          "Sin portadas",
+          "No se generaron candidatos de portada para este video.",
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "No se pudieron cargar las portadas",
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error inesperado.",
+      );
+    } finally {
+      setLoadingThumbnails(false);
+    }
+  }
+
+  const handlePickCustomThumbnail = async () => {
+  try {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Permiso necesario",
+        "Debes permitir el acceso a tus fotos para elegir una portada.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.9,
+    });
+
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    const image = result.assets[0];
+
+    Alert.alert(
+      "Cambiar portada",
+      "¿Quieres usar esta imagen como portada del archivo?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Usar portada",
+          onPress: async () => {
+            try {
+              await uploadCustomThumbnail(authToken, uploadId, {
+                uri: image.uri,
+                fileName: image.fileName,
+                mimeType: image.mimeType,
+              });
+
+              setThumbnailCandidates([]);
+
+              Alert.alert(
+                "Portada actualizada",
+                "La imagen se guardó correctamente como nueva portada.",
+              );
+            } catch (error) {
+              Alert.alert(
+                "No se pudo cambiar la portada",
+                error instanceof Error
+                  ? error.message
+                  : "Ocurrió un error inesperado.",
+              );
+            }
+          },
+        },
+      ],
+    );
+  } catch (error) {
+    Alert.alert(
+      "No se pudo abrir la galería",
+      error instanceof Error
+        ? error.message
+        : "Ocurrió un error inesperado.",
+    );
+  }
+};
+
+  if (!isAdmin) {
+    return (
+      <PanelMessage
+        title="Opciones"
+        text="No tienes permisos administrativos para modificar este archivo."
+      />
+    );
+  }
+
+  return (
+    <View style={styles.optionsContainer}>
+      <View style={styles.optionsHeader}>
+        <Text style={styles.sectionTitle}>Opciones</Text>
+
+        <Text style={styles.sectionSubtitle}>
+          Administra este archivo desde la aplicación.
+        </Text>
+      </View>
+
+      {canManagePrivacy ? (
+        <View style={styles.optionCard}>
+          <Text style={styles.optionTitle}>Privacidad</Text>
+
+          <Text style={styles.optionDescription}>
+            Estado actual:{" "}
+            {visibility === "PUBLIC"
+              ? "Público"
+              : "Restringido"}
+          </Text>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.optionButton,
+              pressed && styles.optionButtonPressed,
+              changingPrivacy && styles.optionButtonDisabled,
+            ]}
+            disabled={changingPrivacy}
+            onPress={handleChangePrivacy}
+          >
+            {changingPrivacy ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <Text style={styles.optionButtonText}>
+                {visibility === "PUBLIC"
+                  ? "Hacer restringido"
+                  : "Hacer público"}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={styles.optionCard}>
+        <Text style={styles.optionTitle}>Cambiar portada</Text>
+
+        <Text style={styles.optionDescription}>
+          Genera imágenes del video para seleccionar una nueva
+          portada.
+        </Text>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.optionButton,
+            pressed && styles.optionButtonPressed,
+            loadingThumbnails && styles.optionButtonDisabled,
+          ]}
+          disabled={loadingThumbnails}
+          onPress={handleLoadThumbnails}
+        >
+          {loadingThumbnails ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <Text style={styles.optionButtonText}>
+              Generar portadas
+            </Text>
+          )}
+        </Pressable>
+          <Pressable
+  style={({ pressed }) => [
+    styles.optionButton,
+    pressed && styles.optionButtonPressed,
+  ]}
+  onPress={handlePickCustomThumbnail}
+>
+  <Text style={styles.optionButtonText}>
+    Elegir de mi galería
+  </Text>
+</Pressable>
+
+       {thumbnailCandidates.length > 0 ? (
+  <View style={styles.thumbnailGrid}>
+    {thumbnailCandidates.map((candidate, index) => (
+      <Pressable
+        key={`${candidate.r2Uri}-${index}`}
+        style={({ pressed }) => [
+          styles.thumbnailCandidate,
+          pressed && styles.thumbnailCandidatePressed,
+        ]}
+        onPress={() => {
+          Alert.alert(
+            "Cambiar portada",
+            "¿Quieres usar esta imagen como portada del archivo?",
+            [
+              {
+                text: "Cancelar",
+                style: "cancel",
+              },
+              {
+                text: "Usar portada",
+                onPress: async () => {
+                  try {
+                    const thumbnailUrl = await selectUploadThumbnail(
+                      authToken,
+                      uploadId,
+                      candidate.r2Uri,
+                    );
+
+                    Alert.alert(
+                      "Portada actualizada",
+                      "La nueva portada se guardó correctamente.",
+                    );
+
+                    setThumbnailCandidates([]);
+                  } catch (error) {
+                    Alert.alert(
+                      "No se pudo cambiar la portada",
+                      error instanceof Error
+                        ? error.message
+                        : "Ocurrió un error inesperado.",
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        }}
+      >
+        <Image
+          source={{ uri: candidate.url }}
+          style={styles.thumbnailCandidateImage}
+          resizeMode="cover"
+        />
+
+        <View style={styles.thumbnailCandidateFooter}>
+          <Text style={styles.thumbnailCandidateText}>
+            {formatThumbnailTime(candidate.timeSec)}
+          </Text>
+        </View>
+      </Pressable>
+    ))}
+  </View>
+) : null}
+      </View>
+
+      {isSuperAdmin ? (
+        <View style={styles.optionCard}>
+          <Text style={styles.optionTitle}>Mover archivo</Text>
+
+          <Text style={styles.optionDescription}>
+            Cambia la categoría o subcategoría sin mover el
+            archivo físico.
+          </Text>
+
+          <Text style={styles.optionCurrent}>
+            Actual: {category || "Sin categoría"}
+            {subcategory ? ` · ${subcategory}` : ""}
+          </Text>
+
+          <TextInput
+            style={styles.optionInput}
+            value={moveCategory}
+            onChangeText={setMoveCategory}
+            placeholder="Categoría"
+            placeholderTextColor="#71717a"
+          />
+
+          <TextInput
+            style={styles.optionInput}
+            value={moveSubcategory}
+            onChangeText={setMoveSubcategory}
+            placeholder="Subcategoría"
+            placeholderTextColor="#71717a"
+          />
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.optionButton,
+              pressed && styles.optionButtonPressed,
+              moving && styles.optionButtonDisabled,
+            ]}
+            disabled={moving}
+            onPress={handleMoveUpload}
+          >
+            {moving ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <Text style={styles.optionButtonText}>
+                Mover archivo
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={styles.optionCard}>
+        <Text style={styles.optionTitle}>
+          Descargar archivo
+        </Text>
+
+        <Text style={styles.optionDescription}>
+          Descarga el archivo original.
+        </Text>
+
+        <View style={styles.optionPending}>
+          <Text style={styles.optionPendingText}>
+            Preparando descarga nativa
+          </Text>
+        </View>
+      </View>
+
+      {visibility === "PUBLIC" ? (
+        <View style={styles.optionCard}>
+          <Text style={styles.optionTitle}>
+            Compartir archivo
+          </Text>
+
+          <Text style={styles.optionDescription}>
+            Genera un enlace público con fecha de expiración.
+          </Text>
+
+          <View style={styles.expirationRow}>
+            {[
+              { label: "3 días", hours: 72 },
+              { label: "7 días", hours: 168 },
+              { label: "15 días", hours: 360 },
+              { label: "30 días", hours: 720 },
+            ].map((option) => {
+              const selected =
+                shareExpiresInHours === option.hours;
+
+              return (
+                <Pressable
+                  key={option.hours}
+                  style={[
+                    styles.expirationChip,
+                    selected &&
+                      styles.expirationChipSelected,
+                  ]}
+                  onPress={() =>
+                    setShareExpiresInHours(option.hours)
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.expirationChipText,
+                      selected &&
+                        styles.expirationChipTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.optionButton,
+              pressed && styles.optionButtonPressed,
+              sharing && styles.optionButtonDisabled,
+            ]}
+            disabled={sharing}
+            onPress={handleShare}
+          >
+            {sharing ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <Text style={styles.optionButtonText}>
+                Generar enlace ·{" "}
+                {shareExpiresInHours / 24} días
+              </Text>
+            )}
+          </Pressable>
+
+          <Text style={styles.optionHint}>
+            El enlace se mostrará al generarlo.
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1720,4 +2359,166 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: "center",
   },
+    optionsContainer: {
+    gap: 12,
+  },
+
+  optionsHeader: {
+    gap: 4,
+    marginBottom: 2,
+  },
+
+  optionCard: {
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+
+  optionTitle: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  optionDescription: {
+    color: "#a1a1aa",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  optionCurrent: {
+    color: "#d4d4d8",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  optionInput: {
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    color: "#ffffff",
+    fontSize: 14,
+  },
+
+  optionButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  optionButtonPressed: {
+    opacity: 0.72,
+  },
+
+  optionButtonDisabled: {
+    opacity: 0.5,
+  },
+
+  optionButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  optionHint: {
+    color: "#71717a",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  optionPending: {
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+
+  optionPendingText: {
+    color: "#71717a",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  expirationRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  expirationChip: {
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  expirationChipSelected: {
+    borderColor: "#f97316",
+    backgroundColor: "rgba(249,115,22,0.14)",
+  },
+
+  expirationChipText: {
+    color: "#a1a1aa",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  expirationChipTextSelected: {
+    color: "#ffffff",
+  },
+  thumbnailGrid: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: 10,
+  marginTop: 12,
+},
+
+thumbnailCandidate: {
+  width: "48%",
+  overflow: "hidden",
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.14)",
+  backgroundColor: "rgba(255,255,255,0.05)",
+},
+
+thumbnailCandidatePressed: {
+  opacity: 0.7,
+},
+
+thumbnailCandidateImage: {
+  width: "100%",
+  aspectRatio: 16 / 9,
+  backgroundColor: "#18181b",
+},
+
+thumbnailCandidateFooter: {
+  paddingHorizontal: 8,
+  paddingVertical: 7,
+},
+
+thumbnailCandidateText: {
+  color: "#a1a1aa",
+  fontSize: 12,
+  fontWeight: "600",
+},
 });
