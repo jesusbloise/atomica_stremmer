@@ -291,9 +291,17 @@ export default function CategoryScreen() {
                       </Text>
                     </View>
 
-                    <Pressable>
-                      <Text style={styles.seeAll}>Ver todos</Text>
-                    </Pressable>
+                   <Pressable
+  onPress={() =>
+    router.push(
+      `/explorar?category=${encodeURIComponent(
+        slug,
+      )}&subcategory=${encodeURIComponent(label)}`,
+    )
+  }
+>
+  <Text style={styles.seeAll}>Ver todos</Text>
+</Pressable>
                   </View>
 
                   <FlatList
@@ -321,6 +329,86 @@ export default function CategoryScreen() {
             </View>
           </>
         ) : null}
+        {categories.length > 0 ? (
+  <View style={styles.mainCategories}>
+    <View style={styles.mainCategoriesHeader}>
+      <Text style={styles.mainCategoriesTitle}>
+        Categorías principales
+      </Text>
+
+      <Text style={styles.mainCategoriesSubtitle}>
+        Explora otras secciones de la biblioteca
+      </Text>
+    </View>
+
+    <View style={styles.mainCategoriesGrid}>
+      {categories.map((category) => {
+        const cover = resolveMediaUrl(category.cover);
+        const isCurrent = category.slug === slug;
+
+        return (
+          <Pressable
+            key={category.id}
+            disabled={isCurrent}
+            onPress={() => router.push(`/organizar/${category.slug}`)}
+            style={[
+              styles.mainCategoryCard,
+              isCurrent && styles.mainCategoryCardActive,
+            ]}
+          >
+            {cover ? (
+              <ImageBackground
+                source={{ uri: cover }}
+                style={styles.mainCategoryImage}
+                resizeMode="cover"
+              >
+                <View style={styles.mainCategoryShade} />
+
+                <View style={styles.mainCategoryContent}>
+                  <Text style={styles.mainCategoryLabel}>
+                    {category.label}
+                  </Text>
+
+                  {category.description ? (
+                    <Text
+                      style={styles.mainCategoryDescription}
+                      numberOfLines={2}
+                    >
+                      {category.description}
+                    </Text>
+                  ) : null}
+
+                  <Text style={styles.mainCategoryAction}>
+                    {isCurrent ? "Estás aquí" : "Explorar"}
+                  </Text>
+                </View>
+              </ImageBackground>
+            ) : (
+              <View style={styles.mainCategoryFallback}>
+                <Text style={styles.mainCategoryLabel}>
+                  {category.label}
+                </Text>
+
+                {category.description ? (
+                  <Text
+                    style={styles.mainCategoryDescription}
+                    numberOfLines={2}
+                  >
+                    {category.description}
+                  </Text>
+                ) : null}
+
+                <Text style={styles.mainCategoryAction}>
+                  {isCurrent ? "Estás aquí" : "Explorar"}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  </View>
+) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -739,4 +827,88 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
+  mainCategories: {
+  marginTop: 8,
+  paddingHorizontal: 16,
+  paddingBottom: 18,
+},
+
+mainCategoriesHeader: {
+  marginBottom: 15,
+},
+
+mainCategoriesTitle: {
+  color: "#ffffff",
+  fontSize: 22,
+  lineHeight: 28,
+  fontWeight: "800",
+},
+
+mainCategoriesSubtitle: {
+  marginTop: 4,
+  color: "#a1a1aa",
+  fontSize: 13,
+  lineHeight: 18,
+},
+
+mainCategoriesGrid: {
+  gap: 12,
+},
+
+mainCategoryCard: {
+  height: 155,
+  borderRadius: 12,
+  overflow: "hidden",
+  borderWidth: 1,
+  borderColor: "#27272a",
+  backgroundColor: "#18181b",
+},
+
+mainCategoryCardActive: {
+  borderColor: "#f97316",
+},
+
+mainCategoryImage: {
+  flex: 1,
+  justifyContent: "flex-end",
+},
+
+mainCategoryShade: {
+  ...StyleSheet.absoluteFill,
+  backgroundColor: "rgba(0,0,0,0.48)",
+},
+
+mainCategoryContent: {
+  flex: 1,
+  justifyContent: "flex-end",
+  padding: 16,
+},
+
+mainCategoryFallback: {
+  flex: 1,
+  justifyContent: "flex-end",
+  padding: 16,
+},
+
+mainCategoryLabel: {
+  color: "#ffffff",
+  fontSize: 20,
+  lineHeight: 24,
+  fontWeight: "800",
+},
+
+mainCategoryDescription: {
+  marginTop: 4,
+  maxWidth: "90%",
+  color: "#d4d4d8",
+  fontSize: 12,
+  lineHeight: 17,
+},
+
+mainCategoryAction: {
+  marginTop: 10,
+  color: "#fdba74",
+  fontSize: 12,
+  fontWeight: "700",
+},
 });

@@ -127,9 +127,11 @@ function uniqueById(items: LibraryItem[]): LibraryItem[] {
 
 export default function ExploreScreen() {
   const params = useLocalSearchParams<{
-    tab?: string | string[];
-    q?: string | string[];
-  }>();
+  tab?: string | string[];
+  q?: string | string[];
+  category?: string | string[];
+  subcategory?: string | string[];
+}>();
 
   const { width } = useWindowDimensions();
 
@@ -138,6 +140,8 @@ export default function ExploreScreen() {
 
   const initialQuery = firstParam(params.q);
 
+  const selectedCategory = firstParam(params.category).trim();
+  const selectedSubcategory = firstParam(params.subcategory).trim();
   const [authToken, setAuthToken] = useState("");
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [query, setQuery] = useState(initialQuery);
@@ -155,16 +159,16 @@ export default function ExploreScreen() {
   const columns = width >= 900 ? 4 : width >= 620 ? 3 : 2;
 
   useEffect(() => {
-    const nextTab =
-      firstParam(params.tab) === "mas-vistos" ? "mas-vistos" : "ultimos";
+  const nextTab =
+    firstParam(params.tab) === "mas-vistos" ? "mas-vistos" : "ultimos";
 
-    const nextQuery = firstParam(params.q);
+  const nextQuery = firstParam(params.q);
 
-    setTab(nextTab);
-    setQuery(nextQuery);
-    setSubmittedQuery(nextQuery.trim());
-    setCurrentPage(1);
-  }, [params.tab, params.q]);
+  setTab(nextTab);
+  setQuery(nextQuery);
+  setSubmittedQuery(nextQuery.trim());
+  setCurrentPage(1);
+}, [params.tab, params.q, params.category, params.subcategory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,6 +283,24 @@ export default function ExploreScreen() {
   const filteredItems = useMemo(() => {
     let result = [...items];
 
+    if (selectedCategory) {
+  const normalizedCategory = selectedCategory.toLocaleLowerCase();
+
+  result = result.filter(
+    (item) =>
+      item.category?.trim().toLocaleLowerCase() === normalizedCategory,
+  );
+}
+
+if (selectedSubcategory) {
+  const normalizedSubcategory = selectedSubcategory.toLocaleLowerCase();
+
+  result = result.filter(
+    (item) =>
+      item.subcategory?.trim().toLocaleLowerCase() === normalizedSubcategory,
+  );
+}
+
     if (filter === "con_subtitulos") {
       result = result.filter((item) => item.hasSubtitles === true);
     }
@@ -304,7 +326,13 @@ export default function ExploreScreen() {
     }
 
     return result;
-  }, [items, filter, tab]);
+  }, [
+  items,
+  filter,
+  tab,
+  selectedCategory,
+  selectedSubcategory,
+]);
 
   const totalPages = Math.max(
     1,
