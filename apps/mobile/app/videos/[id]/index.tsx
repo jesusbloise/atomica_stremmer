@@ -5,6 +5,7 @@ import {
   Image,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -838,10 +839,11 @@ function UploadOptionsPanel({
         shareExpiresInHours,
       );
 
-      Alert.alert(
-        "Enlace generado",
-        shareUrl,
-      );
+      await Share.share({
+  title: "Compartir video",
+  message: shareUrl,
+  url: shareUrl,
+});
     } catch (error) {
       Alert.alert(
         "No se pudo generar el enlace",
