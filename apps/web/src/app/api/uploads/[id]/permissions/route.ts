@@ -1,76 +1,10 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import pool from "@/db";
-
+import { getSessionFromRequest } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-type AuthUser = {
-  id: string;
-  role: string;
-};
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
-
-function getAuthenticatedUser(
-  req: Request
-): AuthUser | null {
-  try {
-    const cookie =
-      (req.headers.get("cookie") || "")
-        .split(";")
-        .map((value) => value.trim())
-        .find((value) =>
-          value.startsWith("auth=")
-        );
-
-    const rawToken =
-      cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token =
-      decodeURIComponent(rawToken);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-
-      role: String(
-        payload.role ?? ""
-      )
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
-    return null;
-  }
-}
 
 type UploadAccessRow = {
   visibility: "PUBLIC" | "RESTRICTED";
@@ -104,7 +38,7 @@ export async function GET(
   }
 ) {
   const currentUser =
-    getAuthenticatedUser(req);
+    getSessionFromRequest(req);
 
   if (!currentUser) {
     return NextResponse.json(
@@ -189,7 +123,7 @@ export async function GET(
         `,
         [
           uploadId,
-          currentUser.id,
+          currentUser.sub,
         ]
       );
 
@@ -211,7 +145,7 @@ export async function GET(
     const isOwner =
       access.created_by_id
         ?.toString() ===
-      currentUser.id.toString();
+      currentUser.sub.toString();
 
     const isSuperAdmin =
       currentUser.role ===
