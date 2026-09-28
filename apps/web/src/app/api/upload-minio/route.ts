@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/db";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import {
   randomUUID,
   createHmac,
@@ -28,7 +28,7 @@ import {
 
 console.log("UPLOAD_ROUTE_HIT (R2 primary + Cloudflare Stream)");
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
+
 
 type AuthenticatedUser = {
   id: string;
@@ -38,41 +38,18 @@ type AuthenticatedUser = {
 };
 
 function getAuthenticatedUser(req: NextRequest): AuthenticatedUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
+  const session = getSessionFromRequest(req);
 
-    const rawToken = cookie?.split("=")?.[1];
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token = decodeURIComponent(rawToken);
-    const payload = jwt.verify(token, JWT_SECRET) as any;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-      name: payload.name ?? null,
-      email: payload.email ?? null,
-      role: String(payload.role ?? "").trim().toUpperCase(),
-    };
-  } catch (error) {
-    console.error("UPLOAD_AUTH_ERROR", error);
+  if (!session?.sub) {
     return null;
   }
+
+  return {
+    id: String(session.sub),
+    name: session.name ?? null,
+    email: session.email ?? null,
+    role: String(session.role ?? "").trim().toUpperCase(),
+  };
 }
 
 function webStreamToNodeReadable(webStream: ReadableStream<Uint8Array>): Readable {
