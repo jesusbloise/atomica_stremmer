@@ -25,7 +25,8 @@
       "expo-router",
       "expo-secure-store",
       "expo-status-bar",
-      "expo-video"
+      "expo-video",
+      "expo-sharing"
     ]
   }
 }

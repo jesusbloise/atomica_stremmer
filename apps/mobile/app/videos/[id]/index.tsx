@@ -14,6 +14,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 import {
   createUploadShareLink,
@@ -34,6 +36,9 @@ import {
   UploadVisibility,
   selectUploadThumbnail,
   uploadCustomThumbnail,
+  CategoryItem,
+  getCategories,
+  getUploadDownloadUrl,
 } from "../../../src/api";
 import { getAuthToken } from "../../../src/authStorage";
 
@@ -579,10 +584,60 @@ function UploadOptionsPanel({
     upload.subcategory || "",
   );
 
+  const [moveCategories, setMoveCategories] =
+  useState<CategoryItem[]>([]);
+
+  const [loadingMoveCategories, setLoadingMoveCategories] =
+  useState(false);
+
+  useEffect(() => {
+  if (!isSuperAdmin) {
+    return;
+  }
+
+  let active = true;
+
+  void (async () => {
+    try {
+      setLoadingMoveCategories(true);
+
+      const categories = await getCategories(authToken);
+
+      if (!active) {
+        return;
+      }
+
+      setMoveCategories(
+        categories.filter(
+          (item) => item.is_active !== false,
+        ),
+      );
+    } catch (error) {
+      if (!active) {
+        return;
+      }
+
+      console.warn(
+        "No se pudieron cargar las categorías para mover el archivo:",
+        error,
+      );
+    } finally {
+      if (active) {
+        setLoadingMoveCategories(false);
+      }
+    }
+  })();
+
+  return () => {
+    active = false;
+  };
+}, [authToken, isSuperAdmin]);
+
   const [moving, setMoving] = useState(false);
   const [changingPrivacy, setChangingPrivacy] =
     useState(false);
   const [sharing, setSharing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [shareExpiresInHours, setShareExpiresInHours] =
     useState(168);
 
@@ -700,6 +755,66 @@ function UploadOptionsPanel({
       setMoving(false);
     }
   }
+
+  async function handleDownload() {
+  if (!isAdmin || downloading) {
+    return;
+  }
+
+  try {
+    setDownloading(true);
+
+    const available = await Sharing.isAvailableAsync();
+
+    if (!available) {
+      throw new Error(
+        "El sistema no permite compartir o guardar archivos desde esta aplicación.",
+      );
+    }
+
+    const rawName =
+      upload.file_name ||
+      upload.display_name ||
+      `atomica-${uploadId}`;
+
+    const safeName = rawName.replace(
+      /[<>:"/\\|?*\u0000-\u001F]/g,
+      "_",
+    );
+
+    const destination = new File(
+      Paths.cache,
+      safeName,
+    );
+
+    if (destination.exists) {
+      destination.delete();
+    }
+
+    const downloadedFile = await File.downloadFileAsync(
+      getUploadDownloadUrl(uploadId),
+      destination,
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      },
+    );
+
+    await Sharing.shareAsync(downloadedFile.uri, {
+      dialogTitle: "Guardar o compartir archivo",
+    });
+  } catch (error) {
+    Alert.alert(
+      "No se pudo descargar el archivo",
+      error instanceof Error
+        ? error.message
+        : "Ocurrió un error inesperado.",
+    );
+  } finally {
+    setDownloading(false);
+  }
+}
 
   async function handleShare() {
     if (!isAdmin || sharing) {
@@ -1012,21 +1127,106 @@ function UploadOptionsPanel({
             {subcategory ? ` · ${subcategory}` : ""}
           </Text>
 
-          <TextInput
-            style={styles.optionInput}
-            value={moveCategory}
-            onChangeText={setMoveCategory}
-            placeholder="Categoría"
-            placeholderTextColor="#71717a"
-          />
+        {loadingMoveCategories ? (
+  <View style={styles.optionLoadingRow}>
+    <ActivityIndicator size="small" color="#ffffff" />
+    <Text style={styles.optionHint}>
+      Cargando categorías...
+    </Text>
+  </View>
+) : (
+  <>
+    <Text style={styles.moveSelectorLabel}>
+      Categoría
+    </Text>
 
-          <TextInput
-            style={styles.optionInput}
-            value={moveSubcategory}
-            onChangeText={setMoveSubcategory}
-            placeholder="Subcategoría"
-            placeholderTextColor="#71717a"
-          />
+    <View style={styles.moveChips}>
+      {moveCategories.map((item) => {
+        const selected =
+          moveCategory === item.slug;
+
+        return (
+          <Pressable
+            key={item.id}
+            style={[
+              styles.moveChip,
+              selected && styles.moveChipSelected,
+            ]}
+            onPress={() => {
+              setMoveCategory(item.slug);
+              setMoveSubcategory("");
+            }}
+          >
+            <Text
+              style={[
+                styles.moveChipText,
+                selected &&
+                  styles.moveChipTextSelected,
+              ]}
+            >
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+
+    {(() => {
+      const selectedCategory =
+        moveCategories.find(
+          (item) => item.slug === moveCategory,
+        );
+
+      const subcategories =
+        selectedCategory?.subcategories?.filter(
+          (item) => item.is_active !== false,
+        ) ?? [];
+
+      if (subcategories.length === 0) {
+        return null;
+      }
+
+      return (
+        <>
+          <Text style={styles.moveSelectorLabel}>
+            Subcategoría
+          </Text>
+
+          <View style={styles.moveChips}>
+            {subcategories.map((item) => {
+              const selected =
+                moveSubcategory === item.label;
+
+              return (
+                <Pressable
+                  key={item.id}
+                  style={[
+                    styles.moveChip,
+                    selected &&
+                      styles.moveChipSelected,
+                  ]}
+                  onPress={() =>
+                    setMoveSubcategory(item.label)
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.moveChipText,
+                      selected &&
+                        styles.moveChipTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      );
+    })()}
+  </>
+)}
 
           <Pressable
             style={({ pressed }) => [
@@ -1048,21 +1248,33 @@ function UploadOptionsPanel({
         </View>
       ) : null}
 
-      <View style={styles.optionCard}>
-        <Text style={styles.optionTitle}>
-          Descargar archivo
-        </Text>
+     <View style={styles.optionCard}>
+  <Text style={styles.optionTitle}>
+    Descargar archivo
+  </Text>
 
-        <Text style={styles.optionDescription}>
-          Descarga el archivo original.
-        </Text>
+  <Text style={styles.optionDescription}>
+    Descarga el archivo original.
+  </Text>
 
-        <View style={styles.optionPending}>
-          <Text style={styles.optionPendingText}>
-            Preparando descarga nativa
-          </Text>
-        </View>
-      </View>
+  <Pressable
+    style={({ pressed }) => [
+      styles.optionButton,
+      pressed && styles.optionButtonPressed,
+      downloading && styles.optionButtonDisabled,
+    ]}
+    disabled={downloading}
+    onPress={handleDownload}
+  >
+    {downloading ? (
+      <ActivityIndicator size="small" />
+    ) : (
+      <Text style={styles.optionButtonText}>
+        Descargar archivo
+      </Text>
+    )}
+  </Pressable>
+</View>
 
       {visibility === "PUBLIC" ? (
         <View style={styles.optionCard}>
@@ -2520,5 +2732,49 @@ thumbnailCandidateText: {
   color: "#a1a1aa",
   fontSize: 12,
   fontWeight: "600",
+},
+optionLoadingRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+  marginTop: 8,
+},
+
+moveSelectorLabel: {
+  marginTop: 12,
+  marginBottom: 7,
+  color: "#a1a1aa",
+  fontSize: 12,
+  fontWeight: "600",
+},
+
+moveChips: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: 8,
+},
+
+moveChip: {
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.14)",
+  backgroundColor: "rgba(255,255,255,0.05)",
+},
+
+moveChipSelected: {
+  borderColor: "#ffffff",
+  backgroundColor: "#ffffff",
+},
+
+moveChipText: {
+  color: "#d4d4d8",
+  fontSize: 12,
+  fontWeight: "600",
+},
+
+moveChipTextSelected: {
+  color: "#000000",
 },
 });
