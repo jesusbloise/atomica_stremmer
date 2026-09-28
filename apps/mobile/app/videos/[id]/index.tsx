@@ -40,6 +40,8 @@ import {
   CategoryItem,
   getCategories,
   getUploadDownloadUrl,
+  getUploadPermissions,
+  UploadPermissions,
 } from "../../../src/api";
 import { getAuthToken } from "../../../src/authStorage";
 
@@ -647,6 +649,56 @@ function UploadOptionsPanel({
 
   const [thumbnailCandidates, setThumbnailCandidates] =
     useState<ThumbnailCandidate[]>([]);
+
+    const [permissions, setPermissions] =
+  useState<UploadPermissions | null>(null);
+
+const [loadingPermissions, setLoadingPermissions] =
+  useState(true);
+
+const [permissionsError, setPermissionsError] =
+  useState("");
+
+useEffect(() => {
+  let active = true;
+
+  void (async () => {
+    try {
+      setLoadingPermissions(true);
+      setPermissionsError("");
+
+      const result = await getUploadPermissions(
+        authToken,
+        uploadId,
+      );
+
+      if (!active) {
+        return;
+      }
+
+      setPermissions(result);
+    } catch (error) {
+      if (!active) {
+        return;
+      }
+
+      setPermissions(null);
+      setPermissionsError(
+        error instanceof Error
+          ? error.message
+          : "No se pudieron cargar los permisos",
+      );
+    } finally {
+      if (active) {
+        setLoadingPermissions(false);
+      }
+    }
+  })();
+
+  return () => {
+    active = false;
+  };
+}, [authToken, uploadId]);
 
   async function handleChangePrivacy() {
     if (!isAdmin || !canManagePrivacy || changingPrivacy) {
@@ -1348,6 +1400,201 @@ function UploadOptionsPanel({
           </Text>
         </View>
       ) : null}
+            <View style={styles.optionCard}>
+        <View style={styles.permissionsHeader}>
+          <View style={styles.permissionsHeaderText}>
+            <Text style={styles.optionTitle}>
+              Acceso al archivo
+            </Text>
+
+            <Text style={styles.optionDescription}>
+              Personas y grupos con permiso para visualizar este archivo.
+            </Text>
+          </View>
+
+          {!loadingPermissions && permissions ? (
+            <View
+              style={[
+                styles.visibilityBadge,
+                permissions.visibility === "PUBLIC"
+                  ? styles.visibilityBadgePublic
+                  : styles.visibilityBadgeRestricted,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.visibilityBadgeText,
+                  permissions.visibility === "PUBLIC"
+                    ? styles.visibilityBadgeTextPublic
+                    : styles.visibilityBadgeTextRestricted,
+                ]}
+              >
+                {permissions.visibility === "PUBLIC"
+                  ? "Público"
+                  : "Restringido"}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {loadingPermissions ? (
+          <View style={styles.permissionsLoading}>
+            <ActivityIndicator size="small" color="#ffffff" />
+
+            <Text style={styles.optionHint}>
+              Cargando permisos...
+            </Text>
+          </View>
+        ) : permissionsError ? (
+          <View style={styles.permissionsError}>
+            <Text style={styles.permissionsErrorText}>
+              {permissionsError}
+            </Text>
+          </View>
+        ) : !permissions ? null : permissions.visibility === "PUBLIC" ? (
+          <View style={styles.permissionsPublic}>
+            <Text style={styles.permissionsPublicTitle}>
+              Este archivo es público.
+            </Text>
+
+            <Text style={styles.optionDescription}>
+              Todos los usuarios autorizados de la plataforma pueden verlo.
+            </Text>
+          </View>
+        ) : permissions.users.length === 0 &&
+          permissions.groups.length === 0 ? (
+          <View style={styles.permissionsEmpty}>
+            <Text style={styles.optionDescription}>
+              Este archivo está restringido, pero actualmente no tiene
+              personas ni grupos asignados.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.permissionsContent}>
+            <View style={styles.permissionCounters}>
+              <View style={styles.permissionCounter}>
+                <Text style={styles.permissionCounterText}>
+                  {permissions.users.length + permissions.groups.length}{" "}
+                  permiso
+                  {permissions.users.length + permissions.groups.length !== 1
+                    ? "s"
+                    : ""}
+                </Text>
+              </View>
+
+              {permissions.users.length > 0 ? (
+                <View style={styles.permissionCounter}>
+                  <Text style={styles.permissionCounterText}>
+                    {permissions.users.length} persona
+                    {permissions.users.length !== 1 ? "s" : ""}
+                  </Text>
+                </View>
+              ) : null}
+
+              {permissions.groups.length > 0 ? (
+                <View style={styles.permissionCounter}>
+                  <Text style={styles.permissionCounterText}>
+                    {permissions.groups.length} grupo
+                    {permissions.groups.length !== 1 ? "s" : ""}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {permissions.users.length > 0 ? (
+              <View style={styles.permissionSection}>
+                <Text style={styles.permissionSectionTitle}>
+                  PERSONAS
+                </Text>
+
+                {permissions.users.map((user) => (
+                  <View
+                    key={user.permissionId}
+                    style={styles.permissionRow}
+                  >
+                    <View style={styles.permissionIdentity}>
+                      <Text
+                        style={styles.permissionName}
+                        numberOfLines={1}
+                      >
+                        {user.name || "Usuario sin nombre"}
+                      </Text>
+
+                      <Text
+                        style={styles.permissionSecondary}
+                        numberOfLines={1}
+                      >
+                        {user.email || "Sin correo"}
+                      </Text>
+                    </View>
+
+                    <View style={styles.permissionAccessBadge}>
+                      <Text style={styles.permissionAccessText}>
+                        {user.accessLevel === "APPROVER"
+                          ? "Puede aprobar"
+                          : user.accessLevel === "EDITOR"
+                            ? "Puede editar"
+                            : "Puede ver"}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {permissions.groups.length > 0 ? (
+              <View style={styles.permissionSection}>
+                <Text style={styles.permissionSectionTitle}>
+                  GRUPOS
+                </Text>
+
+                {permissions.groups.map((group) => (
+                  <View
+                    key={group.permissionId}
+                    style={styles.permissionRow}
+                  >
+                    <View style={styles.permissionGroupIdentity}>
+                      <View
+                        style={[
+                          styles.permissionGroupColor,
+                          {
+                            backgroundColor:
+                              group.color || "#f97316",
+                          },
+                        ]}
+                      />
+
+                      <View style={styles.permissionIdentity}>
+                        <Text
+                          style={styles.permissionName}
+                          numberOfLines={1}
+                        >
+                          {group.name}
+                        </Text>
+
+                        <Text style={styles.permissionSecondary}>
+                          {group.memberCount} miembro
+                          {group.memberCount !== 1 ? "s" : ""}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.permissionAccessBadge}>
+                      <Text style={styles.permissionAccessText}>
+                        {group.accessLevel === "APPROVER"
+                          ? "Puede aprobar"
+                          : group.accessLevel === "EDITOR"
+                            ? "Puede editar"
+                            : "Puede ver"}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -2779,4 +3026,157 @@ moveChipText: {
 moveChipTextSelected: {
   color: "#000000",
 },
+  permissionsHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  permissionsHeaderText: {
+    flex: 1,
+  },
+  visibilityBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  visibilityBadgePublic: {
+    borderColor: "rgba(16, 185, 129, 0.4)",
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
+  },
+  visibilityBadgeRestricted: {
+    borderColor: "rgba(249, 115, 22, 0.4)",
+    backgroundColor: "rgba(249, 115, 22, 0.1)",
+  },
+  visibilityBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  visibilityBadgeTextPublic: {
+    color: "#6ee7b7",
+  },
+  visibilityBadgeTextRestricted: {
+    color: "#fdba74",
+  },
+  permissionsLoading: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  permissionsError: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderRadius: 12,
+    padding: 14,
+  },
+  permissionsErrorText: {
+    color: "#fca5a5",
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  permissionsPublic: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.2)",
+    backgroundColor: "rgba(16, 185, 129, 0.05)",
+    borderRadius: 12,
+    padding: 14,
+    gap: 4,
+  },
+  permissionsPublicTitle: {
+    color: "#6ee7b7",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  permissionsEmpty: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 12,
+    padding: 14,
+  },
+  permissionsContent: {
+    marginTop: 16,
+    gap: 20,
+  },
+  permissionCounters: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  permissionCounter: {
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  permissionCounterText: {
+    color: "#a1a1aa",
+    fontSize: 12,
+  },
+  permissionSection: {
+    gap: 8,
+  },
+  permissionSectionTitle: {
+    color: "#71717a",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.6,
+    marginBottom: 2,
+  },
+  permissionRow: {
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "rgba(0, 0, 0, 0.25)",
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  permissionIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  permissionName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  permissionSecondary: {
+    color: "#71717a",
+    fontSize: 12,
+    marginTop: 3,
+  },
+  permissionGroupIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  permissionGroupColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  permissionAccessBadge: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    backgroundColor: "#18181b",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  permissionAccessText: {
+    color: "#d4d4d8",
+    fontSize: 12,
+  },
 });

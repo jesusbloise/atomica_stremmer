@@ -896,3 +896,75 @@ export async function uploadCustomThumbnail(
 
   return data.thumbnail_url;
 }
+export type UploadAccessLevel =
+  | "VIEWER"
+  | "APPROVER"
+  | "EDITOR";
+
+export type UploadPermissionUser = {
+  permissionId: string;
+  userId: string;
+  name: string | null;
+  email: string | null;
+  accessLevel: UploadAccessLevel;
+};
+
+export type UploadPermissionGroup = {
+  permissionId: string;
+  groupId: string;
+  name: string;
+  color: string | null;
+  memberCount: number;
+  accessLevel: UploadAccessLevel;
+};
+
+export type UploadPermissions = {
+  visibility: "PUBLIC" | "RESTRICTED";
+  canManage: boolean;
+  users: UploadPermissionUser[];
+  groups: UploadPermissionGroup[];
+  total: number;
+};
+
+export async function getUploadPermissions(
+  authToken: string,
+  uploadId: string,
+): Promise<UploadPermissions> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(uploadId)}/permissions`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as
+    Partial<UploadPermissions> & {
+      error?: string;
+    };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+        `No se pudieron cargar los permisos (${response.status})`,
+    );
+  }
+
+  return {
+    visibility:
+      data.visibility === "RESTRICTED"
+        ? "RESTRICTED"
+        : "PUBLIC",
+    canManage: data.canManage === true,
+    users: Array.isArray(data.users) ? data.users : [],
+    groups: Array.isArray(data.groups) ? data.groups : [],
+    total:
+      typeof data.total === "number"
+        ? data.total
+        : (data.users?.length ?? 0) +
+          (data.groups?.length ?? 0),
+  };
+}
