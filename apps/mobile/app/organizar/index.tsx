@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -28,6 +28,7 @@ import {
   removeAuthToken,
 } from "../../src/authStorage";
 import { resolveMediaUrl } from "../../src/mediaUrl";
+import CategoryGrid from "../../src/components/CategoryGrid";
 
 const atomicaLogo = require("../../assets/atomica-logo.png");
 
@@ -375,46 +376,10 @@ export default function OrganizarScreen() {
         ) : null}
 
         <View style={styles.categoriesSection}>
-          <Text style={styles.sectionTitle}>
-            Categorías principales
-          </Text>
-
-          <View style={styles.categoryGrid}>
-            {categories.map((category) => {
-              const cover = resolveMediaUrl(category.cover);
-
-              return (
-                <Pressable
-                  key={category.id}
-                  onPress={() =>
-                    router.push(`/organizar/${category.slug}`)
-                  }
-                  style={styles.categoryCard}
-                >
-                  {cover ? (
-                    <ImageBackground
-                      source={{ uri: cover }}
-                      style={styles.categoryImage}
-                      imageStyle={styles.categoryImageRadius}
-                      resizeMode="cover"
-                    >
-                      <View style={styles.categoryShade} />
-
-                      <Text style={styles.categoryTitle}>
-                        {category.label}
-                      </Text>
-                    </ImageBackground>
-                  ) : (
-                    <View style={styles.categoryFallback}>
-                      <Text style={styles.categoryTitle}>
-                        {category.label}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
+          <CategoryGrid
+            categories={categories}
+            title="Categorías principales"
+          />
         </View>
       </ScrollView>
 
@@ -458,14 +423,20 @@ export default function OrganizarScreen() {
             {canUpload ? (
               <>
                 <DrawerItem
-                  label="Subir archivos"
-                  onPress={closeMenu}
-                />
+  label="Subir archivos"
+  onPress={() => {
+    closeMenu();
+    router.push("/subir");
+  }}
+/>
 
-                <DrawerItem
-                  label="Control de cargas"
-                  onPress={closeMenu}
-                />
+               <DrawerItem
+  label="Control de cargas"
+  onPress={() => {
+    closeMenu();
+    router.push("/control-cargas");
+  }}
+/>
               </>
             ) : null}
 
@@ -473,12 +444,18 @@ export default function OrganizarScreen() {
               <>
                 <DrawerItem
                   label="Gestionar usuarios"
-                  onPress={closeMenu}
+                  onPress={() => {
+                    closeMenu();
+                    router.push("/gestionar-usuarios");
+                  }}
                 />
 
                 <DrawerItem
                   label="Gestionar categorías"
-                  onPress={closeMenu}
+                  onPress={() => {
+                    closeMenu();
+                    router.push("/gestionar-categorias");
+                  }}
                 />
               </>
             ) : null}
@@ -802,53 +779,6 @@ const styles = StyleSheet.create({
   categoriesSection: {
     paddingTop: 32,
     paddingHorizontal: 16,
-  },
-  sectionTitle: {
-    marginBottom: 18,
-    color: "#ffffff",
-    fontSize: 21,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  categoryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 14,
-  },
-  categoryCard: {
-    width: "48.3%",
-    height: 150,
-    overflow: "hidden",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "#18181b",
-  },
-  categoryImage: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  categoryImageRadius: {
-    borderRadius: 10,
-  },
-  categoryShade: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  categoryFallback: {
-    flex: 1,
-    justifyContent: "flex-end",
-    padding: 14,
-    backgroundColor: "#18181b",
-  },
-  categoryTitle: {
-    padding: 14,
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
   },
 
   modalRoot: {

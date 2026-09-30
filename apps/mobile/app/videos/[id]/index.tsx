@@ -42,8 +42,13 @@ import {
   getUploadDownloadUrl,
   getUploadPermissions,
   UploadPermissions,
+  getCategoryUploads,
+  searchUploads,
+  UploadItem,
+  SearchResultItem,
 } from "../../../src/api";
 import { getAuthToken } from "../../../src/authStorage";
+import CategoryGrid from "../../../src/components/CategoryGrid";
 
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
 
@@ -240,6 +245,17 @@ function LoadedVideoDetail({
   authToken: string;
   uploadId: string;
 }) {
+  const routeParams = useLocalSearchParams<{
+    q?: string | string[];
+  }>();
+
+  const relatedQuery =
+    typeof routeParams.q === "string"
+      ? routeParams.q.trim()
+      : Array.isArray(routeParams.q)
+        ? (routeParams.q[0] || "").trim()
+        : "";
+
   const [ficha, setFicha] = useState<TechnicalSheet | null>(
     initialData.ficha,
   );
@@ -498,9 +514,309 @@ function LoadedVideoDetail({
             </View>
           ) : null}
         </View>
+
+        <RelatedDiscoveryRail
+          uploadId={uploadId}
+          authToken={authToken}
+          category={initialData.upload.category || null}
+          subcategory={initialData.upload.subcategory || null}
+          query={relatedQuery}
+        />
+
+        <ExploreCategories authToken={authToken} />
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function ExploreCategories({
+  authToken,
+}: {
+  authToken: string;
+}) {
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCategories() {
+      try {
+        setLoading(true);
+        const result = await getCategories(authToken);
+
+        if (active) {
+          setCategories(result);
+        }
+      } catch {
+        if (active) {
+          setCategories([]);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCategories();
+
+    return () => {
+      active = false;
+    };
+  }, [authToken]);
+
+  if (loading) {
+    return (
+      <View style={styles.exploreCategoriesLoading}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (categories.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.exploreCategoriesSection}>
+      <CategoryGrid
+        categories={categories}
+        title="Explorar categorías"
+      />
+    </View>
+  );
+}
+
+
+type RelatedItem = UploadItem | SearchResultItem;
+
+function RelatedDiscoveryRail({
+  uploadId,
+  authToken,
+  category,
+  subcategory,
+  query,
+}: {
+  uploadId: string;
+  authToken: string;
+  category: string | null;
+  subcategory: string | null;
+  query: string;
+}) {
+  const [items, setItems] = useState<RelatedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadRelated() {
+      try {
+        setLoading(true);
+
+        if (query) {
+          const results = await searchUploads(authToken, query);
+
+          if (alive) {
+            setItems(results);
+          }
+
+          return;
+        }
+
+        if (!category) {
+          if (alive) {
+            setItems([]);
+          }
+
+          return;
+        }
+
+        const results = await getCategoryUploads(
+          authToken,
+          category,
+          20,
+          subcategory,
+        );
+
+        if (alive) {
+          setItems(results);
+        }
+      } catch (error) {
+        console.error("RelatedDiscoveryRail error:", error);
+
+        if (alive) {
+          setItems([]);
+        }
+      } finally {
+        if (alive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRelated();
+
+    return () => {
+      alive = false;
+    };
+  }, [authToken, category, query, subcategory]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => Boolean(item?.id)),
+    [items],
+  );
+
+  const title = query
+    ? `Resultados relacionados con “${query}”`
+    : subcategory
+      ? `Más archivos de ${subcategory}`
+      : category
+        ? `Más archivos de ${category}`
+        : "Más archivos relacionados";
+
+  if (loading) {
+    return (
+      <View style={styles.relatedSection}>
+        <Text style={styles.relatedLoading}>
+          Cargando archivos relacionados...
+        </Text>
+      </View>
+    );
+  }
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.relatedSection}>
+      <Text style={styles.relatedTitle}>{title}</Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.relatedRow}
+      >
+        {visibleItems.map((item) => {
+          const active = item.id === uploadId;
+
+          const name = stripRelatedExtension(
+            item.display_name ||
+              item.titulo ||
+              item.file_name ||
+              "Archivo",
+          );
+
+          const thumbnailUrl = resolveRelatedUrl(item.thumbnail_url);
+
+          return (
+            <Pressable
+              key={item.id}
+              style={[
+                styles.relatedCard,
+                active && styles.relatedCardActive,
+              ]}
+              onPress={() => {
+                if (active) {
+                  return;
+                }
+
+                router.push({
+                  pathname: "/videos/[id]",
+                  params: query
+                    ? {
+                        id: item.id,
+                        q: query,
+                      }
+                    : {
+                        id: item.id,
+                      },
+                });
+              }}
+            >
+              <View style={styles.relatedPreview}>
+                {thumbnailUrl ? (
+                  <Image
+                    source={{ uri: thumbnailUrl }}
+                    style={styles.relatedImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.relatedFallback}>
+                    <Text style={styles.relatedFallbackText}>
+                      Sin vista previa
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.relatedOverlay} />
+
+                <View style={styles.relatedInfo}>
+                  <Text style={styles.relatedType}>
+                    {item.tipo || "archivo"}
+                  </Text>
+
+                  <Text
+                    style={styles.relatedName}
+                    numberOfLines={2}
+                  >
+                    {name}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.relatedAction,
+                      active && styles.relatedActionActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.relatedActionText,
+                        active && styles.relatedActionTextActive,
+                      ]}
+                    >
+                      {active ? "Actual" : "Ver más"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function stripRelatedExtension(value: string) {
+  let safe = value;
+
+  try {
+    safe = decodeURIComponent(value);
+  } catch {}
+
+  const lastPart = safe.split("/").pop() || safe;
+
+  return lastPart.replace(/\.[^.]+$/, "");
+}
+
+function resolveRelatedUrl(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const url = value.trim();
+
+  if (
+    url.startsWith("https://") ||
+    url.startsWith("http://") ||
+    url.startsWith("file://")
+  ) {
+    return url;
+  }
+
+  return url;
 }
 
 function PanelButton({
@@ -2257,6 +2573,115 @@ function formatTime(value: number | null) {
 }
 
 const styles = StyleSheet.create({
+  exploreCategoriesSection: {
+    marginTop: 38,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  exploreCategoriesLoading: {
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  relatedSection: {
+    marginTop: 44,
+    paddingTop: 28,
+    borderTopWidth: 1,
+    borderTopColor: "#27272a",
+  },
+  relatedTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 18,
+  },
+  relatedLoading: {
+    color: "#a1a1aa",
+    fontSize: 14,
+  },
+  relatedRow: {
+    gap: 14,
+    paddingRight: 20,
+    paddingBottom: 8,
+  },
+  relatedCard: {
+    width: 310,
+    aspectRatio: 16 / 9,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#27272a",
+    backgroundColor: "#18181b",
+  },
+  relatedCardActive: {
+    borderColor: "#f97316",
+    borderWidth: 2,
+  },
+  relatedPreview: {
+    flex: 1,
+    backgroundColor: "#18181b",
+  },
+  relatedImage: {
+    ...StyleSheet.absoluteFill,
+    width: "100%",
+    height: "100%",
+  },
+  relatedFallback: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#18181b",
+  },
+  relatedFallbackText: {
+    color: "#a1a1aa",
+    fontSize: 13,
+  },
+  relatedOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  relatedInfo: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 14,
+  },
+  relatedType: {
+    color: "#fdba74",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  relatedName: {
+    color: "#ffffff",
+    fontSize: 19,
+    lineHeight: 23,
+    fontWeight: "700",
+  },
+  relatedAction: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#fb923c",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "rgba(249,115,22,0.08)",
+  },
+  relatedActionActive: {
+    borderColor: "#f97316",
+    backgroundColor: "rgba(249,115,22,0.15)",
+  },
+  relatedActionText: {
+    color: "#fdba74",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  relatedActionTextActive: {
+    color: "#fdba74",
+  },
   screen: {
     flex: 1,
     backgroundColor: "transparent",
