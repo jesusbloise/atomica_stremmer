@@ -14,7 +14,6 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { highlightInline } from "@/lib/highlight";
 import { usePdfSearch } from "@/hooks/usePdfSearch";
 
 // react-pdf solo en cliente
@@ -49,12 +48,21 @@ const isAbortError = (err: unknown) => {
 // Evita configurar el worker múltiples veces
 let __pdfWorkerConfigured = false;
 
+type HighlightRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export default function PdfViewer({ url, searchTerm = "", registerNavApi }: Props) {
   const file = useMemo(() => ({ url }), [url]);
 
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.1);
+  const [pdfInstance, setPdfInstance] = useState<any>(null);
+  const [highlightRects, setHighlightRects] = useState<HighlightRect[]>([]);
 
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [workerReady, setWorkerReady] = useState(false);
@@ -88,6 +96,80 @@ export default function PdfViewer({ url, searchTerm = "", registerNavApi }: Prop
   // Hook búsqueda (solo tiene sentido si searchTerm viene)
   const { matchPages, matchIndex, setMatchIndex } = usePdfSearch(url, searchTerm);
 
+  useEffect(() => {
+  let cancelled = false;
+
+  const findHighlightRects = async () => {
+    if (!pdfInstance || !searchTerm.trim()) {
+      setHighlightRects([]);
+      return;
+    }
+
+    try {
+      const page = await pdfInstance.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale });
+
+      const items = textContent.items.filter(
+        (item: any) => typeof item.str === "string" && item.str.length > 0
+      );
+
+      const normalizedTerm = searchTerm
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+      if (!normalizedTerm) {
+        setHighlightRects([]);
+        return;
+      }
+
+      const rects: HighlightRect[] = [];
+
+      for (const item of items) {
+        const itemText = item.str
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+
+        if (!itemText.includes(normalizedTerm)) continue;
+
+        const tx = viewport.transform;
+        const itemTx = item.transform;
+
+        const x = tx[0] * itemTx[4] + tx[2] * itemTx[5] + tx[4];
+        const y = tx[1] * itemTx[4] + tx[3] * itemTx[5] + tx[5];
+
+        const width = Math.abs(item.width * scale);
+        const height = Math.abs(item.height * scale);
+
+        rects.push({
+          left: x,
+          top: y - height,
+          width,
+          height,
+        });
+      }
+
+      if (!cancelled) {
+        setHighlightRects(rects);
+      }
+    } catch (error) {
+      console.error("Error calculando resaltados PDF:", error);
+
+      if (!cancelled) {
+        setHighlightRects([]);
+      }
+    }
+  };
+
+  findHighlightRects();
+
+  return () => {
+    cancelled = true;
+  };
+}, [pdfInstance, pageNumber, scale, searchTerm]);
   // Cuando cambia el término: si hay matches, ir al primero
   useEffect(() => {
     if (searchTerm && matchPages.length > 0) {
@@ -220,12 +302,13 @@ export default function PdfViewer({ url, searchTerm = "", registerNavApi }: Prop
         <PdfDocument
           // file como objeto para evitar re-montes raros
           file={file}
-          onLoadSuccess={({ numPages }) => {
-            setNumPages(numPages);
+          onLoadSuccess={(pdf) => {
+            setPdfInstance(pdf);
+            setNumPages(pdf.numPages);
             setIsLoading(false);
             setPdfError(null);
             // clamp page si venía fuera de rango
-            setPageNumber((p) => Math.min(Math.max(1, p), numPages));
+            setPageNumber((p) => Math.min(Math.max(1, p), pdf.numPages));
           }}
           onLoadError={(e) => {
             setPdfError((e as any)?.message || "No se pudo abrir el PDF");
@@ -236,23 +319,38 @@ export default function PdfViewer({ url, searchTerm = "", registerNavApi }: Prop
           noData={<div className="p-4 text-zinc-300">Sin datos.</div>}
         >
           {!isLoading && (
-            <PdfPage
-              pageNumber={pageNumber}
-              scale={scale}
-              // Solo renderizamos textLayer si hay búsqueda (mejor performance)
-              renderTextLayer={!!searchTerm}
-              // Si no usas links/anotaciones, mejor desactivar
-              renderAnnotationLayer={false}
-              customTextRenderer={
-                searchTerm ? ({ str }) => highlightInline(str, searchTerm) : undefined
-              }
-              loading={<div className="p-4 text-zinc-500">Cargando página {pageNumber}...</div>}
-              onRenderError={(err) => {
-                if (isAbortError(err)) return;
-                console.error("PDF render error:", err);
-              }}
-            />
-          )}
+  <div className="relative">
+    <PdfPage
+      pageNumber={pageNumber}
+      scale={scale}
+      renderTextLayer={false}
+      renderAnnotationLayer={false}
+      loading={
+        <div className="p-4 text-zinc-500">
+          Cargando página {pageNumber}...
+        </div>
+      }
+      onRenderError={(err) => {
+        if (isAbortError(err)) return;
+        console.error("PDF render error:", err);
+      }}
+    />
+
+    {!!searchTerm &&
+      highlightRects.map((rect, index) => (
+        <div
+          key={`${pageNumber}-${index}`}
+          className="pointer-events-none absolute z-10 bg-yellow-300/45"
+          style={{
+            left: `${rect.left}px`,
+            top: `${rect.top}px`,
+            width: `${rect.width}px`,
+            height: `${rect.height}px`,
+          }}
+        />
+      ))}
+  </div>
+)}
         </PdfDocument>
       </div>
     </div>

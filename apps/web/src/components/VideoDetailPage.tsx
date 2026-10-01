@@ -259,6 +259,7 @@ const isSharedView =
   const [tipo, setTipo] = useState<"video" | "documento" | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [documentFileName, setDocumentFileName] = useState("");
+  const [documentSourceFileName, setDocumentSourceFileName] = useState("");
   const [documentoTexto, setDocumentoTexto] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [matchIndices, setMatchIndices] = useState<number[]>([]);
@@ -367,18 +368,6 @@ const isSharedView =
     return name || decodedUrl || "documento";
   }, [documentFileName, documentUrl]);
 
-  const isWordDocument = useMemo(() => {
-    const raw = `${documentFileName || ""} ${documentUrl || ""}`;
-
-    let decoded = raw;
-    try {
-      decoded = decodeURIComponent(raw);
-    } catch { }
-
-    const lower = decoded.toLowerCase();
-
-    return lower.includes(".docx") || lower.includes(".doc");
-  }, [documentFileName, documentUrl]);
   const tableData: Subtitulo[] = useMemo(() => {
     return (subtitulos || []).map((r: any) => {
       const start =
@@ -479,6 +468,7 @@ const isSharedView =
 
         setTipo(t);
         setDocumentFileName(fname);
+        setDocumentSourceFileName(upload?.file_name || "");
 
         if (upload?.views !== undefined) {
           setViews(upload.views);
@@ -1297,102 +1287,20 @@ const handlePlay = useCallback(() => {
                 {documentFileName || "Documento sin nombre"}
               </div>
 
-              {isWordDocument ? (
-                <DocumentViewer
-                  url={documentUrl}
-                  fileName={documentUrl}
-                  searchTerm={searchTerm}
-                  registerNavApi={(api) => {
-                    viewerApiRef.current = { ...viewerApiRef.current, ...api };
-                  }}
-                />
-              ) : (
-                <>
-                  <div className="w-full rounded-lg overflow-hidden border border-zinc-800 bg-white">
-                    <iframe
-                      src={documentUrl}
-                      title={documentFileName || "Documento PDF"}
-                      className="w-full h-[75vh] bg-white"
-                    />
-                  </div>
-
-                  <div className="mt-2 text-right">
-                    <a
-                      href={documentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-orange-300 underline"
-                    >
-                      Abrir PDF en pestaña
-                    </a>
-                  </div>
-                </>
-              )}
+             <DocumentViewer
+  url={documentUrl}
+  fileName={documentSourceFileName || documentViewerFileName}
+  searchTerm={searchTerm}
+  registerNavApi={(api) => {
+    viewerApiRef.current = {
+      ...viewerApiRef.current,
+      ...api,
+    };
+  }}
+/>
             </div>
           )}
 
-          {!isSharedView && tipo === "documento" && (
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <input
-                type="text"
-                placeholder=" Buscar palabra o frase..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentMatchIndex(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-
-                  e.preventDefault();
-                  const dir = e.shiftKey ? -1 : 1;
-
-                  if (tipo === "documento" && viewerApiRef.current?.step) {
-                    const nextFromViewer = viewerApiRef.current.step(dir);
-
-                    if (Number.isFinite(nextFromViewer) && matchIndices.length) {
-                      const synced =
-                        ((Number(nextFromViewer) % matchIndices.length) + matchIndices.length) %
-                        matchIndices.length;
-
-                      setCurrentMatchIndex(synced);
-                    }
-
-                    return;
-                  }
-
-                  if (!matchIndices.length) return;
-
-                  const next =
-                    (currentMatchIndex + dir + matchIndices.length) % matchIndices.length;
-
-                  setCurrentMatchIndex(next);
-                }}
-                className="w-full sm:max-w-md px-3 py-2 rounded bg-zinc-800 text-white border border-zinc-600 text-sm"
-              />
-
-              <div className="text-xs text-zinc-400">
-                {matchIndices.length ? `${currentMatchIndex + 1}/${matchIndices.length}` : "0/0"}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1 text-yellow-400 text-base sm:text-lg">★ ★ ★ ★ ☆</div>
-                <button className="text-red-500 hover:text-red-400 text-lg sm:text-xl">♥</button>
-              </div>
-            </div>
-          )}
-       
-          {tipo === "documento" && (
-            <TablaDocumento
-              texto={documentoTexto}
-              searchTerm={searchTerm}
-              url={documentUrl}
-              matchIndices={matchIndices}
-              currentMatchIndex={currentMatchIndex}
-              setMatchIndices={setMatchIndices}
-              setCurrentMatchIndex={setCurrentMatchIndex}
-            />
-          )}
         </div>
 
    {!isSharedView && (
@@ -1440,7 +1348,7 @@ const handlePlay = useCallback(() => {
         </div>
       )}
 
-      {tipo === "video" && (
+      {(tipo === "video" || tipo === "documento") && (
         <button
           type="button"
           onClick={() => {
@@ -1478,21 +1386,36 @@ const handlePlay = useCallback(() => {
               setSearchTerm(e.target.value);
               setCurrentMatchIndex(0);
             }}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
+           onKeyDown={(e) => {
+  if (e.key !== "Enter") return;
 
-              e.preventDefault();
+  e.preventDefault();
 
-              const dir = e.shiftKey ? -1 : 1;
+  const dir = e.shiftKey ? -1 : 1;
 
-              if (!matchIndices.length) return;
+  if (tipo === "documento" && viewerApiRef.current?.step) {
+    const nextFromViewer = viewerApiRef.current.step(dir);
 
-              const next =
-                (currentMatchIndex + dir + matchIndices.length) %
-                matchIndices.length;
+    if (Number.isFinite(nextFromViewer) && matchIndices.length) {
+      const synced =
+        ((Number(nextFromViewer) % matchIndices.length) +
+          matchIndices.length) %
+        matchIndices.length;
 
-              setCurrentMatchIndex(next);
-            }}
+      setCurrentMatchIndex(synced);
+    }
+
+    return;
+  }
+
+  if (!matchIndices.length) return;
+
+  const next =
+    (currentMatchIndex + dir + matchIndices.length) %
+    matchIndices.length;
+
+  setCurrentMatchIndex(next);
+}}
             className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500 focus:border-orange-400/60"
           />
         </div>
@@ -1506,26 +1429,36 @@ const handlePlay = useCallback(() => {
     </div>
 
     <div className="max-h-[55vh] overflow-y-auto p-3">
-      {polling && subtitulos.length === 0 ? (
-        <div className="grid min-h-[180px] place-items-center">
-          <div className="text-center">
-            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-orange-400" />
+      {tipo === "documento" ? (
+  <TablaDocumento
+    texto={documentoTexto}
+    searchTerm={searchTerm}
+    url={documentUrl}
+    matchIndices={matchIndices}
+    currentMatchIndex={currentMatchIndex}
+    setMatchIndices={setMatchIndices}
+    setCurrentMatchIndex={setCurrentMatchIndex}
+  />
+) : polling && subtitulos.length === 0 ? (
+  <div className="grid min-h-[180px] place-items-center">
+    <div className="text-center">
+      <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-orange-400" />
 
-            <p className="text-xs text-zinc-400">
-              Procesando subtítulos...
-            </p>
-          </div>
-        </div>
-      ) : (
-        <TablaSubtitulos
-          data={tableData}
-          searchTerm={searchTerm}
-          matchIndices={matchIndices}
-          currentMatchIndex={currentMatchIndex}
-          setMatchIndices={setMatchIndices}
-          setCurrentMatchIndex={setCurrentMatchIndex}
-        />
-      )}
+      <p className="text-xs text-zinc-400">
+        Procesando subtítulos...
+      </p>
+    </div>
+  </div>
+) : (
+  <TablaSubtitulos
+    data={tableData}
+    searchTerm={searchTerm}
+    matchIndices={matchIndices}
+    currentMatchIndex={currentMatchIndex}
+    setMatchIndices={setMatchIndices}
+    setCurrentMatchIndex={setCurrentMatchIndex}
+  />
+)}
     </div>
   </div>
 )}
