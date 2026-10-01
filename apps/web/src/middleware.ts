@@ -85,11 +85,21 @@ const hasBearerAuth =
   (pathname === "/api/me" ||
     pathname === "/api/videos" ||
     pathname === "/api/categories" ||
+    pathname === "/api/categories/cover" ||
+    /^\/api\/categories\/[^/]+$/.test(pathname) ||
+    /^\/api\/categories\/[^/]+\/subcategories$/.test(pathname) ||
+    /^\/api\/subcategories\/[^/]+$/.test(pathname) ||
     pathname === "/api/uploads" ||
     pathname === "/api/upload-minio" ||
     pathname === "/api/users" ||
+    /^\/api\/users\/[^/]+$/.test(pathname) ||
+    /^\/api\/users\/[^/]+\/reset-2fa$/.test(pathname) ||
+    /^\/api\/user-groups\/[^/]+\/members$/.test(pathname) ||
+    /^\/api\/user-groups\/[^/]+\/permissions$/.test(pathname) ||
+    pathname === "/api/registration-invites" ||
     pathname === "/api/user-groups" ||
     pathname === "/api/buscar" ||
+    pathname === "/api/admin/control-cargas" ||
     pathname.startsWith("/api/fichas/")) &&
   authorization.toLowerCase().startsWith("bearer ") &&
   authorization.slice(7).trim().length > 0;
@@ -111,6 +121,7 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|webp|avif|svg|ico)$).*)",
   ],
 };
+
 
 
 

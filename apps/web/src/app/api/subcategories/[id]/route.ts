@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
+import { getSessionFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,6 +10,21 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
+    const session = await getSessionFromRequest(req);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 401 }
+      );
+    }
+
+    if (session.role !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "No tienes permisos para gestionar categorías" },
+        { status: 403 }
+      );
+    }
   const client = await pool.connect();
 
   try {
@@ -87,12 +103,28 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
 
   try {
+    const session = await getSessionFromRequest(req);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 401 }
+      );
+    }
+
+    if (session.role !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "No tienes permisos para gestionar categorías" },
+        { status: 403 }
+      );
+    }
+
     const { rows } = await pool.query(
       `
       DELETE FROM subcategories

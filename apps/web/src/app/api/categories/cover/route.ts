@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
+import { getSessionFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,21 @@ function cleanName(name: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSessionFromRequest(req);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 401 }
+      );
+    }
+
+    if (session.role !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "No tienes permisos para gestionar categorías" },
+        { status: 403 }
+      );
+    }
     const form = await req.formData();
     const file = form.get("file") as File | null;
 

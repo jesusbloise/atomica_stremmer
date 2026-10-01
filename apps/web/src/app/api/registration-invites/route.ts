@@ -1,20 +1,10 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getSessionFromRequest } from "@/lib/auth";
 import crypto from "crypto";
 import pool from "@/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
-
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
 
 type AuthUser = {
   id: string;
@@ -22,46 +12,19 @@ type AuthUser = {
 };
 
 function getAuthenticatedUser(req: Request): AuthUser | null {
-  try {
-    const cookie = (req.headers.get("cookie") || "")
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) => value.startsWith("auth="));
+  const session = getSessionFromRequest(req);
 
-    const rawToken = cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token = decodeURIComponent(rawToken);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-      role: String(payload.role ?? "")
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
+  if (!session?.sub) {
     return null;
   }
-}
 
+  return {
+    id: String(session.sub),
+    role: String(session.role ?? "")
+      .trim()
+      .toUpperCase(),
+  };
+}
 function hashToken(token: string) {
   return crypto
     .createHash("sha256")

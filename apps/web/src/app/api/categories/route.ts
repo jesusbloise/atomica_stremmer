@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
+import { getSessionFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -56,6 +57,21 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 401 }
+      );
+    }
+
+    if (session.role !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "No tienes permisos para gestionar categorías" },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
 
     const label = String(body.label || "").trim();

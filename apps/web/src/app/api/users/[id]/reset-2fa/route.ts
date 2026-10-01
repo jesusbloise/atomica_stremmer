@@ -1,76 +1,29 @@
-import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+﻿import { NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import pool from "@/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const JWT_SECRET =
-  process.env.JWT_SECRET ?? "dev-secret-cambia-esto";
 
 type AuthUser = {
   id: string;
   role: string;
 };
 
-type JwtPayload = {
-  id?: string;
-  sub?: string;
-  userId?: string;
-  role?: string;
-};
+function getAuthenticatedUser(req: Request): AuthUser | null {
+  const session = getSessionFromRequest(req);
 
-function getAuthenticatedUser(
-  req: Request
-): AuthUser | null {
-  try {
-    const cookie = (
-      req.headers.get("cookie") || ""
-    )
-      .split(";")
-      .map((value) => value.trim())
-      .find((value) =>
-        value.startsWith("auth=")
-      );
-
-    const rawToken =
-      cookie?.slice("auth=".length);
-
-    if (!rawToken) {
-      return null;
-    }
-
-    const token =
-      decodeURIComponent(rawToken);
-
-    const payload = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as JwtPayload;
-
-    const id =
-      payload.id ??
-      payload.sub ??
-      payload.userId ??
-      null;
-
-    if (!id) {
-      return null;
-    }
-
-    return {
-      id: String(id),
-      role: String(
-        payload.role ?? ""
-      )
-        .trim()
-        .toUpperCase(),
-    };
-  } catch {
+  if (!session?.sub) {
     return null;
   }
-}
 
+  return {
+    id: String(session.sub),
+    role: String(session.role ?? "")
+      .trim()
+      .toUpperCase(),
+  };
+}
 function requireSuperAdmin(req: Request) {
   const currentUser =
     getAuthenticatedUser(req);
