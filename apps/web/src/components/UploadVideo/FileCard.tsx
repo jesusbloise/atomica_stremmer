@@ -48,16 +48,100 @@ function DocumentPreview({
   kind: "pdf" | "docx" | "doc";
   isMobile: boolean;
 }) {
+  const [pdfThumbnail, setPdfThumbnail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (kind !== "pdf" || !url) {
+      setPdfThumbnail(null);
+      return;
+    }
+
+    let cancelled = false;
+    let pdf: any = null;
+
+    const generatePdfThumbnail = async () => {
+      try {
+        const { pdfjs } = await import("react-pdf");
+
+        const version = pdfjs.version;
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+
+        const task = pdfjs.getDocument({ url });
+        pdf = await task.promise;
+
+        const page = await pdf.getPage(1);
+
+        if (cancelled) return;
+
+        const baseViewport = page.getViewport({ scale: 1 });
+
+        // Generamos una portada suficientemente nítida,
+        // pero sin renderizar el PDF a resolución completa.
+        const targetWidth = isMobile ? 480 : 640;
+        const renderScale = targetWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale: renderScale });
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) return;
+
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+
+        await page.render({
+          canvasContext: context,
+          viewport,
+          canvas,
+        }).promise;
+
+        if (!cancelled) {
+          setPdfThumbnail(canvas.toDataURL("image/jpeg", 0.82));
+        }
+      } catch (error) {
+        console.warn("PDF thumbnail error:", error);
+
+        if (!cancelled) {
+          setPdfThumbnail(null);
+        }
+      } finally {
+        if (pdf) {
+          try {
+            await pdf.destroy();
+          } catch {}
+        }
+      }
+    };
+
+    generatePdfThumbnail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, kind, isMobile]);
+
   if (kind === "pdf") {
-  return (
-    <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
-      <div className="text-center">
-        <div className="text-3xl font-bold tracking-widest">PDF</div>
-        <div className="mt-2 text-xs text-zinc-400">Documento</div>
+    return (
+      <div className="absolute inset-0 bg-zinc-900">
+        {pdfThumbnail ? (
+          <img
+            src={pdfThumbnail}
+            alt="Vista previa del PDF"
+            className="h-full w-full object-cover pointer-events-none select-none"
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
+            <div className="text-center">
+              <div className="text-3xl font-bold tracking-widest">PDF</div>
+              <div className="mt-2 text-xs text-zinc-400">
+                Cargando portada...
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (kind === "docx") {
     return (
@@ -97,10 +181,10 @@ export default function FileCard({
 }) {
   const ext = (getExt(item.url || item.name) || "").toLowerCase();
 
-const isVid =
-  isVideoExt(ext) ||
-  item.mimeType?.startsWith("video/") ||
-  /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(item.url || "");
+  const isVid =
+    isVideoExt(ext) ||
+    item.mimeType?.startsWith("video/") ||
+    /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(item.url || "");
   const isPdf = ext === "pdf" || /\.pdf$/i.test(item.url || "");
   const isDocx = ext === "docx" || /\.docx$/i.test(item.url || "");
   const isDoc = !isDocx && (ext === "doc" || /\.doc$/i.test(item.url || ""));
@@ -152,25 +236,32 @@ const isVid =
 
   const name = stripExt(item.name);
 
-const thumbnailUrl = item.thumbnail_url
-  ? item.thumbnail_url.startsWith("r2://")
-    ? `/api/r2/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
-    : item.thumbnail_url.startsWith("gs://")
-      ? `/api/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
-      : item.thumbnail_url
-  : "";
+  const thumbnailUrl = item.thumbnail_url
+    ? item.thumbnail_url.startsWith("r2://")
+      ? `/api/r2/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
+      : item.thumbnail_url.startsWith("gs://")
+        ? `/api/proxy?url=${encodeURIComponent(item.thumbnail_url)}`
+        : item.thumbnail_url
+    : "";
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.94, y: 18 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.35, type: "spring", stiffness: 210, damping: 20 }}
+      transition={{
+        duration: 0.35,
+        type: "spring",
+        stiffness: 210,
+        damping: 20,
+      }}
     >
       <motion.article
         className={`relative bg-zinc-900 border rounded-2xl overflow-hidden shadow-sm ${
           selected ? "border-orange-500" : "border-zinc-800"
         }`}
-        {...(!isMobile ? { initial: "rest", animate: "rest", whileHover: "hover" } : {})}
+        {...(!isMobile
+          ? { initial: "rest", animate: "rest", whileHover: "hover" }
+          : {})}
       >
         {selectionMode && (
           <label className="absolute z-30 top-2 right-2 bg-black/60 backdrop-blur px-2 py-1 rounded border border-zinc-700 flex items-center gap-2 pointer-events-auto">
@@ -185,20 +276,20 @@ const thumbnailUrl = item.thumbnail_url
         )}
 
         <div className="relative aspect-video w-full bg-zinc-800 overflow-hidden">
-         {thumbnailUrl ? (
-<img
-  src={thumbnailUrl}
-  alt={name}
-  className="absolute inset-0 h-full w-full object-cover"
-/>
-) : isVid ? (
-  <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
-    <div className="text-center">
-      <div className="text-3xl font-bold tracking-widest">VIDEO</div>
-      <div className="mt-2 text-xs text-zinc-400">Sin portada</div>
-    </div>
-  </div>
-) : isPdf ? (
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={name}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : isVid ? (
+            <div className="absolute inset-0 grid place-items-center bg-zinc-800 text-zinc-200">
+              <div className="text-center">
+                <div className="text-3xl font-bold tracking-widest">VIDEO</div>
+                <div className="mt-2 text-xs text-zinc-400">Sin portada</div>
+              </div>
+            </div>
+          ) : isPdf ? (
             <DocumentPreview url={item.url} kind="pdf" isMobile={isMobile} />
           ) : isDocx ? (
             <DocumentPreview url={item.url} kind="docx" isMobile={isMobile} />
@@ -229,7 +320,10 @@ const thumbnailUrl = item.thumbnail_url
               </p>
 
               <div className="mt-3">
-                <Link href={selectionMode ? "#" : href} aria-disabled={selectionMode}>
+                <Link
+                  href={selectionMode ? "#" : href}
+                  aria-disabled={selectionMode}
+                >
                   <motion.button
                     disabled={selectionMode}
                     whileHover={!isMobile ? { scale: 1.05 } : undefined}

@@ -27,10 +27,16 @@ type CategoryFromApi = {
   }[];
 };
 
-
 const OFFICE_OPTIONS = ["Chile", "Mexico"] as const;
 const COLOR_PUBLICIDAD = ["3D", "IA", "Musica", "Sonido"] as const;
-const COLOR_ENTRETENIMIENTO = ["3D", "IA", "Musica", "Sonido", "VFX", "Edicion"] as const;
+const COLOR_ENTRETENIMIENTO = [
+  "3D",
+  "IA",
+  "Musica",
+  "Sonido",
+  "VFX",
+  "Edicion",
+] as const;
 
 type UploadItem = {
   id: string;
@@ -66,8 +72,16 @@ function stripExt(s?: string | null) {
   return base.replace(/\.[^.\/\\]+$/g, "");
 }
 function getExt(item: UploadItem) {
-  const source = item.file_name || item.display_name || item.titulo || item.file_path || item.url || "";
-  return source.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() || "";
+  const source =
+    item.file_name ||
+    item.display_name ||
+    item.titulo ||
+    item.file_path ||
+    item.url ||
+    "";
+  return (
+    source.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() || ""
+  );
 }
 function proxiedUrl(u?: string | null) {
   if (!u) return "";
@@ -167,7 +181,6 @@ function VideoStaticPreview({
     </div>
   );
 }
-
 function DocumentPreview({
   url,
   kind,
@@ -177,7 +190,99 @@ function DocumentPreview({
   kind: "pdf" | "docx" | "doc";
   isMobile: boolean;
 }) {
-  const label = kind === "pdf" ? "PDF" : kind === "docx" ? "WORD" : "DOC";
+  const [pdfThumbnail, setPdfThumbnail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (kind !== "pdf" || !url) {
+      setPdfThumbnail(null);
+      return;
+    }
+
+    let cancelled = false;
+    let pdf: any = null;
+
+    const generatePdfThumbnail = async () => {
+      try {
+        const { pdfjs } = await import("react-pdf");
+
+        const version = pdfjs.version;
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+
+        const task = pdfjs.getDocument({ url });
+        pdf = await task.promise;
+
+        const page = await pdf.getPage(1);
+
+        if (cancelled) return;
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const targetWidth = isMobile ? 480 : 640;
+        const renderScale = targetWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale: renderScale });
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) return;
+
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+
+        await page.render({
+          canvasContext: context,
+          viewport,
+          canvas,
+        }).promise;
+
+        if (!cancelled) {
+          setPdfThumbnail(canvas.toDataURL("image/jpeg", 0.82));
+        }
+      } catch (error) {
+        console.warn("PDF thumbnail error:", error);
+
+        if (!cancelled) {
+          setPdfThumbnail(null);
+        }
+      } finally {
+        if (pdf) {
+          try {
+            await pdf.destroy();
+          } catch {}
+        }
+      }
+    };
+
+    generatePdfThumbnail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, kind, isMobile]);
+
+  if (kind === "pdf") {
+    return (
+      <div className="absolute inset-0 bg-zinc-900">
+        {pdfThumbnail ? (
+          <img
+            src={pdfThumbnail}
+            alt="Vista previa del PDF"
+            className="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+            <div className="text-center">
+              <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-2xl border border-orange-500/40 bg-orange-500/10 text-orange-300 text-xl font-black">
+                PDF
+              </div>
+              <p className="text-xs text-zinc-400">Cargando portada...</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const label = kind === "docx" ? "WORD" : "DOC";
 
   return (
     <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
@@ -305,7 +410,7 @@ export default function CategoryFiles({ slug }: { slug: string }) {
         list.sort(
           (a, b) =>
             (Date.parse(b.uploaded_at || "") || 0) -
-            (Date.parse(a.uploaded_at || "") || 0)
+            (Date.parse(a.uploaded_at || "") || 0),
         );
 
         setRows(list);
@@ -376,9 +481,9 @@ export default function CategoryFiles({ slug }: { slug: string }) {
 
   const featuredItem = rows[0] || null;
 
-const carouselRows = useMemo(() => {
-  return rows;
-}, [rows]);
+  const carouselRows = useMemo(() => {
+    return rows;
+  }, [rows]);
 
   const groups: Group[] =
     activeCategory?.subcategories
@@ -400,7 +505,8 @@ const carouselRows = useMemo(() => {
   }, [menuMain, menuOffice, menuColor]);
 
   const grouped = useMemo(() => {
-    if (!hasGroups) return new Map<string, UploadItem[]>([["__all__", carouselRows]]);
+    if (!hasGroups)
+      return new Map<string, UploadItem[]>([["__all__", carouselRows]]);
 
     const map = new Map<string, UploadItem[]>();
 
@@ -488,7 +594,10 @@ const carouselRows = useMemo(() => {
     });
   }, [fullViewSub, rows, activeSlug]);
 
-  const fullTotalPages = Math.max(1, Math.ceil(fullItems.length / FULL_PAGE_SIZE));
+  const fullTotalPages = Math.max(
+    1,
+    Math.ceil(fullItems.length / FULL_PAGE_SIZE),
+  );
 
   const fullPageItems = useMemo(() => {
     const start = fullPage * FULL_PAGE_SIZE;
@@ -529,172 +638,177 @@ const carouselRows = useMemo(() => {
   };
 
   return (
-  <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 -mt-8 pb-6 text-white">
-    
-    {!loading && featuredItem && (
-  <section className="relative mb-6 mt-0">
-    <div className="absolute top-4 left-5 right-5 z-20 flex flex-col md:flex-row md:items-start md:justify-between gap-4 pointer-events-none">
-      <div className="pointer-events-auto">
-        <h1 className="text-3xl md:text-4xl font-bold text-white drop-shadow">
-          {title}
-        </h1>
+    <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 -mt-8 pb-6 text-white">
+      {!loading && featuredItem && (
+        <section className="relative mb-6 mt-0">
+          <div className="absolute top-4 left-5 right-5 z-20 flex flex-col md:flex-row md:items-start md:justify-between gap-4 pointer-events-none">
+            <div className="pointer-events-auto">
+              <h1 className="text-3xl md:text-4xl font-bold text-white drop-shadow">
+                {title}
+              </h1>
 
-        <p className="mt-1 text-sm text-zinc-300 drop-shadow">
-          {totalAssets} archivo{totalAssets === 1 ? "" : "s"} disponibles
-        </p>
-      </div>
+              <p className="mt-1 text-sm text-zinc-300 drop-shadow">
+                {totalAssets} archivo{totalAssets === 1 ? "" : "s"} disponibles
+              </p>
+            </div>
 
-      {hasGroups && (
-        <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1">
-          {["Todo", ...groupEntries.map(([sub]) => sub)].map((sub) => {
-            const active = activeShelf === sub;
+            {hasGroups && (
+              <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1">
+                {["Todo", ...groupEntries.map(([sub]) => sub)].map((sub) => {
+                  const active = activeShelf === sub;
+
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={() => setActiveShelf(sub)}
+                      className={[
+                        "shrink-0 rounded-full px-4 py-2 text-sm border transition backdrop-blur",
+                        active
+                          ? "border-orange-500 bg-orange-500 text-black font-semibold"
+                          : "border-zinc-700 bg-black/50 text-zinc-300 hover:text-white hover:border-orange-500",
+                      ].join(" ")}
+                    >
+                      {sub}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <FeaturedCard item={featuredItem} compactTop />
+        </section>
+      )}
+
+      {loading ? (
+        <div className="text-zinc-400 py-10">Cargando…</div>
+      ) : grouped.size === 0 ? (
+        <div className="text-zinc-400 py-10">
+          No hay archivos en esta sección.
+        </div>
+      ) : (
+        <>
+          {visibleEntries.map(([sub, items]) => {
+            if (!items.length) return null;
+
+            const id = slugify(sub);
 
             return (
-              <button
+              <div
                 key={sub}
-                type="button"
-                onClick={() => setActiveShelf(sub)}
-                className={[
-                  "shrink-0 rounded-full px-4 py-2 text-sm border transition backdrop-blur",
-                  active
-                    ? "border-orange-500 bg-orange-500 text-black font-semibold"
-                    : "border-zinc-700 bg-black/50 text-zinc-300 hover:text-white hover:border-orange-500",
-                ].join(" ")}
+                ref={(el) => {
+                  sectionRefs.current[id] = el;
+                }}
+                id={`sub-${id}`}
+                className="relative mb-0"
               >
-                {sub}
-              </button>
+                <div className="absolute left-12 right-12 md:left-16 md:right-16 top-3 z-40 flex items-start justify-between pointer-events-none">
+                  <div className="pointer-events-auto rounded-xl bg-black/35 px-3 py-2 backdrop-blur-sm">
+                    <h2 className="text-xl md:text-2xl font-semibold leading-none">
+                      {sub}
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {items.length} archivo{items.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setFullViewSub(sub)}
+                    className="pointer-events-auto text-xs px-3 py-1.5 rounded-full border border-zinc-700 bg-black/35 backdrop-blur-sm hover:border-orange-500 text-zinc-300 hover:text-orange-300 transition"
+                    title="Ver todos los archivos"
+                  >
+                    Ver todos
+                  </button>
+                </div>
+
+                <CategoryCarousel items={items} />
+              </div>
             );
           })}
+
+          <div className="flex w-full justify-center overflow-visible">
+            <div className="w-full max-w-[1540px] overflow-visible px-2 pb-12 pt-6 md:px-3">
+              <h1 className="mb-5 text-center text-xl font-bold md:text-2xl">
+                Categorías principales
+              </h1>
+
+              <div className="flex flex-wrap justify-center gap-4 sm:gap-5">
+                {categories.map((c, i) => (
+                  <Link
+                    key={c.slug}
+                    href={`/organizar/${c.slug}`}
+                    prefetch={false}
+                    className="group relative z-0 block w-full max-w-[245px] transition-all duration-300 ease-out md:hover:z-50 md:hover:-translate-y-7 md:hover:scale-[1.85]"
+                  >
+                    <article className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/75 shadow-lg backdrop-blur-sm transition-all duration-300 group-hover:border-orange-400/60 group-hover:shadow-2xl">
+                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-black">
+                        <Image
+                          src={c.cover || "/Publicidad.avif"}
+                          alt={c.label}
+                          fill
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                          sizes="(max-width: 640px) 100vw, 245px"
+                          priority={i === 0}
+                        />
+                      </div>
+
+                      <div className="px-3 py-3 text-center">
+                        <h3 className="truncate text-sm font-semibold uppercase tracking-wide text-white">
+                          {c.label}
+                        </h3>
+                      </div>
+                    </article>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {fullViewSub && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative z-50 h-full overflow-y-auto">
+            <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
+              <div className="relative z-20 -mb-8 px-12 md:px-16 flex items-center justify-between">
+                <h2 className="text-2xl md:text-3xl font-bold">
+                  {fullViewSub}
+                </h2>
+                <button
+                  onClick={() => setFullViewSub(null)}
+                  className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-zinc-500 text-sm text-zinc-300 hover:text-white"
+                >
+                  Volver
+                </button>
+              </div>
+
+              {fullItems.length === 0 ? (
+                <div className="text-zinc-400 py-12">Sin archivos.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {fullPageItems.map((u) => (
+                      <CardItemOverlay key={u.id} item={u} />
+                    ))}
+                  </div>
+
+                  <Pagination
+                    page={fullPage}
+                    totalPages={fullTotalPages}
+                    onPage={setFullPage}
+                  />
+                </>
+              )}
+
+              <div className="h-8" />
+            </div>
+          </div>
         </div>
       )}
     </div>
-
-    <FeaturedCard item={featuredItem} compactTop />
-  </section>
-)}
-
-    {loading ? (
-      <div className="text-zinc-400 py-10">Cargando…</div>
-    ) : grouped.size === 0 ? (
-      <div className="text-zinc-400 py-10">No hay archivos en esta sección.</div>
-    ) : (
-      <>
-        {visibleEntries.map(([sub, items]) => {
-          if (!items.length) return null;
-
-          const id = slugify(sub);
-
-          return (
-            <div
-  key={sub}
-  ref={(el) => {
-    sectionRefs.current[id] = el;
-  }}
-  id={`sub-${id}`}
-  className="relative mb-0"
->
-  <div className="absolute left-12 right-12 md:left-16 md:right-16 top-3 z-40 flex items-start justify-between pointer-events-none">
-    <div className="pointer-events-auto rounded-xl bg-black/35 px-3 py-2 backdrop-blur-sm">
-      <h2 className="text-xl md:text-2xl font-semibold leading-none">{sub}</h2>
-      <p className="text-xs text-zinc-400 mt-1">
-        {items.length} archivo{items.length === 1 ? "" : "s"}
-      </p>
-    </div>
-
-    <button
-      onClick={() => setFullViewSub(sub)}
-      className="pointer-events-auto text-xs px-3 py-1.5 rounded-full border border-zinc-700 bg-black/35 backdrop-blur-sm hover:border-orange-500 text-zinc-300 hover:text-orange-300 transition"
-      title="Ver todos los archivos"
-    >
-      Ver todos
-    </button>
-  </div>
-
-  <CategoryCarousel items={items} />
-</div>
-          );
-        })}
-
-       <div className="flex w-full justify-center overflow-visible">
-  <div className="w-full max-w-[1540px] overflow-visible px-2 pb-12 pt-6 md:px-3">
-    <h1 className="mb-5 text-center text-xl font-bold md:text-2xl">
-      Categorías principales
-    </h1>
-
-    <div className="flex flex-wrap justify-center gap-4 sm:gap-5">
-      {categories.map((c, i) => (
-        <Link
-          key={c.slug}
-          href={`/organizar/${c.slug}`}
-          prefetch={false}
-          className="group relative z-0 block w-full max-w-[245px] transition-all duration-300 ease-out md:hover:z-50 md:hover:-translate-y-7 md:hover:scale-[1.85]"
-        >
-          <article className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/75 shadow-lg backdrop-blur-sm transition-all duration-300 group-hover:border-orange-400/60 group-hover:shadow-2xl">
-            <div className="relative aspect-[16/10] w-full overflow-hidden bg-black">
-              <Image
-                src={c.cover || "/Publicidad.avif"}
-                alt={c.label}
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                sizes="(max-width: 640px) 100vw, 245px"
-                priority={i === 0}
-              />
-            </div>
-
-            <div className="px-3 py-3 text-center">
-              <h3 className="truncate text-sm font-semibold uppercase tracking-wide text-white">
-                {c.label}
-              </h3>
-            </div>
-          </article>
-        </Link>
-      ))}
-    </div>
-  </div>
-</div>
-      </>
-    )}
-
-    {fullViewSub && (
-      <div className="fixed inset-0 z-40">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-        <div className="relative z-50 h-full overflow-y-auto">
-          <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
-            <div className="relative z-20 -mb-8 px-12 md:px-16 flex items-center justify-between">
-              <h2 className="text-2xl md:text-3xl font-bold">{fullViewSub}</h2>
-              <button
-                onClick={() => setFullViewSub(null)}
-                className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-zinc-500 text-sm text-zinc-300 hover:text-white"
-              >
-                Volver
-              </button>
-            </div>
-
-            {fullItems.length === 0 ? (
-              <div className="text-zinc-400 py-12">Sin archivos.</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {fullPageItems.map((u) => (
-                    <CardItemOverlay key={u.id} item={u} />
-                  ))}
-                </div>
-
-                <Pagination
-                  page={fullPage}
-                  totalPages={fullTotalPages}
-                  onPage={setFullPage}
-                />
-              </>
-            )}
-
-            <div className="h-8" />
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
 }
 
 function FeaturedCard({
@@ -708,16 +822,14 @@ function FeaturedCard({
 
   const rawUrl = item.url || item.file_path || "";
   const name = stripExt(
-    item.display_name ||
-    item.titulo ||
-    item.file_name ||
-    rawUrl
+    item.display_name || item.titulo || item.file_name || rawUrl,
   );
 
   const previewUrl = proxiedUrl(rawUrl);
   const ext = getExt(item);
 
-  const isVideo = item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
+  const isVideo =
+    item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
   const isPdf = ext === "pdf";
   const isDocx = ext === "docx";
   const isDoc = ext === "doc";
@@ -767,25 +879,23 @@ function CardItem({ item }: { item: UploadItem }) {
 
   const rawUrl = item.url || item.file_path || "";
   const name = stripExt(
-    item.display_name ||
-    item.titulo ||
-    item.file_name ||
-    rawUrl
+    item.display_name || item.titulo || item.file_name || rawUrl,
   );
   const previewUrl = proxiedUrl(rawUrl);
 
-const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
+  const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
 
-const ext = getExt(item);
+  const ext = getExt(item);
 
-const isVideo = item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
-const isPdf = ext === "pdf";
-const isDocx = ext === "docx";
-const isDoc = ext === "doc";
+  const isVideo =
+    item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
+  const isPdf = ext === "pdf";
+  const isDocx = ext === "docx";
+  const isDoc = ext === "doc";
 
   return (
-  <motion.article
-  className="group h-full flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/80 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:border-orange-400/60 hover:shadow-2xl"
+    <motion.article
+      className="group h-full flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/80 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:border-orange-400/60 hover:shadow-2xl"
       initial={isMobile ? undefined : "rest"}
       animate={isMobile ? undefined : "rest"}
       whileHover={isMobile ? undefined : "hover"}
@@ -811,8 +921,8 @@ const isDoc = ext === "doc";
           <motion.div
             className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent"
             variants={{
-             rest: { opacity: 0.72 },
-             hover: { opacity: 0.92, transition: { duration: 0.25 } },
+              rest: { opacity: 0.72 },
+              hover: { opacity: 0.92, transition: { duration: 0.25 } },
             }}
           />
         )}
@@ -823,21 +933,21 @@ const isDoc = ext === "doc";
               {name}
             </p>
 
-           <div className="mt-3 flex items-center justify-start gap-3 flex-wrap md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
-  <Link
-    href={`/videos/${item.id}`}
-    prefetch={false}
-    aria-label={`Ver más sobre ${name}`}
-  >
-    <motion.button
-      whileHover={{ scale: 1.07 }}
-      whileTap={{ scale: 0.96 }}
-      className="text-xs px-3.5 py-1.5 rounded-md border border-orange-400/80 bg-black/35 backdrop-blur-sm text-orange-300 hover:bg-orange-500 hover:text-black transition"
-    >
-      Ver más
-    </motion.button>
-  </Link>
-</div>
+            <div className="mt-3 flex items-center justify-start gap-3 flex-wrap md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
+              <Link
+                href={`/videos/${item.id}`}
+                prefetch={false}
+                aria-label={`Ver más sobre ${name}`}
+              >
+                <motion.button
+                  whileHover={{ scale: 1.07 }}
+                  whileTap={{ scale: 0.96 }}
+                  className="text-xs px-3.5 py-1.5 rounded-md border border-orange-400/80 bg-black/35 backdrop-blur-sm text-orange-300 hover:bg-orange-500 hover:text-black transition"
+                >
+                  Ver más
+                </motion.button>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -850,21 +960,19 @@ function CardItemOverlay({ item }: { item: UploadItem }) {
 
   const rawUrl = item.url || item.file_path || "";
   const name = stripExt(
-    item.display_name ||
-    item.titulo ||
-    item.file_name ||
-    rawUrl
+    item.display_name || item.titulo || item.file_name || rawUrl,
   );
   const previewUrl = proxiedUrl(rawUrl);
 
-const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
+  const typeSource = `${item.file_name || ""} ${item.file_path || ""} ${item.url || ""}`;
 
-const ext = getExt(item);
+  const ext = getExt(item);
 
-const isVideo = item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
-const isPdf = ext === "pdf";
-const isDocx = ext === "docx";
-const isDoc = ext === "doc";
+  const isVideo =
+    item.tipo === "video" || ["mp4", "webm", "mov", "m4v"].includes(ext);
+  const isPdf = ext === "pdf";
+  const isDocx = ext === "docx";
+  const isDoc = ext === "doc";
 
   return (
     <motion.article className="group h-full flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-900 overflow-hidden shadow-sm">
@@ -934,10 +1042,7 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
     });
   };
 
-  const showHoveredCard = (
-    item: UploadItem,
-    element: HTMLDivElement
-  ) => {
+  const showHoveredCard = (item: UploadItem, element: HTMLDivElement) => {
     const section = sectionRef.current;
     if (!section) return;
 
@@ -981,14 +1086,10 @@ function CategoryCarousel({ items }: { items: UploadItem[] }) {
           {items.map((u) => (
             <div
               key={u.id}
-              onMouseEnter={(event) =>
-                showHoveredCard(u, event.currentTarget)
-              }
+              onMouseEnter={(event) => showHoveredCard(u, event.currentTarget)}
               className={[
                 "relative shrink-0 w-[78vw] sm:w-[300px] md:w-[320px] lg:w-[350px] xl:w-[370px]",
-                hoveredCard?.item.id === u.id
-                  ? "md:opacity-0"
-                  : "",
+                hoveredCard?.item.id === u.id ? "md:opacity-0" : "",
               ].join(" ")}
             >
               <CardItem item={u} />
