@@ -4,7 +4,7 @@ import crypto from "crypto";
 // import { Storage } from "@google-cloud/storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getR2BucketName, getR2Client } from "@/lib/r2";
-import { cookies } from "next/headers";
+import { getSessionFromRequest } from "@/lib/auth";
 
 // const storage = new Storage();
 // const GCS_BUCKET = process.env.GCS_BUCKET;
@@ -29,54 +29,6 @@ async function uploadBufferToR2(params: {
     return `r2://${bucket}/${params.key}`;
   } catch (error) {
     console.error("R2_AVATAR_UPLOAD_ERROR", error);
-    return null;
-  }
-}
-
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
-
-function getSubFromJwt(token: string): string | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-
-    const json = Buffer.from(payload, "base64url").toString("utf8");
-    const data = JSON.parse(json);
-
-    return typeof data?.sub === "string" ? data.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getSessionUser() {
-  try {
-    const cookieStore = await cookies();
-
-    const rawAuth =
-      cookieStore.get("auth")?.value ||
-      cookieStore.get("next-auth.session-token")?.value ||
-      cookieStore.get("__Secure-next-auth.session-token")?.value;
-
-    if (!rawAuth) return null;
-
-    const userId = isUuid(rawAuth) ? rawAuth : getSubFromJwt(rawAuth);
-
-    if (!userId || !isUuid(userId)) return null;
-
-    const { rows } = await pool.query(
-      `SELECT id, name, email
-       FROM users
-       WHERE id = $1
-       LIMIT 1`,
-      [userId]
-    );
-
-    return rows[0] || null;
-  } catch (e) {
-    console.error("SESSION ERROR:", e);
     return null;
   }
 }
@@ -187,7 +139,19 @@ async function saveAvatarToR2(
 // }
 
 export async function PUT(req: Request) {
-  const user = await getSessionUser();
+  const session = getSessionFromRequest(req);
+  if (!session?.sub)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { rows: userRows } = await pool.query(
+    `SELECT id, name, email
+     FROM users
+     WHERE id = $1
+     LIMIT 1`,
+    [session.sub]
+  );
+
+  const user = userRows[0];
   if (!user?.id)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 

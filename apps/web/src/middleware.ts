@@ -99,6 +99,9 @@ const hasBearerAuth =
     pathname === "/api/registration-invites" ||
     pathname === "/api/user-groups" ||
     pathname === "/api/buscar" ||
+    pathname === "/api/perfil" ||
+    /^\/api\/perfiles\/[^/]+$/.test(pathname) ||
+    pathname === "/api/2fa/status" ||
     /^\/api\/documento\/[^/]+$/.test(pathname) ||
     pathname === "/api/admin/control-cargas" ||
     pathname.startsWith("/api/fichas/")) &&

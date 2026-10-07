@@ -302,7 +302,13 @@ export async function getUploadById(
     throw new Error("La respuesta del archivo no es válida");
   }
 
-  return data.upload;
+  const upload = data.upload;
+
+  if (upload.url?.startsWith("/")) {
+    upload.url = `${API_BASE_URL}${upload.url}`;
+  }
+
+  return upload;
 }
 export type CurrentUser = {
   id?: string;
@@ -345,6 +351,171 @@ export async function getMe(
 
   return data;
 }
+export type ProfileParticipation = {
+  fecha: string;
+  nombre: string;
+  miniatura: string;
+  ruta: string;
+};
+
+export type UserProfile = {
+  user_id: string;
+  name: string;
+  email?: string | null;
+  role?: CurrentUser["role"];
+  generacion?: string | null;
+  facultad?: string | null;
+  descripcion?: string | null;
+  avatar_url?: string | null;
+  instagram?: string | null;
+  facebook?: string | null;
+  whatsapp?: string | null;
+  participaciones: ProfileParticipation[];
+};
+
+export async function getUserProfile(
+  authToken: string,
+  userId: string,
+): Promise<UserProfile> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/perfiles/${encodeURIComponent(userId)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json()) as UserProfile & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo cargar el perfil (${response.status})`,
+    );
+  }
+
+  return {
+    ...data,
+    participaciones: Array.isArray(data.participaciones)
+      ? data.participaciones
+      : [],
+    avatar_url: data.avatar_url?.startsWith("/")
+      ? `${API_BASE_URL}${data.avatar_url}`
+      : data.avatar_url,
+  };
+}
+
+export type UpdateProfileInput = {
+  nombre: string;
+  email: string;
+  generacion: string;
+  facultad: string;
+  descripcion: string;
+  instagram: string;
+  facebook: string;
+  whatsapp: string;
+  participaciones: ProfileParticipation[];
+  avatar?: {
+    uri: string;
+    name?: string;
+    type?: string;
+  } | null;
+};
+
+export async function updateProfile(
+  authToken: string,
+  input: UpdateProfileInput,
+): Promise<UserProfile> {
+  const formData = new FormData();
+
+  formData.append("nombre", input.nombre);
+  formData.append("email", input.email);
+  formData.append("generacion", input.generacion);
+  formData.append("facultad", input.facultad);
+  formData.append("descripcion", input.descripcion);
+  formData.append("instagram", input.instagram);
+  formData.append("facebook", input.facebook);
+  formData.append("whatsapp", input.whatsapp);
+  formData.append(
+    "participaciones",
+    JSON.stringify(input.participaciones),
+  );
+
+  if (input.avatar?.uri) {
+    formData.append(
+      "avatar",
+      {
+        uri: input.avatar.uri,
+        name: input.avatar.name || "avatar.jpg",
+        type: input.avatar.type || "image/jpeg",
+      } as any,
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/perfil`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: formData,
+  });
+
+  const data = (await response.json()) as UserProfile & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo guardar el perfil (${response.status})`,
+    );
+  }
+
+  return {
+    ...data,
+    participaciones: Array.isArray(data.participaciones)
+      ? data.participaciones
+      : [],
+    avatar_url: data.avatar_url?.startsWith("/")
+      ? `${API_BASE_URL}${data.avatar_url}`
+      : data.avatar_url,
+  };
+}
+
+export type TwoFactorStatus = {
+  success: boolean;
+  enabled: boolean;
+  enabledAt?: string | null;
+};
+
+export async function getTwoFactorStatus(
+  authToken: string,
+): Promise<TwoFactorStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/2fa/status`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+
+  const data = (await response.json()) as TwoFactorStatus & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `No se pudo consultar 2FA (${response.status})`,
+    );
+  }
+
+  return data;
+}
+
 export type SearchResultItem = {
   id: string;
   file_name?: string | null;
@@ -513,6 +684,53 @@ export async function getTranscript(
   }
 
   return data;
+}
+
+export type DocumentText = {
+  id?: string | null;
+  upload_id: string;
+  tipo?: string | null;
+  texto?: string | null;
+  video_id?: string | null;
+  file_name?: string | null;
+  texto_extraido?: string | null;
+  creado_en?: string | null;
+  num_paginas?: number | null;
+  num_lineas?: number | null;
+  num_palabras?: number | null;
+  num_frases?: number | null;
+  resumen?: string | null;
+  posiciones?: unknown;
+};
+
+export async function getDocumentText(
+  authToken: string,
+  uploadId: string,
+): Promise<DocumentText | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/documento/${encodeURIComponent(uploadId)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+    },
+  );
+
+  const data = (await response.json()) as {
+    documento?: DocumentText | null;
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+        `No se pudo cargar el contenido del documento (${response.status})`,
+    );
+  }
+
+  return data.documento ?? null;
 }
 
 export type StreamCaption = {

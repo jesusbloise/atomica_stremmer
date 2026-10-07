@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import pool from "@/db";
+import { getSessionFromRequest } from "@/lib/auth";
 
 type Params = { user_id: string };
 
 // ✅ En Next actual: params puede ser Promise -> ¡haz await!
-export async function GET(_req: Request, ctx: { params: Promise<Params> }) {
+export async function GET(req: Request, ctx: { params: Promise<Params> }) {
+  const session = getSessionFromRequest(req);
+
+  if (!session?.sub) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const { user_id } = await ctx.params;
 
   try {

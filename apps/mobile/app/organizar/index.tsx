@@ -486,7 +486,10 @@ export default function OrganizarScreen() {
 
             <Pressable
               style={styles.profileItem}
-              onPress={() => setProfileOpen(false)}
+              onPress={() => {
+                setProfileOpen(false);
+                router.push("/perfil");
+              }}
             >
               <Text style={styles.profileItemText}>Perfil</Text>
             </Pressable>
