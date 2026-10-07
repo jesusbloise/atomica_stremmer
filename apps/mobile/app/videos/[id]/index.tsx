@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
+import Pdf from "react-native-pdf";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { File, Paths } from "expo-file-system";
@@ -25,6 +26,8 @@ import {
   getTechnicalSheet,
   getThumbnailCandidates,
   getTranscript,
+  getDocumentText,
+  DocumentText,
   getUploadById,
   moveUpload,
   TechnicalSheet,
@@ -49,6 +52,8 @@ import {
 } from "../../../src/api";
 import { getAuthToken } from "../../../src/authStorage";
 import CategoryGrid from "../../../src/components/CategoryGrid";
+
+const atomicaLogo = require("../../../assets/atomica-logo.png");
 
 const OFICINA_OPTIONS = ["Chile", "Mexico"] as const;
 
@@ -90,6 +95,7 @@ type DetailData = {
   upload: UploadDetail;
   ficha: TechnicalSheet | null;
   transcript: TranscriptLine[];
+  document: DocumentText | null;
   me: CurrentUser | null;
   fichaError: string | null;
   transcriptError: string | null;
@@ -132,10 +138,15 @@ export default function VideoDetailScreen() {
 
         setAuthToken(token);
 
-        const [fichaResult, transcriptResult, meResult] =
+        const isDocument =
+          String(upload.tipo ?? "").trim().toLowerCase() === "documento";
+
+        const [fichaResult, contentResult, meResult] =
           await Promise.allSettled([
             getTechnicalSheet(token, id),
-            getTranscript(token, id),
+            isDocument
+              ? getDocumentText(token, id)
+              : getTranscript(token, id),
             getMe(token),
           ]);
 
@@ -150,9 +161,14 @@ export default function VideoDetailScreen() {
               : null,
 
           transcript:
-            transcriptResult.status === "fulfilled"
-              ? transcriptResult.value
+            !isDocument && contentResult.status === "fulfilled"
+              ? (contentResult.value as TranscriptLine[])
               : [],
+
+          document:
+            isDocument && contentResult.status === "fulfilled"
+              ? (contentResult.value as DocumentText | null)
+              : null,
 
           me:
             meResult.status === "fulfilled"
@@ -167,10 +183,12 @@ export default function VideoDetailScreen() {
               : null,
 
           transcriptError:
-            transcriptResult.status === "rejected"
-              ? transcriptResult.reason instanceof Error
-                ? transcriptResult.reason.message
-                : "No se pudo cargar la transcripción"
+            contentResult.status === "rejected"
+              ? contentResult.reason instanceof Error
+                ? contentResult.reason.message
+                : isDocument
+                  ? "No se pudo cargar el contenido del documento"
+                  : "No se pudo cargar la transcripción"
               : null,
         });
       } catch (err) {
@@ -245,6 +263,9 @@ function LoadedVideoDetail({
   authToken: string;
   uploadId: string;
 }) {
+  const isDocument =
+    String(initialData.upload.tipo ?? "").trim().toLowerCase() === "documento";
+
   const routeParams = useLocalSearchParams<{
     q?: string | string[];
   }>();
@@ -269,6 +290,8 @@ function LoadedVideoDetail({
 >(null);
 
   const [searchTerm, setSearchTerm] = useState("");
+
+  const pdfUrl = isDocument ? initialData.upload.url || null : null;
 
   const playbackUrl =
     initialData.upload.cf_stream_hls_url || null;
@@ -330,14 +353,43 @@ function LoadedVideoDetail({
             <Text style={styles.iconButtonText}>‹</Text>
           </Pressable>
 
-          <Text style={styles.brand}>ATOMICA</Text>
+          <Image
+            source={atomicaLogo}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
 
           <View style={styles.topBarSpacer} />
         </View>
 
         <Text style={styles.title}>{title}</Text>
 
-        {playbackUrl ? (
+        {isDocument && pdfUrl ? (
+          <View style={styles.pdfContainer}>
+            <Pdf
+              source={{
+                uri: pdfUrl,
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+                cache: true,
+              }}
+              style={styles.pdf}
+              trustAllCerts={false}
+              enablePaging={false}
+              horizontal={false}
+            />
+          </View>
+        ) : isDocument ? (
+          <View style={styles.unavailable}>
+            <Text style={styles.unavailableTitle}>
+              {initialData.upload.file_name || "Documento"}
+            </Text>
+            <Text style={styles.unavailableText}>
+              Documento disponible
+            </Text>
+          </View>
+        ) : playbackUrl ? (
           <View style={styles.playerContainer}>
             <VideoView
               player={player}
@@ -404,7 +456,7 @@ function LoadedVideoDetail({
           ) : null}
 
           <PanelButton
-            title="Transcripción"
+            title={isDocument ? "Contenido del documento" : "Transcripci\u00f3n"}
             open={openPanel === "transcript"}
             onPress={() => togglePanel("transcript")}
           />
@@ -416,6 +468,33 @@ function LoadedVideoDetail({
                   title="No se pudo cargar la transcripción"
                   text={initialData.transcriptError}
                 />
+              ) : isDocument ? (
+                <>
+                  <View style={styles.transcriptHeader}>
+                    <View>
+                      <Text style={styles.sectionTitle}>
+                        Contenido del documento
+                      </Text>
+
+                      <Text style={styles.sectionSubtitle}>
+                        {initialData.document?.num_palabras
+                          ? `${initialData.document.num_palabras} palabras`
+                          : initialData.upload.file_name || "Documento"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {initialData.document?.texto?.trim() ? (
+                    <Text style={styles.documentText}>
+                      {initialData.document.texto}
+                    </Text>
+                  ) : (
+                    <PanelMessage
+                      title="Sin contenido extraido"
+                      text="No hay texto disponible para este documento."
+                    />
+                  )}
+                </>
               ) : (
                 <>
                   <View style={styles.transcriptHeader}>
@@ -2762,6 +2841,11 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
+  headerLogo: {
+    width: 92,
+    height: 50,
+  },
+
   topBarSpacer: {
     width: 42,
   },
@@ -2789,6 +2873,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
   },
 
+  pdfContainer: {
+    width: "100%",
+    height: 560,
+    overflow: "hidden",
+    borderRadius: 10,
+    backgroundColor: "#111111",
+  },
+
+  pdf: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#111111",
+  },
+
   unavailable: {
     width: "100%",
     aspectRatio: 16 / 9,
@@ -2810,6 +2908,15 @@ const styles = StyleSheet.create({
     color: "#aaaaaa",
     fontSize: 14,
     textAlign: "center",
+  },
+
+  documentText: {
+    marginTop: 14,
+    color: "#d4d4d8",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "left",
+    width: "100%",
   },
 
   metadata: {
