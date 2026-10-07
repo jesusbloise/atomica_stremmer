@@ -125,6 +125,75 @@ export async function GET(req: Request) {
                 ft.produccion,
                 ft.corporativo,
                 ft.nuevos_negocios,
+
+                /*
+                 * Fecha real del proyecto (Ficha Técnica).
+                 *
+                 * Conservamos el valor original y además generamos
+                 * distintas representaciones para permitir búsquedas
+                 * naturales por día, mes y año.
+                 *
+                 * Ejemplos:
+                 * septiembre
+                 * sept
+                 * septiembre 2026
+                 * 09/2026
+                 * 2026-09
+                 * 15/09/2026
+                 * 15-09-2026
+                 */
+                ft.fecha,
+
+                CASE
+                  WHEN COALESCE(ft.fecha, '') ~ '^\d{4}-\d{2}-\d{2}$'
+                  THEN concat_ws(
+                    ' ',
+
+                    to_char(
+                      ft.fecha::date,
+                      'DD/MM/YYYY'
+                    ),
+
+                    to_char(
+                      ft.fecha::date,
+                      'DD-MM-YYYY'
+                    ),
+
+                    to_char(
+                      ft.fecha::date,
+                      'YYYY-MM'
+                    ),
+
+                    to_char(
+                      ft.fecha::date,
+                      'MM/YYYY'
+                    ),
+
+                    EXTRACT(
+                      YEAR FROM ft.fecha::date
+                    )::text,
+
+                    CASE EXTRACT(
+                      MONTH FROM ft.fecha::date
+                    )::int
+                      WHEN 1 THEN 'enero ene'
+                      WHEN 2 THEN 'febrero feb'
+                      WHEN 3 THEN 'marzo mar'
+                      WHEN 4 THEN 'abril abr'
+                      WHEN 5 THEN 'mayo may'
+                      WHEN 6 THEN 'junio jun'
+                      WHEN 7 THEN 'julio jul'
+                      WHEN 8 THEN 'agosto ago'
+                      WHEN 9 THEN 'septiembre septiembre sept sep'
+                      WHEN 10 THEN 'octubre oct'
+                      WHEN 11 THEN 'noviembre nov'
+                      WHEN 12 THEN 'diciembre dic'
+                    END
+                  )
+
+                  ELSE ''
+                END,
+
                 array_to_string(
                   ft.tipo,
                   ' '
